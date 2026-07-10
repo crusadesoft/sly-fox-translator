@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sly Fox Translator</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="app">
+      <header class="header">
+        <div class="brand">
+          <img class="brand-logo" src="icons/logo-192.png" alt="" aria-hidden="true">
+          <div>
+            <h1>Sly Fox Translator</h1>
+            <p id="entry-count">0 replacing / 0 total</p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button
+            id="runtime-retry"
+            class="icon-button secondary runtime-retry"
+            type="button"
+            aria-label="Retry current page"
+            title="Retry current page"
+          >
+            <span class="lucide-icon lucide-icon-rotate-ccw" data-lucide-icon="rotate-ccw" aria-hidden="true"></span>
+          </button>
+          <button
+            id="open-tab"
+            class="icon-button secondary"
+            type="button"
+            aria-label="Open in tab"
+            title="Open in tab"
+          ></button>
+        </div>
+      </header>
+
+      <section class="profile-bar" aria-label="Vocabulary language">
+        <div class="language-field">
+          <span id="language-label" class="field-label">Language</span>
+          <div class="language-controls">
+            <div id="language-picker" class="language-picker">
+              <button
+                id="language-trigger"
+                class="language-trigger"
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                aria-controls="language-options"
+                aria-labelledby="language-label language-trigger-label"
+              >
+                <span class="language-current">
+                  <img id="language-trigger-icon" class="language-icon" src="icons/languages/flags/va.svg" alt="" aria-hidden="true">
+                  <span id="language-trigger-label">Language</span>
+                </span>
+                <svg class="language-chevron" aria-hidden="true" viewBox="0 0 24 24">
+                  <path d="m6 9 6 6 6-6"></path>
+                </svg>
+              </button>
+              <div id="language-options" class="language-options hidden" role="listbox" aria-labelledby="language-label"></div>
+              <select id="profile-select" class="native-language-select" tabindex="-1" aria-hidden="true"></select>
+            </div>
+            <button
+              id="settings-view-tab"
+              class="icon-button secondary settings-button"
+              type="button"
+              aria-pressed="false"
+              aria-label="Settings"
+              title="Settings"
+            >
+              <span class="lucide-icon lucide-icon-settings" data-lucide-icon="settings" aria-hidden="true"></span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section id="vocabulary-view" class="app-view">
+      <div class="vocabulary-tabs" aria-label="Vocabulary source">
+        <button id="duolingo-section" class="vocabulary-tab duolingo-vocabulary-tab" type="button" aria-pressed="true">
+          <img class="duolingo-tab-bird" src="icons/duolingo-bird.png" alt="" aria-hidden="true">
+          <span id="duolingo-section-label">Duolingo</span>
+        </button>
+        <button id="manual-section" class="vocabulary-tab" type="button" aria-pressed="false">Manual</button>
+      </div>
+
+      <section id="manual-entry-panel" class="manual-entry-panel" aria-label="Manual vocabulary">
+        <form id="entry-form" class="entry-form">
+          <input id="source" type="text" autocomplete="off" placeholder="English note or meaning" required>
+          <input id="target" type="text" autocomplete="off" placeholder="Learned word or phrase" required>
+          <button id="suggest-replacement" class="secondary" type="button">Suggest</button>
+          <button id="submit-entry" type="submit" disabled>Add</button>
+          <button id="cancel-edit" class="secondary hidden" type="button">Cancel</button>
+        </form>
+
+        <div id="suggestions" class="suggestions hidden">
+          <div id="suggestion-title" class="suggestion-title">Suggestions</div>
+          <div id="suggestion-list" class="suggestion-list"></div>
+        </div>
+      </section>
+
+      <section id="duolingo-panel" class="duolingo-panel hidden" aria-label="Duolingo vocabulary">
+        <button id="duolingo-sync" class="secondary duolingo-sync" type="button" disabled>
+          <span class="lucide-icon lucide-icon-import" data-lucide-icon="import" aria-hidden="true"></span>
+          <span id="duolingo-sync-label">Import words from Duolingo</span>
+        </button>
+        <p id="duolingo-sync-status" class="duolingo-sync-status hidden" aria-live="polite"></p>
+      </section>
+
+      <section class="vocabulary" aria-label="Learned replacements">
+        <div class="vocab-toolbar">
+          <input id="search" type="search" autocomplete="off" placeholder="Search entries">
+          <button
+            id="sort-alpha"
+            class="icon-button secondary"
+            type="button"
+            aria-label="Sort A to Z"
+            title="Sort A to Z"
+          ></button>
+          <button id="delete-all" class="danger" type="button">Delete all</button>
+          <label>
+            Rows
+            <select id="page-size">
+              <option value="10" selected>10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="empty-state" class="empty">
+          Add a word or phrase to this profile.
+        </div>
+
+        <div id="compact-vocabulary-list" class="compact-vocabulary-list hidden"></div>
+
+        <div id="table-wrap" class="table-wrap hidden">
+          <table>
+            <thead>
+              <tr>
+                <th class="flag-col">Replace on pages</th>
+                <th>English note</th>
+                <th>Learned word</th>
+                <th class="actions-col">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="entry-table"></tbody>
+          </table>
+        </div>
+
+        <div id="pager" class="pager hidden">
+          <button id="prev-page" class="secondary" type="button">Prev</button>
+          <span id="page-status">0-0 of 0</span>
+          <button id="next-page" class="secondary" type="button">Next</button>
+        </div>
+      </section>
+      </section>
+
+      <section id="settings-view" class="app-view hidden" aria-label="Settings">
+        <section class="settings" aria-label="Replacement settings">
+          <div class="setting-row">
+            <span>Enable replacements</span>
+            <label class="switch" title="Enable replacements">
+              <input id="enabled" type="checkbox">
+              <span></span>
+            </label>
+          </div>
+          <div class="setting-row">
+            <span>Highlight replacements</span>
+            <label class="switch" title="Highlight replacements">
+              <input id="show-highlights" type="checkbox">
+              <span></span>
+            </label>
+          </div>
+        </section>
+
+        <section id="page-status-panel" class="page-runtime" aria-label="Current page replacement status">
+          <div>
+            <strong id="runtime-title">Current page</strong>
+            <p id="runtime-status">Checking this tab...</p>
+          </div>
+        </section>
+
+      <details id="do-not-translate-panel" class="bulk do-not-translate" open>
+        <summary>Do not translate</summary>
+        <div id="do-not-translate-actions" class="do-not-translate-actions hidden">
+          <button id="exclude-page" class="secondary page-exclusion-button" type="button">
+            <svg class="command-icon" aria-hidden="true" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="9"></circle>
+              <path d="m5.6 5.6 12.8 12.8"></path>
+            </svg>
+            <span id="exclude-page-label">Don't translate this page</span>
+          </button>
+          <button id="exclude-site" class="secondary page-exclusion-button" type="button">
+            <svg class="command-icon" aria-hidden="true" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="9"></circle>
+              <path d="M3 12h18"></path>
+              <path d="M12 3a14 14 0 0 1 0 18"></path>
+              <path d="M12 3a14 14 0 0 0 0 18"></path>
+            </svg>
+            <span id="exclude-site-label">Don't translate this site</span>
+          </button>
+        </div>
+        <div id="do-not-translate-list" class="do-not-translate-list"></div>
+        <button id="clear-do-not-translate" class="danger" type="button">Clear list</button>
+      </details>
+
+      <details id="bulk-panel" class="bulk" open>
+        <summary>CSV / Duolingo import / export</summary>
+        <label class="file-import">
+          Import file
+          <input id="bulk-file" type="file" accept=".csv,.txt,text/csv,text/plain">
+        </label>
+        <div id="import-status" class="import-status">Choose a CSV, TXT, or Duolingo export file.</div>
+        <div class="bulk-actions">
+          <button id="import" type="button">Import file</button>
+          <button id="export" class="secondary" type="button">Download CSV</button>
+          <button id="clear-all" class="danger" type="button">Delete all</button>
+        </div>
+      </details>
+      </section>
+    </main>
+    <script src="dictionaries.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

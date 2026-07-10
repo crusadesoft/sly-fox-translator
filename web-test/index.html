@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Language Overlay Browser Test</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f7f7fb;
+      color: #202124;
+    }
+
+    body {
+      margin: 0;
+      background: #f7f7fb;
+    }
+
+    main {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 28px 22px 56px;
+    }
+
+    h1 {
+      font-size: clamp(36px, 11vw, 56px);
+      line-height: 1.02;
+      margin: 18px 0 18px;
+      letter-spacing: 0;
+    }
+
+    p {
+      color: #44484f;
+      font-size: 20px;
+      line-height: 1.42;
+      margin: 0 0 18px;
+    }
+
+    .search {
+      display: flex;
+      align-items: center;
+      min-height: 58px;
+      margin: 28px 0;
+      padding: 0 18px;
+      border-radius: 999px;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      color: #626872;
+      font-size: 20px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    article {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 18px;
+    }
+
+    h2 {
+      font-size: 28px;
+      line-height: 1.15;
+      margin: 0 0 8px;
+      letter-spacing: 0;
+    }
+
+    .meta {
+      color: #67707c;
+      font-size: 15px;
+      margin: 0 0 12px;
+    }
+
+    button {
+      min-height: 44px;
+      margin-top: 8px;
+      padding: 0 14px;
+      border: 0;
+      border-radius: 6px;
+      background: #176b5d;
+      color: #ffffff;
+      font: inherit;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Language practice on the web</h1>
+    <p>
+      Hello friend. This page is a browser test for everyday language learning.
+      The app should read visible text and rebuild labels with the words you know.
+    </p>
+
+    <div class="search" role="search">Search language settings and learned words</div>
+
+    <section class="grid" aria-label="Demo articles">
+      <article>
+        <h2>Network &amp; Settings</h2>
+        <p class="meta">Web page example</p>
+        <p>Open another app every day and keep learning one small word at a time.</p>
+        <button>Open practice</button>
+      </article>
+
+      <article>
+        <h2>Hello friend</h2>
+        <p class="meta">Reading card</p>
+        <p>Visible words on the screen can become Spanish while unknown words stay English.</p>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

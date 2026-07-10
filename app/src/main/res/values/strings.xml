@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">Language Overlay Prototype</string>
+    <string name="accessibility_service_label">Language Overlay Prototype</string>
+    <string name="accessibility_service_summary">Shows translated replacements above visible words you have learned.</string>
+    <string name="accessibility_service_description">Language Overlay Prototype reads visible on-screen text and draws local translation overlays for words you have marked as learned.</string>
+</resources>
