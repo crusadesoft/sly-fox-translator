@@ -18,7 +18,7 @@ jobs:
 
       - name: Verify the tag matches the extension version
         run: |
-          version="$(node -p \"require('./extension/manifest.json').version\")"
+          version="$(node -p 'require("./extension/manifest.json").version')"
           expected_tag="v${version}"
 
           if [ "$GITHUB_REF_NAME" != "$expected_tag" ]; then
