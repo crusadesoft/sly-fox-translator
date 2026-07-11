@@ -93,7 +93,6 @@ const elements = {
   manualSection: document.getElementById("manual-section"),
   duolingoSection: document.getElementById("duolingo-section"),
   duolingoSectionLabel: document.getElementById("duolingo-section-label"),
-  vocabularyLanguageHint: document.getElementById("vocabulary-language-hint"),
   manualEntryPanel: document.getElementById("manual-entry-panel"),
   duolingoPanel: document.getElementById("duolingo-panel"),
   duolingoSync: document.getElementById("duolingo-sync"),
@@ -620,8 +619,9 @@ function renderProfileOptions() {
 
   elements.languageTriggerIcon.src = getLanguageIconPath(currentProfile.languageCode);
   elements.languageTriggerLabel.textContent = currentProfile.name;
-  elements.vocabularyLanguageHint.textContent =
-    `Before you add words, make sure ${currentProfile.name} is the language you want.`;
+  if (elements.duolingoSyncStatus.classList.contains("language-hint")) {
+    setDuolingoSyncStatus(getDuolingoLanguageHint(), "language-hint");
+  }
   closeLanguageMenu();
 }
 
@@ -1974,6 +1974,14 @@ function setDuolingoSyncStatus(message = "", type = "") {
   elements.duolingoSyncStatus.classList.toggle("error", type === "error");
   elements.duolingoSyncStatus.classList.toggle("success", type === "success");
   elements.duolingoSyncStatus.classList.toggle("warning", type === "warning");
+  elements.duolingoSyncStatus.classList.toggle("language-hint", type === "language-hint");
+}
+
+function getDuolingoLanguageHint() {
+  const selectedProfile =
+    state.profiles.find((profile) => profile.id === state.currentProfileId) || state.profiles[0];
+  const languageName = selectedProfile?.name || "the selected language";
+  return `Make sure ${languageName} is selected before importing words.`;
 }
 
 async function refreshDuolingoSyncAvailability() {
@@ -2009,7 +2017,12 @@ async function refreshDuolingoSyncAvailability() {
   }
 
   elements.duolingoSync.disabled = false;
-  if (elements.duolingoSyncStatus.classList.contains("warning")) {
+  const isAutomaticStatus =
+    elements.duolingoSyncStatus.classList.contains("warning") ||
+    elements.duolingoSyncStatus.classList.contains("language-hint");
+  if (activeTab && (!elements.duolingoSyncStatus.textContent || isAutomaticStatus)) {
+    setDuolingoSyncStatus(getDuolingoLanguageHint(), "language-hint");
+  } else if (!activeTab && isAutomaticStatus) {
     setDuolingoSyncStatus();
   }
   elements.duolingoSyncLabel.textContent = activeTab

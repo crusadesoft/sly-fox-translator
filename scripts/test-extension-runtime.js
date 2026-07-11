@@ -1741,7 +1741,11 @@ async function testDuolingoLoginRedirectShowsInstructions(browser) {
     () => document.getElementById("duolingo-sync-label")?.textContent === "Import words from Duolingo"
   );
   assert(await page.isEnabled("#duolingo-sync"), "Duolingo import did not re-enable after sign-in");
-  assert(await page.isHidden("#duolingo-sync-status"), "sign-in instruction did not clear after sign-in");
+  await page.waitForSelector("#duolingo-sync-status.language-hint:not(.hidden)");
+  assert(
+    (await page.textContent("#duolingo-sync-status")).includes("Ukrainian"),
+    "Duolingo Words page did not replace the sign-in instruction with the language reminder"
+  );
   await page.close();
 }
 
@@ -1804,7 +1808,7 @@ async function testSidePanelUsesCompactVocabularyList(browser) {
       },
       tabs: {
         query(query, callback) {
-          callback([{ id: 12, url: "https://www.google.com/search?q=steam" }]);
+          callback([{ id: 12, url: "https://www.duolingo.com/practice-hub/words" }]);
         },
         sendMessage(tabId, message, options, callback) {
           if (typeof options === "function") {
@@ -1821,6 +1825,7 @@ async function testSidePanelUsesCompactVocabularyList(browser) {
 
   await page.goto(SIDE_PANEL_PAGE);
   await page.waitForSelector("#compact-vocabulary-list:not(.hidden)");
+  await page.waitForSelector("#duolingo-sync-status.language-hint:not(.hidden)");
   const duolingoResult = await page.evaluate(() => ({
     tableHidden: document.getElementById("table-wrap").classList.contains("hidden"),
     compactText: document.getElementById("compact-vocabulary-list").textContent,
@@ -1829,6 +1834,10 @@ async function testSidePanelUsesCompactVocabularyList(browser) {
     hasDelete: Boolean(document.querySelector(".compact-vocabulary-row button[aria-label='Delete Duolingo entry']")),
     sourceOrder: Array.from(document.querySelectorAll(".vocabulary-tabs > button")).map((button) => button.id),
     duolingoSelected: document.getElementById("duolingo-section").getAttribute("aria-pressed") === "true",
+    languageHint: {
+      text: document.getElementById("duolingo-sync-status").textContent,
+      color: getComputedStyle(document.getElementById("duolingo-sync-status")).color
+    },
     sortButton: {
       label: document.getElementById("sort-alpha").getAttribute("aria-label"),
       text: document.getElementById("sort-alpha").textContent.trim(),
@@ -1838,6 +1847,11 @@ async function testSidePanelUsesCompactVocabularyList(browser) {
 
   assert(duolingoResult.sourceOrder[0] === "duolingo-section", "Duolingo tab is not first");
   assert(duolingoResult.duolingoSelected, "Duolingo tab is not selected by default");
+  assert(
+    duolingoResult.languageHint.text.includes("Ukrainian"),
+    "Duolingo Words page did not name the selected language"
+  );
+  assert(duolingoResult.languageHint.color === "rgb(180, 35, 24)", "Duolingo language hint is not red");
   assert(duolingoResult.tableHidden, "side panel still rendered the compressed table for Duolingo vocabulary");
   assert(duolingoResult.rowCount === 1, "side panel did not render the compact Duolingo row");
   assert(duolingoResult.compactText.includes("кафе") && duolingoResult.compactText.includes("cafe"), "compact Duolingo row lost vocabulary text");
@@ -2010,10 +2024,6 @@ async function testPopupStatusPanel(browser) {
     ),
     triggerLanguage: document.getElementById("language-trigger-label").textContent,
     triggerIcon: document.getElementById("language-trigger-icon").getAttribute("src"),
-    languageHint: {
-      text: document.getElementById("vocabulary-language-hint").textContent,
-      color: getComputedStyle(document.getElementById("vocabulary-language-hint")).color
-    },
     openTab: {
       label: document.getElementById("open-tab").getAttribute("aria-label"),
       text: document.getElementById("open-tab").textContent.trim(),
@@ -2161,11 +2171,6 @@ async function testPopupStatusPanel(browser) {
   assert(before.triggerLanguage === "Ukrainian", "language trigger did not show the selected language");
   assert(before.triggerIcon.endsWith("/flags/ua.svg"), "selected Ukrainian language did not show its SVG flag");
   assert(
-    before.languageHint.text.includes("Ukrainian"),
-    "language reminder did not name the selected language"
-  );
-  assert(before.languageHint.color === "rgb(180, 35, 24)", "language reminder is not red");
-  assert(
     before.languageOptions.length === before.languageNames.length,
     "custom language menu did not render every native language option"
   );
@@ -2193,10 +2198,6 @@ async function testPopupStatusPanel(browser) {
   assert(
     await page.textContent("#language-trigger-label") === "Spanish",
     "keyboard selection did not update the selected language"
-  );
-  assert(
-    (await page.textContent("#vocabulary-language-hint")).includes("Spanish"),
-    "language reminder did not update after changing languages"
   );
   assert(await page.isDisabled("#submit-entry"), "Add should be disabled when both fields are blank");
   await page.fill("#source", "house");

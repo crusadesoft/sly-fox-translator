@@ -643,14 +643,6 @@ p {
   width: 22px;
 }
 
-.vocabulary-language-hint {
-  color: #b42318;
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 1.35;
-  margin: 2px 0 0;
-}
-
 .duolingo-sync {
   align-items: center;
   display: inline-flex;
@@ -704,6 +696,11 @@ p {
 
 .duolingo-sync-status.warning {
   color: #b54708;
+}
+
+.duolingo-sync-status.language-hint {
+  color: #b42318;
+  font-weight: 650;
 }
 
 @keyframes sync-spin {
