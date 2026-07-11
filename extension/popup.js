@@ -57,6 +57,8 @@ const DEFAULT_STATE = {
   version: 2,
   enabled: true,
   showHighlights: true,
+  showOriginalOnHover: true,
+  translateEnglishOnHover: true,
   wholeWords: true,
   caseSensitive: false,
   preserveCase: true,
@@ -108,6 +110,8 @@ const elements = {
   submitEntry: document.getElementById("submit-entry"),
   cancelEdit: document.getElementById("cancel-edit"),
   showHighlights: document.getElementById("show-highlights"),
+  showOriginalOnHover: document.getElementById("show-original-on-hover"),
+  translateEnglishOnHover: document.getElementById("translate-english-on-hover"),
   runtimePanel: document.getElementById("page-status-panel"),
   runtimeTitle: document.getElementById("runtime-title"),
   runtimeStatus: document.getElementById("runtime-status"),
@@ -1185,6 +1189,8 @@ function render() {
   renderVocabularySections(manualEntries, duolingoEntries);
   elements.enabled.checked = state.enabled;
   elements.showHighlights.checked = state.showHighlights;
+  elements.showOriginalOnHover.checked = state.showOriginalOnHover;
+  elements.translateEnglishOnHover.checked = state.translateEnglishOnHover;
   elements.entryCount.textContent = `${replacingCount} replacing / ${manualEntries.length} manual / ${duolingoEntries.length} Duolingo`;
   elements.search.value = searchQuery;
   updateDeleteAllButtons();
@@ -2607,6 +2613,12 @@ document.addEventListener("click", (event) => {
 elements.enabled.addEventListener("change", () => updateSetting("enabled", elements.enabled.checked));
 elements.showHighlights.addEventListener("change", () =>
   updateSetting("showHighlights", elements.showHighlights.checked)
+);
+elements.showOriginalOnHover.addEventListener("change", () =>
+  updateSetting("showOriginalOnHover", elements.showOriginalOnHover.checked)
+);
+elements.translateEnglishOnHover.addEventListener("change", () =>
+  updateSetting("translateEnglishOnHover", elements.translateEnglishOnHover.checked)
 );
 elements.runtimeRetry.addEventListener("click", retryActiveTab);
 elements.excludePage.addEventListener("click", () => toggleDoNotTranslate("page"));

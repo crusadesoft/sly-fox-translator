@@ -137,6 +137,8 @@
     version: 2,
     enabled: true,
     showHighlights: true,
+    showOriginalOnHover: true,
+    translateEnglishOnHover: true,
     wholeWords: true,
     caseSensitive: false,
     preserveCase: true,
@@ -811,6 +813,35 @@
       }
     `;
 
+    const originalHoverStyle = state.showOriginalOnHover
+      ? `
+        .${REPLACEMENT_CLASS}:hover::after {
+          background: #101828;
+          border-radius: 0.3em;
+          bottom: calc(100% + 0.35em);
+          box-shadow: 0 4px 12px rgba(16, 24, 40, 0.22);
+          color: #ffffff;
+          content: attr(data-learned-word-original);
+          font: 600 12px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          left: 50%;
+          max-width: min(320px, 80vw);
+          overflow-wrap: anywhere;
+          padding: 0.35em 0.5em;
+          pointer-events: none;
+          position: absolute;
+          text-align: center;
+          transform: translateX(-50%);
+          white-space: normal;
+          width: max-content;
+          z-index: 2147483647;
+        }
+      `
+      : "";
+
+    if (!state.translateEnglishOnHover) {
+      clearReverseHover();
+    }
+
     style.textContent =
       (state.showHighlights
         ? `
@@ -823,55 +854,13 @@
           padding: 0 0.08em;
           position: relative;
         }
-
-        .${REPLACEMENT_CLASS}:hover::after {
-          background: #101828;
-          border-radius: 0.3em;
-          bottom: calc(100% + 0.35em);
-          box-shadow: 0 4px 12px rgba(16, 24, 40, 0.22);
-          color: #ffffff;
-          content: attr(data-learned-word-original);
-          font: 600 12px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-          left: 50%;
-          max-width: min(320px, 80vw);
-          overflow-wrap: anywhere;
-          padding: 0.35em 0.5em;
-          pointer-events: none;
-          position: absolute;
-          text-align: center;
-          transform: translateX(-50%);
-          white-space: normal;
-          width: max-content;
-          z-index: 2147483647;
-        }
-      ` + reverseHoverTooltipStyle
+      ` + originalHoverStyle + reverseHoverTooltipStyle
         : `
         .${REPLACEMENT_CLASS} {
           cursor: inherit;
           position: relative;
         }
-
-        .${REPLACEMENT_CLASS}:hover::after {
-          background: #101828;
-          border-radius: 0.3em;
-          bottom: calc(100% + 0.35em);
-          box-shadow: 0 4px 12px rgba(16, 24, 40, 0.22);
-          color: #ffffff;
-          content: attr(data-learned-word-original);
-          font: 600 12px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-          left: 50%;
-          max-width: min(320px, 80vw);
-          overflow-wrap: anywhere;
-          padding: 0.35em 0.5em;
-          pointer-events: none;
-          position: absolute;
-          text-align: center;
-          transform: translateX(-50%);
-          white-space: normal;
-          width: max-content;
-          z-index: 2147483647;
-        }
-      ` + reverseHoverTooltipStyle);
+      ` + originalHoverStyle + reverseHoverTooltipStyle);
   }
 
   function removeStyle() {
@@ -919,6 +908,7 @@
     const target = event.target;
     if (
       !state.enabled ||
+      !state.translateEnglishOnHover ||
       !compiledEntries.length ||
       !getCurrentLanguageCode() ||
       getTranslationExclusion() ||
@@ -1168,7 +1158,9 @@
       span.dataset.learnedWordSource = part.source;
       span.dataset.learnedWordTarget = part.target;
       span.textContent = part.value;
-      span.title = `${part.original} -> ${part.target}`;
+      if (state.showOriginalOnHover) {
+        span.title = `${part.original} -> ${part.target}`;
+      }
       fragment.appendChild(span);
     }
 

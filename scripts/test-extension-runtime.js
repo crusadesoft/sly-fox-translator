@@ -294,6 +294,68 @@ async function testHoverTranslatesEnglishWord(browser) {
   await page.close();
 }
 
+async function testHoverSettingsCanBeDisabled(browser) {
+  const page = await browser.newPage();
+  let houseTranslationCalls = 0;
+  await page.setContent('<p>cat</p><p id="hover-copy">house</p>');
+  await installHarness(page, {
+    state: {
+      ...createState([{ id: "e1", source: "cat", target: "кіт", enabled: true, createdAt: 1 }]),
+      showOriginalOnHover: false,
+      translateEnglishOnHover: false
+    },
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => {
+        if (text === "cat") {
+          return "кіт";
+        }
+        if (text === "house") {
+          houseTranslationCalls += 1;
+        }
+        return text;
+      }
+    },
+    config: { reverseHoverDelayMs: 10 }
+  });
+
+  await page.waitForSelector(".learned-word-replacer-token");
+  const translationCallsBeforeHover = houseTranslationCalls;
+  await page.evaluate(() => {
+    const textNode = document.getElementById("hover-copy").firstChild;
+    Object.defineProperty(document, "caretPositionFromPoint", {
+      configurable: true,
+      value: undefined
+    });
+    document.caretRangeFromPoint = () => {
+      const range = document.createRange();
+      range.setStart(textNode, 2);
+      range.collapse(true);
+      return range;
+    };
+    document.dispatchEvent(
+      new PointerEvent("pointermove", { bubbles: true, clientX: 80, clientY: 40, pointerType: "mouse" })
+    );
+  });
+  await page.waitForTimeout(30);
+  const result = await page.evaluate(() => ({
+    replacementTitle: document.querySelector(".learned-word-replacer-token")?.getAttribute("title"),
+    hasReplacementHoverStyle: document
+      .getElementById("learned-word-replacer-style")
+      ?.textContent.includes(".learned-word-replacer-token:hover::after"),
+    hoverTooltipCount: document.querySelectorAll(".learned-word-replacer-hover-tooltip").length
+  }));
+
+  assert(result.replacementTitle === null, "original-English hover title was still enabled");
+  assert(!result.hasReplacementHoverStyle, "original-English hover tooltip style was still enabled");
+  assert(result.hoverTooltipCount === 0, "English hover tooltip was still created when disabled");
+  assert(
+    houseTranslationCalls === translationCallsBeforeHover,
+    "English hover translation still ran when disabled"
+  );
+  await page.close();
+}
+
 async function testProfileLanguageIsInferredFromImportedTargets(browser) {
   const page = await browser.newPage();
   const availabilityOptions = [];
@@ -2148,6 +2210,16 @@ async function testPopupStatusPanel(browser) {
   await page.click("#settings-view-tab");
   assert(await page.isVisible("#settings-view"), "settings view did not open");
   assert(await page.isVisible("#show-highlights"), "highlight setting was not moved into settings");
+  const hoverSettings = await page.evaluate(() => ({
+    originalEnglish: document.getElementById("show-original-on-hover").checked,
+    englishTranslation: document.getElementById("translate-english-on-hover").checked
+  }));
+  assert(hoverSettings.originalEnglish, "original-English hover should start enabled");
+  assert(hoverSettings.englishTranslation, "English hover translation should start enabled");
+  await page.click('label[title="Show original English on hover"]');
+  await page.waitForFunction(() => window.__lastSavedPopupState?.showOriginalOnHover === false);
+  await page.click('label[title="Translate English on hover"]');
+  await page.waitForFunction(() => window.__lastSavedPopupState?.translateEnglishOnHover === false);
   const settingsDisclosureOrder = await page.evaluate(() =>
     Array.from(document.querySelectorAll("#settings-view details")).map((element) => element.id)
   );
@@ -2492,6 +2564,7 @@ function testToolbarOpensSidePanel() {
   try {
     await testReplacementUsesTranslatedTokens(browser);
     await testHoverTranslatesEnglishWord(browser);
+    await testHoverSettingsCanBeDisabled(browser);
     await testProfileLanguageIsInferredFromImportedTargets(browser);
     await testEnglishHintAlignmentAvoidsDeletionProbe(browser);
     await testEnglishHintBlocksDeletionFallbackMismatch(browser);
