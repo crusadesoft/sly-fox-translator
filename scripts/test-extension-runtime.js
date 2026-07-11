@@ -230,6 +230,70 @@ async function testReplacementUsesTranslatedTokens(browser) {
   await page.close();
 }
 
+async function testHoverTranslatesEnglishWord(browser) {
+  const page = await browser.newPage();
+  let houseTranslationCalls = 0;
+  await page.setContent('<p id="hover-copy">house</p>');
+  await page.evaluate(() => {
+    const textNode = document.getElementById("hover-copy").firstChild;
+    Object.defineProperty(document, "caretPositionFromPoint", {
+      configurable: true,
+      value: undefined
+    });
+    document.caretRangeFromPoint = () => {
+      const range = document.createRange();
+      range.setStart(textNode, 2);
+      range.collapse(true);
+      return range;
+    };
+  });
+
+  await installHarness(page, {
+    state: createState([{ id: "e1", source: "cat", target: "кіт", enabled: true, createdAt: 1 }]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => {
+        if (text === "house") {
+          houseTranslationCalls += 1;
+          return "будинок";
+        }
+        return text;
+      }
+    },
+    config: { reverseHoverDelayMs: 10 }
+  });
+
+  await page.waitForFunction(
+    () => window.__learnedWordReplacerDebug.getSnapshot().status === "complete"
+  );
+  await page.evaluate(() => {
+    document.dispatchEvent(
+      new PointerEvent("pointermove", { bubbles: true, clientX: 80, clientY: 40, pointerType: "mouse" })
+    );
+  });
+  await page.waitForSelector('.learned-word-replacer-hover-tooltip[data-visible="true"]');
+  const firstHover = await page.evaluate(() => ({
+    text: document.querySelector(".learned-word-replacer-hover-tooltip")?.textContent,
+    color: getComputedStyle(document.querySelector(".learned-word-replacer-hover-tooltip")).color
+  }));
+
+  assert(
+    firstHover.text === "Ukrainian Test: будинок",
+    "English hover did not show the active profile's Ukrainian translation"
+  );
+  assert(firstHover.color === "rgb(255, 255, 255)", "English hover tooltip lost its readable text color");
+  assert(houseTranslationCalls === 2, "English word was not translated for the hover tooltip");
+
+  await page.evaluate(() => {
+    document.dispatchEvent(
+      new PointerEvent("pointermove", { bubbles: true, clientX: 85, clientY: 40, pointerType: "mouse" })
+    );
+  });
+  await page.waitForTimeout(30);
+  assert(houseTranslationCalls === 2, "hovering the same word did not use the translation cache");
+  await page.close();
+}
+
 async function testProfileLanguageIsInferredFromImportedTargets(browser) {
   const page = await browser.newPage();
   const availabilityOptions = [];
@@ -2427,6 +2491,7 @@ function testToolbarOpensSidePanel() {
   const browser = await chromium.launch({ headless: true });
   try {
     await testReplacementUsesTranslatedTokens(browser);
+    await testHoverTranslatesEnglishWord(browser);
     await testProfileLanguageIsInferredFromImportedTargets(browser);
     await testEnglishHintAlignmentAvoidsDeletionProbe(browser);
     await testEnglishHintBlocksDeletionFallbackMismatch(browser);

@@ -2,6 +2,7 @@
   const REFRESH_KEY = "__learnedWordReplacerRefresh";
   const STORAGE_KEY = "learnedWordReplacerState";
   const REPLACEMENT_CLASS = "learned-word-replacer-token";
+  const REVERSE_HOVER_TOOLTIP_CLASS = "learned-word-replacer-hover-tooltip";
   const STYLE_ID = "learned-word-replacer-style";
   const SOURCE_LANGUAGE = "en";
   const MAX_TRANSLATION_CACHE_ENTRIES = 400;
@@ -13,6 +14,8 @@
   const TRANSLATOR_PREPARE_TIMEOUT_MS = 120000;
   const TRANSLATOR_TRANSLATE_TIMEOUT_MS = 20000;
   const APPLY_DEBOUNCE_MS = 700;
+  const REVERSE_HOVER_DELAY_MS = 260;
+  const MAX_REVERSE_HOVER_CACHE_ENTRIES = 200;
   const VIEWPORT_MARGIN_PX = 900;
   const TEST_CONFIG_KEY = "__learnedWordReplacerTestConfig";
   const DEBUG_KEY = "__learnedWordReplacerDebug";
@@ -126,7 +129,8 @@
     "[role='complementary']",
     "[role='contentinfo']",
     "[contenteditable]",
-    `[class~='${REPLACEMENT_CLASS}']`
+    `[class~='${REPLACEMENT_CLASS}']`,
+    `[class~='${REVERSE_HOVER_TOOLTIP_CLASS}']`
   ].join(",");
 
   const DEFAULT_STATE = {
@@ -165,6 +169,13 @@
   let runtimeStats = createRuntimeStats();
   let statusPublishTimer = null;
   let translatorPreparationPromise = null;
+  let reverseHoverTooltip = null;
+  let reverseHoverListenerInstalled = false;
+  let reverseHoverTimer = null;
+  let reverseHoverRequestId = 0;
+  let reverseHoverKey = "";
+  let reverseHoverPointer = { x: 0, y: 0 };
+  const reverseHoverTranslationCache = new Map();
 
   function getRuntimeConfig() {
     return globalThis[TEST_CONFIG_KEY] && typeof globalThis[TEST_CONFIG_KEY] === "object"
@@ -195,6 +206,10 @@
 
   function getViewportMarginPx() {
     return getConfigNumber("viewportMarginPx", VIEWPORT_MARGIN_PX);
+  }
+
+  function getReverseHoverDelayMs() {
+    return getConfigNumber("reverseHoverDelayMs", REVERSE_HOVER_DELAY_MS);
   }
 
   function createRuntimeStats(overrides = {}) {
@@ -768,6 +783,34 @@
       document.documentElement.appendChild(style);
     }
 
+    const reverseHoverTooltipStyle = `
+      .${REVERSE_HOVER_TOOLTIP_CLASS} {
+        background: #101828;
+        border-radius: 0.3em;
+        box-shadow: 0 4px 12px rgba(16, 24, 40, 0.22);
+        color: #ffffff;
+        font: 600 12px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        left: 0;
+        max-width: min(320px, calc(100vw - 16px));
+        opacity: 0;
+        overflow-wrap: anywhere;
+        padding: 0.35em 0.5em;
+        pointer-events: none;
+        position: fixed;
+        text-align: center;
+        top: 0;
+        transform: translate(-50%, calc(-100% - 12px));
+        visibility: hidden;
+        white-space: normal;
+        z-index: 2147483647;
+      }
+
+      .${REVERSE_HOVER_TOOLTIP_CLASS}[data-visible="true"] {
+        opacity: 1;
+        visibility: visible;
+      }
+    `;
+
     style.textContent =
       (state.showHighlights
         ? `
@@ -801,7 +844,7 @@
           width: max-content;
           z-index: 2147483647;
         }
-      `
+      ` + reverseHoverTooltipStyle
         : `
         .${REPLACEMENT_CLASS} {
           cursor: inherit;
@@ -828,10 +871,11 @@
           width: max-content;
           z-index: 2147483647;
         }
-      `);
+      ` + reverseHoverTooltipStyle);
   }
 
   function removeStyle() {
+    removeReverseHoverTooltip();
     const style = document.getElementById(STYLE_ID);
     if (style) {
       style.remove();
@@ -857,6 +901,193 @@
 
   function isApostrophe(char) {
     return char === "'" || char === "\u2019" || char === "\u02bc";
+  }
+
+  function installReverseHoverTranslation() {
+    if (reverseHoverListenerInstalled) {
+      return;
+    }
+
+    reverseHoverListenerInstalled = true;
+    document.addEventListener("pointermove", handleReverseHoverPointerMove, { passive: true });
+    document.documentElement.addEventListener("mouseleave", clearReverseHover, { passive: true });
+    globalThis.addEventListener("blur", clearReverseHover);
+    globalThis.addEventListener("scroll", clearReverseHover, { capture: true, passive: true });
+  }
+
+  function handleReverseHoverPointerMove(event) {
+    const target = event.target;
+    if (
+      !state.enabled ||
+      !compiledEntries.length ||
+      !getCurrentLanguageCode() ||
+      getTranslationExclusion() ||
+      (target && typeof target.closest === "function" && target.closest(`.${REPLACEMENT_CLASS}`))
+    ) {
+      clearReverseHover();
+      return;
+    }
+
+    const word = getEnglishWordAtPoint(event.clientX, event.clientY);
+    if (!word) {
+      clearReverseHover();
+      return;
+    }
+
+    const targetLanguage = getCurrentLanguageCode();
+    const key = `${targetLanguage}\u0000${word.toLocaleLowerCase()}`;
+    reverseHoverPointer = { x: event.clientX, y: event.clientY };
+
+    if (key === reverseHoverKey) {
+      positionReverseHoverTooltip();
+      return;
+    }
+
+    clearReverseHover();
+    reverseHoverKey = key;
+    const requestId = ++reverseHoverRequestId;
+    const cached = reverseHoverTranslationCache.get(key);
+
+    if (cached) {
+      showReverseHoverTooltip(targetLanguage, cached);
+      return;
+    }
+
+    reverseHoverTimer = setTimeout(() => {
+      reverseHoverTimer = null;
+      translateReverseHoverWord(word, targetLanguage, key, requestId);
+    }, getReverseHoverDelayMs());
+  }
+
+  async function translateReverseHoverWord(word, targetLanguage, key, requestId) {
+    const translatorKey = `${SOURCE_LANGUAGE}:${targetLanguage}`;
+    if (!translatorCache || translatorCacheKey !== translatorKey) {
+      return;
+    }
+
+    try {
+      const translated = String(await translatorCache.translate(word)).trim();
+      if (!translated || requestId !== reverseHoverRequestId || key !== reverseHoverKey) {
+        return;
+      }
+
+      cacheReverseHoverTranslation(key, translated);
+      showReverseHoverTooltip(targetLanguage, translated);
+    } catch (error) {
+      // Hover translation should never interrupt page replacement.
+    }
+  }
+
+  function cacheReverseHoverTranslation(key, value) {
+    reverseHoverTranslationCache.set(key, value);
+    if (reverseHoverTranslationCache.size <= MAX_REVERSE_HOVER_CACHE_ENTRIES) {
+      return;
+    }
+
+    const oldestKey = reverseHoverTranslationCache.keys().next().value;
+    reverseHoverTranslationCache.delete(oldestKey);
+  }
+
+  function getEnglishWordAtPoint(x, y) {
+    const position = getCaretPositionAtPoint(x, y);
+    if (!position || position.node?.nodeType !== Node.TEXT_NODE || shouldIgnoreTextNode(position.node)) {
+      return "";
+    }
+
+    const text = position.node.nodeValue;
+    if (!text) {
+      return "";
+    }
+
+    let index = Math.min(Math.max(Number(position.offset) || 0, 0), text.length - 1);
+    if (!isHoverWordCharacter(text[index]) && index > 0 && isHoverWordCharacter(text[index - 1])) {
+      index -= 1;
+    }
+    if (!isHoverWordCharacter(text[index])) {
+      return "";
+    }
+
+    let start = index;
+    let end = index + 1;
+    while (start > 0 && isHoverWordCharacter(text[start - 1])) {
+      start -= 1;
+    }
+    while (end < text.length && isHoverWordCharacter(text[end])) {
+      end += 1;
+    }
+
+    const word = text.slice(start, end);
+    return /[A-Za-z]/.test(word) ? word : "";
+  }
+
+  function getCaretPositionAtPoint(x, y) {
+    if (typeof document.caretPositionFromPoint === "function") {
+      const position = document.caretPositionFromPoint(x, y);
+      if (position) {
+        return { node: position.offsetNode, offset: position.offset };
+      }
+    }
+
+    if (typeof document.caretRangeFromPoint === "function") {
+      const range = document.caretRangeFromPoint(x, y);
+      if (range) {
+        return { node: range.startContainer, offset: range.startOffset };
+      }
+    }
+
+    return null;
+  }
+
+  function isHoverWordCharacter(char) {
+    return isWordCharacter(char) || isApostrophe(char);
+  }
+
+  function ensureReverseHoverTooltip() {
+    if (reverseHoverTooltip?.isConnected) {
+      return reverseHoverTooltip;
+    }
+
+    reverseHoverTooltip = document.createElement("span");
+    reverseHoverTooltip.className = REVERSE_HOVER_TOOLTIP_CLASS;
+    reverseHoverTooltip.setAttribute("role", "tooltip");
+    reverseHoverTooltip.dataset.visible = "false";
+    document.documentElement.appendChild(reverseHoverTooltip);
+    return reverseHoverTooltip;
+  }
+
+  function showReverseHoverTooltip(targetLanguage, translatedWord) {
+    const tooltip = ensureReverseHoverTooltip();
+    const languageName = getCurrentProfile()?.name || LANGUAGE_NAMES[targetLanguage] || targetLanguage;
+    tooltip.textContent = `${languageName}: ${translatedWord}`;
+    positionReverseHoverTooltip();
+    tooltip.dataset.visible = "true";
+  }
+
+  function positionReverseHoverTooltip() {
+    if (!reverseHoverTooltip?.isConnected) {
+      return;
+    }
+
+    reverseHoverTooltip.style.left = `${Math.max(8, Math.min(globalThis.innerWidth - 8, reverseHoverPointer.x))}px`;
+    reverseHoverTooltip.style.top = `${Math.max(28, reverseHoverPointer.y)}px`;
+  }
+
+  function clearReverseHover() {
+    reverseHoverRequestId += 1;
+    reverseHoverKey = "";
+    if (reverseHoverTimer) {
+      clearTimeout(reverseHoverTimer);
+      reverseHoverTimer = null;
+    }
+    if (reverseHoverTooltip?.isConnected) {
+      reverseHoverTooltip.dataset.visible = "false";
+    }
+  }
+
+  function removeReverseHoverTooltip() {
+    clearReverseHover();
+    reverseHoverTooltip?.remove();
+    reverseHoverTooltip = null;
   }
 
   function buildReplacementPartsForRanges(text, ranges) {
@@ -2696,6 +2927,7 @@
       }
 
       installStyle();
+      installReverseHoverTranslation();
       await processContextRoot(document.body, runId, options);
     } finally {
       if (runId === applyRunId) {
