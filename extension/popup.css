@@ -643,6 +643,14 @@ p {
   width: 22px;
 }
 
+.vocabulary-language-hint {
+  color: #b42318;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.35;
+  margin: 2px 0 0;
+}
+
 .duolingo-sync {
   align-items: center;
   display: inline-flex;

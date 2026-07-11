@@ -2010,6 +2010,10 @@ async function testPopupStatusPanel(browser) {
     ),
     triggerLanguage: document.getElementById("language-trigger-label").textContent,
     triggerIcon: document.getElementById("language-trigger-icon").getAttribute("src"),
+    languageHint: {
+      text: document.getElementById("vocabulary-language-hint").textContent,
+      color: getComputedStyle(document.getElementById("vocabulary-language-hint")).color
+    },
     openTab: {
       label: document.getElementById("open-tab").getAttribute("aria-label"),
       text: document.getElementById("open-tab").textContent.trim(),
@@ -2157,6 +2161,11 @@ async function testPopupStatusPanel(browser) {
   assert(before.triggerLanguage === "Ukrainian", "language trigger did not show the selected language");
   assert(before.triggerIcon.endsWith("/flags/ua.svg"), "selected Ukrainian language did not show its SVG flag");
   assert(
+    before.languageHint.text.includes("Ukrainian"),
+    "language reminder did not name the selected language"
+  );
+  assert(before.languageHint.color === "rgb(180, 35, 24)", "language reminder is not red");
+  assert(
     before.languageOptions.length === before.languageNames.length,
     "custom language menu did not render every native language option"
   );
@@ -2184,6 +2193,10 @@ async function testPopupStatusPanel(browser) {
   assert(
     await page.textContent("#language-trigger-label") === "Spanish",
     "keyboard selection did not update the selected language"
+  );
+  assert(
+    (await page.textContent("#vocabulary-language-hint")).includes("Spanish"),
+    "language reminder did not update after changing languages"
   );
   assert(await page.isDisabled("#submit-entry"), "Add should be disabled when both fields are blank");
   await page.fill("#source", "house");

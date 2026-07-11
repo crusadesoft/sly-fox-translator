@@ -93,6 +93,7 @@ const elements = {
   manualSection: document.getElementById("manual-section"),
   duolingoSection: document.getElementById("duolingo-section"),
   duolingoSectionLabel: document.getElementById("duolingo-section-label"),
+  vocabularyLanguageHint: document.getElementById("vocabulary-language-hint"),
   manualEntryPanel: document.getElementById("manual-entry-panel"),
   duolingoPanel: document.getElementById("duolingo-panel"),
   duolingoSync: document.getElementById("duolingo-sync"),
@@ -619,6 +620,8 @@ function renderProfileOptions() {
 
   elements.languageTriggerIcon.src = getLanguageIconPath(currentProfile.languageCode);
   elements.languageTriggerLabel.textContent = currentProfile.name;
+  elements.vocabularyLanguageHint.textContent =
+    `Before you add words, make sure ${currentProfile.name} is the language you want.`;
   closeLanguageMenu();
 }
 
