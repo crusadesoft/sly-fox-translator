@@ -28,6 +28,29 @@ const BUILT_IN_LANGUAGES = [
   { code: "vi", name: "Vietnamese", flag: "vn" },
   { code: "zh", name: "Chinese", flag: "cn" }
 ];
+const TARGET_LANGUAGE_INPUT_EXAMPLES = {
+  ar: "كوب من القهوة",
+  cs: "šálek kávy",
+  de: "eine Tasse Kaffee",
+  el: "ένα φλιτζάνι καφέ",
+  es: "una taza de café",
+  fr: "une tasse de café",
+  hi: "एक कप कॉफी",
+  hu: "egy csésze kávé",
+  id: "secangkir kopi",
+  it: "una tazza di caffè",
+  ja: "一杯のコーヒー",
+  ko: "커피 한 잔",
+  nl: "een kop koffie",
+  pl: "filiżanka kawy",
+  pt: "uma xícara de café",
+  ro: "o ceașcă de cafea",
+  ru: "чашка кофе",
+  tr: "bir fincan kahve",
+  uk: "чашка кави",
+  vi: "một tách cà phê",
+  zh: "一杯咖啡"
+};
 const LANGUAGE_BY_CODE = new Map(BUILT_IN_LANGUAGES.map((language) => [language.code, language]));
 const LANGUAGE_OPTIONS = [
   { code: "", name: "None" },
@@ -623,6 +646,9 @@ function renderProfileOptions() {
 
   elements.languageTriggerIcon.src = getLanguageIconPath(currentProfile.languageCode);
   elements.languageTriggerLabel.textContent = currentProfile.name;
+  elements.source.placeholder = "English (e.g. a cup of coffee)";
+  const targetExample = TARGET_LANGUAGE_INPUT_EXAMPLES[currentProfile.languageCode] || "word or phrase";
+  elements.target.placeholder = `${currentProfile.name} (e.g. ${targetExample})`;
   if (elements.duolingoSyncStatus.classList.contains("language-hint")) {
     setDuolingoSyncStatus(getDuolingoLanguageHint(), "language-hint");
   }

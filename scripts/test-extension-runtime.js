@@ -2150,6 +2150,10 @@ async function testPopupStatusPanel(browser) {
     ),
     triggerLanguage: document.getElementById("language-trigger-label").textContent,
     triggerIcon: document.getElementById("language-trigger-icon").getAttribute("src"),
+    manualPlaceholders: {
+      source: document.getElementById("source").getAttribute("placeholder"),
+      target: document.getElementById("target").getAttribute("placeholder")
+    },
     openTab: {
       label: document.getElementById("open-tab").getAttribute("aria-label"),
       text: document.getElementById("open-tab").textContent.trim(),
@@ -2195,6 +2199,14 @@ async function testPopupStatusPanel(browser) {
   assert(await page.isVisible("#duolingo-panel"), "Duolingo panel was not the default section");
   assert(await page.isHidden("#manual-entry-panel"), "manual entry panel was visible by default");
   assert(await page.isHidden("#settings-view"), "settings view should not be open initially");
+  assert(
+    before.manualPlaceholders.source === "English (e.g. a cup of coffee)",
+    "manual English field did not show the phrase example"
+  );
+  assert(
+    before.manualPlaceholders.target === "Ukrainian (e.g. чашка кави)",
+    "manual target field did not use the selected language and example"
+  );
   assert(before.retry.label === "Retry current page", "retry button is missing its accessible label");
   assert(before.retry.hasIcon && before.retry.inHeader, "retry button was not moved to the header");
   assert(!before.retry.nestedInStatus, "retry button is still nested in the page status panel");
@@ -2334,6 +2346,10 @@ async function testPopupStatusPanel(browser) {
   assert(
     await page.textContent("#language-trigger-label") === "Spanish",
     "keyboard selection did not update the selected language"
+  );
+  assert(
+    (await page.locator("#target").getAttribute("placeholder")) === "Spanish (e.g. una taza de café)",
+    "manual target field did not update after changing languages"
   );
   assert(await page.isDisabled("#submit-entry"), "Add should be disabled when both fields are blank");
   await page.fill("#source", "house");
