@@ -2,12 +2,18 @@
 
 A Chrome/Edge Manifest V3 extension for replacing only learned words and phrases on webpages.
 
-## Install locally
+## Install from a GitHub beta release
+
+Download the latest `sly-fox-translator-...-unpacked.zip` from the [GitHub releases page](https://github.com/crusadesoft/sly-fox-translator/releases/latest), unzip it, then follow these steps:
 
 1. Open `chrome://extensions` or `edge://extensions`.
 2. Turn on developer mode.
 3. Choose "Load unpacked".
-4. Select this `extension` folder.
+4. Select the unzipped folder containing `manifest.json`.
+
+## Install locally
+
+For development, use the same steps above and select this `extension` folder.
 
 The extension cannot run on browser-internal pages such as `chrome://settings`, but it will run on normal webpages.
 

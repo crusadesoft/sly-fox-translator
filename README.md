@@ -1,32 +1,55 @@
-# Language Overlay Prototype
+# Sly Fox Translator
 
-Minimal Android prototype for testing whether an AccessibilityService can create language-learning overlays across apps.
+Sly Fox Translator is a Chrome extension for language learning. It replaces only the words and phrases you have learned while you browse.
 
-The app includes a paginated vocabulary manager where users can add, edit in place, delete, and reset learned word replacements with icon controls. Users can keep multiple language profiles, such as Spanish and Greek, and swap the active profile from a dropdown in the manager. The service reads visible accessibility text, substitutes the saved local dictionary for the active profile, and draws replacement-looking `TYPE_ACCESSIBILITY_OVERLAY` views above matching text nodes.
+## Install the beta from GitHub
 
-Build:
+Until the Chrome Web Store review is complete, friends can install the beta from the latest [GitHub release](https://github.com/crusadesoft/sly-fox-translator/releases/latest).
+
+1. Download the file named `sly-fox-translator-...-unpacked.zip` from the release page.
+2. Double-click the ZIP file to unzip it.
+3. In Chrome, open `chrome://extensions`.
+4. Turn on **Developer mode** in the top-right corner.
+5. Click **Load unpacked**.
+6. Select the unzipped Sly Fox Translator folder. It is the folder containing `manifest.json`.
+
+The Sly Fox icon will appear in Chrome's extensions menu. Pin it if you want it in the toolbar.
+
+## Create a beta release
+
+Pushing a version tag automatically creates a GitHub release with an installable ZIP.
+
+1. Update the version in `extension/manifest.json`.
+2. Commit and push that change to `main`.
+3. Create and push a matching tag, such as `v0.1.1` for manifest version `0.1.1`:
+
+   ```sh
+   git tag v0.1.1
+   git push origin v0.1.1
+   ```
+
+The GitHub Action packages the contents of `extension/`, creates the release, and attaches the ZIP. The release notes contain the same installation steps above.
+
+## Development
+
+The extension source is in `extension/`. For local development, open `chrome://extensions`, turn on Developer mode, select **Load unpacked**, and choose the `extension` directory.
+
+The extension cannot run on browser-internal pages such as `chrome://settings`, but it will run on normal webpages.
+
+### Runtime tests
+
+The translation runtime has a Playwright harness with a fake Translator API, so behavior can be tested without waiting for Chrome to download a real language pack:
+
+```sh
+NODE_PATH=/Users/gfelter/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules /Users/gfelter/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node scripts/test-extension-runtime.js
+```
+
+## Android prototype
+
+This repository also contains an earlier Android accessibility-overlay prototype. It is separate from the browser extension.
+
+Build it with:
 
 ```sh
 ./scripts/build-debug.sh
 ```
-
-Install:
-
-```sh
-adb install -r build/language-overlay-debug.apk
-```
-
-Launch the installed app to manage vocabulary and language profiles. Saved profiles and entries are stored locally in the app's private `SharedPreferences`, then picked up by the overlay service on its next scan.
-
-For emulator-only testing, the service can be enabled with:
-
-```sh
-adb shell settings put secure enabled_accessibility_services com.example.languageoverlay/.LanguageOverlayService
-adb shell settings put secure accessibility_enabled 1
-```
-
-## Browser extension
-
-This repo also includes a local browser extension in `extension/`.
-
-Load it from `chrome://extensions` or `edge://extensions` with developer mode enabled, then choose "Load unpacked" and select the `extension` folder. The popup lets you add learned word or phrase replacements, toggle individual entries, import/export tab-separated pairs, and enable or disable replacement globally.
