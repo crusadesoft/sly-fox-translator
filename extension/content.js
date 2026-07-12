@@ -2204,7 +2204,7 @@
 
     for (let sourceIndex = 0; sourceIndex < sourceTokens.length; sourceIndex += 1) {
       const sourceToken = sourceTokens[sourceIndex];
-      const sourceSound = getEnglishCognateSound(sourceToken.value);
+      const sourceSound = getEnglishCognateSound(sourceToken.value, targetLanguage);
 
       for (let targetIndex = 0; targetIndex < targetTokens.length; targetIndex += 1) {
         const targetToken = targetTokens[targetIndex];
@@ -2260,8 +2260,17 @@
     return /^[A-Za-z]+$/.test(token) && token.length >= MIN_COGNATE_LENGTH;
   }
 
-  function getEnglishCognateSound(value) {
-    return normalizeCognateSound(value)
+  function getEnglishCognateSound(value, targetLanguage) {
+    let normalized = normalizeCognateSound(value);
+
+    if (targetLanguage === "uk" || targetLanguage === "ru") {
+      normalized = normalized
+        .replace(/tion$/, "tsiya")
+        .replace(/sion$/, "siya")
+        .replace(/ity$/, "itet");
+    }
+
+    return normalized
       .replace(/ph/g, "f")
       .replace(/qu/g, "k")
       .replace(/ck/g, "k")
@@ -2272,8 +2281,7 @@
       .replace(/th/g, "t")
       .replace(/oo/g, "u")
       .replace(/ee|ea|ie/g, "i")
-      .replace(/ou/g, "u")
-      .replace(/y/g, "i");
+      .replace(/ou/g, "u");
   }
 
   function getTargetCognateSound(value, targetLanguage) {

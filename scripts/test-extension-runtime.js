@@ -357,8 +357,8 @@ async function testHoverSettingsCanBeDisabled(browser) {
 }
 
 async function testObviousCognates(browser) {
-  const source = "The radio is near the family.";
-  const translated = "Радіо біля сім'ї.";
+  const source = "The radio, telephone, computer, university, information, and system are near the family.";
+  const translated = "Радіо, телефон, комп'ютер, університет, інформація та система біля сім'ї.";
   const createCognateState = (showObviousCognates) => ({
     ...createState([]),
     showObviousCognates
@@ -376,13 +376,16 @@ async function testObviousCognates(browser) {
 
   await page.waitForSelector(".learned-word-replacer-cognate");
   const cognateResult = await page.evaluate(() => {
-    const cognate = document.querySelector(".learned-word-replacer-cognate");
+    const cognates = Array.from(document.querySelectorAll(".learned-word-replacer-cognate"));
+    const cognate = cognates[0];
     return {
       text: document.body.innerText,
-      count: document.querySelectorAll(".learned-word-replacer-cognate").length,
-      original: cognate?.dataset.learnedWordOriginal,
-      target: cognate?.dataset.learnedWordTarget,
-      kind: cognate?.dataset.learnedWordKind,
+      count: cognates.length,
+      replacements: cognates.map((token) => ({
+        original: token.dataset.learnedWordOriginal,
+        target: token.dataset.learnedWordTarget,
+        kind: token.dataset.learnedWordKind
+      })),
       backgroundColor: getComputedStyle(cognate).backgroundColor,
       hasDistinctStyle: document
         .getElementById("learned-word-replacer-style")
@@ -390,11 +393,23 @@ async function testObviousCognates(browser) {
     };
   });
 
-  assert(cognateResult.count === 1, "cognate mode replaced more than the obvious match");
-  assert(cognateResult.original === "radio", "cognate mode did not preserve the original English word");
-  assert(cognateResult.target === "Радіо", "cognate mode used the wrong translated word");
-  assert(cognateResult.kind === "cognate", "cognate replacement was not marked separately");
-  assert(cognateResult.text.includes("The Радіо is near the family."), "cognate mode changed unrelated text");
+  assert(cognateResult.count === 6, "cognate mode missed clear sound-alike words");
+  assert(
+    JSON.stringify(cognateResult.replacements) ===
+      JSON.stringify([
+        { original: "radio", target: "Радіо", kind: "cognate" },
+        { original: "telephone", target: "телефон", kind: "cognate" },
+        { original: "computer", target: "комп'ютер", kind: "cognate" },
+        { original: "university", target: "університет", kind: "cognate" },
+        { original: "information", target: "інформація", kind: "cognate" },
+        { original: "system", target: "система", kind: "cognate" }
+      ]),
+    "cognate mode did not preserve the expected source-to-target matches"
+  );
+  assert(
+    cognateResult.text.includes("The Радіо, телефон, комп'ютер, університет, інформація, and система are near the family."),
+    "cognate mode changed unrelated text"
+  );
   assert(cognateResult.hasDistinctStyle, "cognate mode did not use its distinct highlight color");
   await page.close();
 
@@ -412,16 +427,20 @@ async function testObviousCognates(browser) {
   });
   await learnedPage.waitForSelector(".learned-word-replacer-token");
   assert(
-    await learnedPage.locator(".learned-word-replacer-cognate").count() === 0,
+    !(await learnedPage
+      .locator(".learned-word-replacer-cognate")
+      .evaluateAll((tokens) => tokens.some((token) => token.dataset.learnedWordOriginal === "radio"))),
     "cognate mode displaced an overlapping learned-word replacement"
   );
   assert(
-    (await learnedPage.locator(".learned-word-replacer-token").getAttribute("data-learned-word-kind")) === "learned",
+    (await learnedPage
+      .locator('.learned-word-replacer-token[data-learned-word-original="radio"]')
+      .getAttribute("data-learned-word-kind")) === "learned",
     "learned-word replacement lost priority over a cognate"
   );
-  const learnedBackgroundColor = await learnedPage.locator(".learned-word-replacer-token").evaluate(
-    (element) => getComputedStyle(element).backgroundColor
-  );
+  const learnedBackgroundColor = await learnedPage
+    .locator('.learned-word-replacer-token[data-learned-word-original="radio"]')
+    .evaluate((element) => getComputedStyle(element).backgroundColor);
   assert(
     cognateResult.backgroundColor !== learnedBackgroundColor,
     "cognate highlight did not render in a distinct color"
