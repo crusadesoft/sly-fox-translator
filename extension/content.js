@@ -2123,38 +2123,74 @@
     const translatedSentences = splitTranslatedSentences(translatedText);
     const sentenceCountMatches = translatedSentences.length === unit.sentenceRanges.length;
 
+    if (!sentenceCountMatches) {
+      // Punctuation can change during translation. Reusing the complete translation for
+      // each source sentence can apply one translated word several times, so align once.
+      return addConfirmedRangesForTextRange(
+        unit,
+        { start: 0, end: unit.text.length },
+        translatedText,
+        replacementsByNode,
+        translator,
+        targetLanguage,
+        runId
+      );
+    }
+
     for (let index = 0; index < unit.sentenceRanges.length; index += 1) {
       if (runId !== applyRunId) {
         return false;
       }
 
       const sentenceRange = unit.sentenceRanges[index];
-      const translatedSentence = sentenceCountMatches
-        ? translatedSentences[index]
-        : translatedText;
-      const whitelistMatches = findWhitelistMatchesInText(translatedSentence);
-      const sourceSentence = unit.text.slice(sentenceRange.start, sentenceRange.end);
-      const learnedReplacements = whitelistMatches.length
-        ? await getAlignedSentenceReplacements(
-            translator,
-            targetLanguage,
-            sourceSentence,
-            whitelistMatches,
-            runId
-          )
-        : [];
-      const cognateReplacements = state.showObviousCognates
-        ? getObviousCognateReplacements(sourceSentence, translatedSentence, targetLanguage)
-        : [];
-      const replacements = mergeReplacementRanges([...learnedReplacements, ...cognateReplacements]);
-
-      if (runId !== applyRunId) {
+      const completed = await addConfirmedRangesForTextRange(
+        unit,
+        sentenceRange,
+        translatedSentences[index],
+        replacementsByNode,
+        translator,
+        targetLanguage,
+        runId
+      );
+      if (!completed) {
         return false;
       }
+    }
 
-      if (replacements.length) {
-        addConfirmedSentenceReplacements(unit, sentenceRange, replacements, replacementsByNode);
-      }
+    return true;
+  }
+
+  async function addConfirmedRangesForTextRange(
+    unit,
+    sourceRange,
+    translatedText,
+    replacementsByNode,
+    translator,
+    targetLanguage,
+    runId
+  ) {
+    const sourceText = unit.text.slice(sourceRange.start, sourceRange.end);
+    const whitelistMatches = findWhitelistMatchesInText(translatedText);
+    const learnedReplacements = whitelistMatches.length
+      ? await getAlignedSentenceReplacements(
+          translator,
+          targetLanguage,
+          sourceText,
+          whitelistMatches,
+          runId
+        )
+      : [];
+    const cognateReplacements = state.showObviousCognates
+      ? getObviousCognateReplacements(sourceText, translatedText, targetLanguage)
+      : [];
+    const replacements = mergeReplacementRanges([...learnedReplacements, ...cognateReplacements]);
+
+    if (runId !== applyRunId) {
+      return false;
+    }
+
+    if (replacements.length) {
+      addConfirmedSentenceReplacements(unit, sourceRange, replacements, replacementsByNode);
     }
 
     return true;

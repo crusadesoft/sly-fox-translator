@@ -640,6 +640,33 @@ async function testEnglishHintAlignsShortGrammarWord(browser) {
   await page.close();
 }
 
+async function testMismatchedSentenceBoundariesDoNotDuplicateWords(browser) {
+  const page = await browser.newPage();
+  const source = "Do not enter. Do not leave.";
+  const translated = "Не входьте й виходьте.";
+  await page.setContent(`<p>${source}</p>`);
+  await installHarness(page, {
+    state: createState([{ id: "e1", source: "not", target: "не", enabled: true, createdAt: 1 }]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === source ? translated : text)
+    }
+  });
+
+  await page.waitForFunction(() => window.__learnedWordReplacerDebug.getSnapshot().finishedAt > 0);
+  const result = await page.evaluate(() => ({
+    text: document.body.innerText,
+    replacementCount: document.querySelectorAll(".learned-word-replacer-token").length
+  }));
+
+  assert(
+    result.text === source,
+    "a translated word was duplicated across source sentences with different boundaries"
+  );
+  assert(result.replacementCount === 0, "ambiguous boundary alignment inserted a replacement");
+  await page.close();
+}
+
 async function testTranslatingStatusPublishesBeforeTranslateResolves(browser) {
   const page = await browser.newPage();
   const source = "Steam is the ultimate destination for playing, discussing, and creating games.";
@@ -2704,6 +2731,7 @@ function testToolbarOpensSidePanel() {
     await testEnglishHintAlignmentAvoidsDeletionProbe(browser);
     await testEnglishHintBlocksDeletionFallbackMismatch(browser);
     await testEnglishHintAlignsShortGrammarWord(browser);
+    await testMismatchedSentenceBoundariesDoNotDuplicateWords(browser);
     await testTranslatingStatusPublishesBeforeTranslateResolves(browser);
     await testAmbiguousDeletionAlignmentIsSkipped(browser);
     await testBatchTranslationUsesDividers(browser);
