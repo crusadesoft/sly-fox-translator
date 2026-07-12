@@ -356,6 +356,98 @@ async function testHoverSettingsCanBeDisabled(browser) {
   await page.close();
 }
 
+async function testObviousCognates(browser) {
+  const source = "The radio is near the family.";
+  const translated = "Радіо біля сім'ї.";
+  const createCognateState = (showObviousCognates) => ({
+    ...createState([{ id: "e1", source: "cat", target: "кіт", enabled: true, createdAt: 1 }]),
+    showObviousCognates
+  });
+
+  const page = await browser.newPage();
+  await page.setContent(`<p>${source}</p>`);
+  await installHarness(page, {
+    state: createCognateState(true),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === source ? translated : text)
+    }
+  });
+
+  await page.waitForSelector(".learned-word-replacer-cognate");
+  const cognateResult = await page.evaluate(() => {
+    const cognate = document.querySelector(".learned-word-replacer-cognate");
+    return {
+      text: document.body.innerText,
+      count: document.querySelectorAll(".learned-word-replacer-cognate").length,
+      original: cognate?.dataset.learnedWordOriginal,
+      target: cognate?.dataset.learnedWordTarget,
+      kind: cognate?.dataset.learnedWordKind,
+      backgroundColor: getComputedStyle(cognate).backgroundColor,
+      hasDistinctStyle: document
+        .getElementById("learned-word-replacer-style")
+        ?.textContent.includes("#12b76a")
+    };
+  });
+
+  assert(cognateResult.count === 1, "cognate mode replaced more than the obvious match");
+  assert(cognateResult.original === "radio", "cognate mode did not preserve the original English word");
+  assert(cognateResult.target === "Радіо", "cognate mode used the wrong translated word");
+  assert(cognateResult.kind === "cognate", "cognate replacement was not marked separately");
+  assert(cognateResult.text.includes("The Радіо is near the family."), "cognate mode changed unrelated text");
+  assert(cognateResult.hasDistinctStyle, "cognate mode did not use its distinct highlight color");
+  await page.close();
+
+  const learnedPage = await browser.newPage();
+  await learnedPage.setContent(`<p>${source}</p>`);
+  await installHarness(learnedPage, {
+    state: {
+      ...createState([{ id: "e1", source: "radio", target: "Радіо", enabled: true, createdAt: 1 }]),
+      showObviousCognates: true
+    },
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === source ? translated : text)
+    }
+  });
+  await learnedPage.waitForSelector(".learned-word-replacer-token");
+  assert(
+    await learnedPage.locator(".learned-word-replacer-cognate").count() === 0,
+    "cognate mode displaced an overlapping learned-word replacement"
+  );
+  assert(
+    (await learnedPage.locator(".learned-word-replacer-token").getAttribute("data-learned-word-kind")) === "learned",
+    "learned-word replacement lost priority over a cognate"
+  );
+  const learnedBackgroundColor = await learnedPage.locator(".learned-word-replacer-token").evaluate(
+    (element) => getComputedStyle(element).backgroundColor
+  );
+  assert(
+    cognateResult.backgroundColor !== learnedBackgroundColor,
+    "cognate highlight did not render in a distinct color"
+  );
+  await learnedPage.close();
+
+  const disabledPage = await browser.newPage();
+  await disabledPage.setContent(`<p>${source}</p>`);
+  await installHarness(disabledPage, {
+    state: createCognateState(false),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === source ? translated : text)
+    }
+  });
+  await disabledPage.waitForFunction(
+    () => window.__learnedWordReplacerDebug.getSnapshot().status === "complete"
+  );
+  assert(
+    await disabledPage.locator(".learned-word-replacer-cognate").count() === 0,
+    "cognate mode ran while the setting was disabled"
+  );
+  assert((await disabledPage.textContent("p")) === source, "disabled cognate mode changed the page text");
+  await disabledPage.close();
+}
+
 async function testProfileLanguageIsInferredFromImportedTargets(browser) {
   const page = await browser.newPage();
   const availabilityOptions = [];
@@ -2224,14 +2316,18 @@ async function testPopupStatusPanel(browser) {
   assert(await page.isVisible("#show-highlights"), "highlight setting was not moved into settings");
   const hoverSettings = await page.evaluate(() => ({
     originalEnglish: document.getElementById("show-original-on-hover").checked,
-    englishTranslation: document.getElementById("translate-english-on-hover").checked
+    englishTranslation: document.getElementById("translate-english-on-hover").checked,
+    obviousCognates: document.getElementById("show-obvious-cognates").checked
   }));
   assert(hoverSettings.originalEnglish, "original-English hover should start enabled");
   assert(hoverSettings.englishTranslation, "English hover translation should start enabled");
+  assert(!hoverSettings.obviousCognates, "obvious cognates should start disabled");
   await page.click('label[title="Show original English on hover"]');
   await page.waitForFunction(() => window.__lastSavedPopupState?.showOriginalOnHover === false);
   await page.click('label[title="Translate English on hover"]');
   await page.waitForFunction(() => window.__lastSavedPopupState?.translateEnglishOnHover === false);
+  await page.click('label[title="Show obvious cognates"]');
+  await page.waitForFunction(() => window.__lastSavedPopupState?.showObviousCognates === true);
   const settingsDisclosureOrder = await page.evaluate(() =>
     Array.from(document.querySelectorAll("#settings-view details")).map((element) => element.id)
   );
@@ -2581,6 +2677,7 @@ function testToolbarOpensSidePanel() {
     await testReplacementUsesTranslatedTokens(browser);
     await testHoverTranslatesEnglishWord(browser);
     await testHoverSettingsCanBeDisabled(browser);
+    await testObviousCognates(browser);
     await testProfileLanguageIsInferredFromImportedTargets(browser);
     await testEnglishHintAlignmentAvoidsDeletionProbe(browser);
     await testEnglishHintBlocksDeletionFallbackMismatch(browser);

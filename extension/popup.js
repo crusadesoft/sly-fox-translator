@@ -82,6 +82,7 @@ const DEFAULT_STATE = {
   showHighlights: true,
   showOriginalOnHover: true,
   translateEnglishOnHover: true,
+  showObviousCognates: false,
   wholeWords: true,
   caseSensitive: false,
   preserveCase: true,
@@ -135,6 +136,7 @@ const elements = {
   showHighlights: document.getElementById("show-highlights"),
   showOriginalOnHover: document.getElementById("show-original-on-hover"),
   translateEnglishOnHover: document.getElementById("translate-english-on-hover"),
+  showObviousCognates: document.getElementById("show-obvious-cognates"),
   runtimePanel: document.getElementById("page-status-panel"),
   runtimeTitle: document.getElementById("runtime-title"),
   runtimeStatus: document.getElementById("runtime-status"),
@@ -1217,6 +1219,7 @@ function render() {
   elements.showHighlights.checked = state.showHighlights;
   elements.showOriginalOnHover.checked = state.showOriginalOnHover;
   elements.translateEnglishOnHover.checked = state.translateEnglishOnHover;
+  elements.showObviousCognates.checked = state.showObviousCognates;
   elements.entryCount.textContent = `${replacingCount} replacing / ${manualEntries.length} manual / ${duolingoEntries.length} Duolingo`;
   elements.search.value = searchQuery;
   updateDeleteAllButtons();
@@ -2645,6 +2648,9 @@ elements.showOriginalOnHover.addEventListener("change", () =>
 );
 elements.translateEnglishOnHover.addEventListener("change", () =>
   updateSetting("translateEnglishOnHover", elements.translateEnglishOnHover.checked)
+);
+elements.showObviousCognates.addEventListener("change", () =>
+  updateSetting("showObviousCognates", elements.showObviousCognates.checked)
 );
 elements.runtimeRetry.addEventListener("click", retryActiveTab);
 elements.excludePage.addEventListener("click", () => toggleDoNotTranslate("page"));

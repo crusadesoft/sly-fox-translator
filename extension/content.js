@@ -2,6 +2,7 @@
   const REFRESH_KEY = "__learnedWordReplacerRefresh";
   const STORAGE_KEY = "learnedWordReplacerState";
   const REPLACEMENT_CLASS = "learned-word-replacer-token";
+  const COGNATE_CLASS = "learned-word-replacer-cognate";
   const REVERSE_HOVER_TOOLTIP_CLASS = "learned-word-replacer-hover-tooltip";
   const STYLE_ID = "learned-word-replacer-style";
   const SOURCE_LANGUAGE = "en";
@@ -16,6 +17,25 @@
   const APPLY_DEBOUNCE_MS = 700;
   const REVERSE_HOVER_DELAY_MS = 260;
   const MAX_REVERSE_HOVER_CACHE_ENTRIES = 200;
+  const MIN_COGNATE_LENGTH = 5;
+  const MIN_COGNATE_SIMILARITY = 0.84;
+  const UKRAINIAN_COGNATE_TRANSLITERATION = {
+    а: "a", б: "b", в: "v", г: "h", ґ: "g", д: "d", е: "e", є: "ye", ж: "zh", з: "z",
+    и: "y", і: "i", ї: "yi", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p",
+    р: "r", с: "s", т: "t", у: "u", ф: "f", х: "kh", ц: "ts", ч: "ch", ш: "sh", щ: "shch",
+    ь: "", ю: "yu", я: "ya", "'": "", "’": "", "ʼ": ""
+  };
+  const RUSSIAN_COGNATE_TRANSLITERATION = {
+    а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "yo", ж: "zh", з: "z", и: "i",
+    й: "y", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r", с: "s", т: "t",
+    у: "u", ф: "f", х: "kh", ц: "ts", ч: "ch", ш: "sh", щ: "shch", ъ: "", ы: "y", ь: "",
+    э: "e", ю: "yu", я: "ya", "'": "", "’": "", "ʼ": ""
+  };
+  const GREEK_COGNATE_TRANSLITERATION = {
+    α: "a", β: "v", γ: "g", δ: "d", ε: "e", ζ: "z", η: "i", θ: "th", ι: "i", κ: "k",
+    λ: "l", μ: "m", ν: "n", ξ: "ks", ο: "o", π: "p", ρ: "r", σ: "s", ς: "s", τ: "t",
+    υ: "y", φ: "f", χ: "ch", ψ: "ps", ω: "o"
+  };
   const VIEWPORT_MARGIN_PX = 900;
   const TEST_CONFIG_KEY = "__learnedWordReplacerTestConfig";
   const DEBUG_KEY = "__learnedWordReplacerDebug";
@@ -139,6 +159,7 @@
     showHighlights: true,
     showOriginalOnHover: true,
     translateEnglishOnHover: true,
+    showObviousCognates: false,
     wholeWords: true,
     caseSensitive: false,
     preserveCase: true,
@@ -854,6 +875,10 @@
           padding: 0 0.08em;
           position: relative;
         }
+
+        .${REPLACEMENT_CLASS}.${COGNATE_CLASS} {
+          background: color-mix(in srgb, #12b76a 30%, transparent);
+        }
       ` + originalHoverStyle + reverseHoverTooltipStyle
         : `
         .${REPLACEMENT_CLASS} {
@@ -1103,6 +1128,7 @@
         original,
         source: original,
         target: range.target,
+        kind: range.kind || "learned",
         value: range.target
       });
 
@@ -1121,26 +1147,31 @@
   }
 
   function mergeReplacementRanges(ranges) {
-    const sortedRanges = [...ranges]
+    const normalizedRanges = [...ranges]
       .map((range) => ({
         start: Math.max(0, Number(range.start) || 0),
         end: Math.max(0, Number(range.end) || 0),
-        target: String(range.target || "").trim()
+        target: String(range.target || "").trim(),
+        kind: range.kind === "cognate" ? "cognate" : "learned"
       }))
-      .filter((range) => range.start < range.end && range.target)
-      .sort((a, b) => a.start - b.start || b.end - a.end);
+      .filter((range) => range.start < range.end && range.target);
+    const priorityRanges = [...normalizedRanges].sort(
+      (a, b) =>
+        Number(a.kind === "cognate") - Number(b.kind === "cognate") ||
+        a.start - b.start ||
+        b.end - a.end
+    );
     const merged = [];
 
-    for (const range of sortedRanges) {
-      const previous = merged[merged.length - 1];
-      if (previous && range.start < previous.end) {
+    for (const range of priorityRanges) {
+      if (merged.some((existing) => rangesOverlap(existing, range))) {
         continue;
       }
 
       merged.push(range);
     }
 
-    return merged;
+    return merged.sort((a, b) => a.start - b.start || b.end - a.end);
   }
 
   function replaceTextNodeWithParts(textNode, parts) {
@@ -1153,10 +1184,12 @@
       }
 
       const span = document.createElement("span");
-      span.className = REPLACEMENT_CLASS;
+      span.className =
+        part.kind === "cognate" ? `${REPLACEMENT_CLASS} ${COGNATE_CLASS}` : REPLACEMENT_CLASS;
       span.dataset.learnedWordOriginal = part.original;
       span.dataset.learnedWordSource = part.source;
       span.dataset.learnedWordTarget = part.target;
+      span.dataset.learnedWordKind = part.kind;
       span.textContent = part.value;
       if (state.showOriginalOnHover) {
         span.title = `${part.original} -> ${part.target}`;
@@ -2096,19 +2129,20 @@
         ? translatedSentences[index]
         : translatedText;
       const whitelistMatches = findWhitelistMatchesInText(translatedSentence);
-
-      if (!whitelistMatches.length) {
-        continue;
-      }
-
       const sourceSentence = unit.text.slice(sentenceRange.start, sentenceRange.end);
-      const replacements = await getAlignedSentenceReplacements(
-        translator,
-        targetLanguage,
-        sourceSentence,
-        whitelistMatches,
-        runId
-      );
+      const learnedReplacements = whitelistMatches.length
+        ? await getAlignedSentenceReplacements(
+            translator,
+            targetLanguage,
+            sourceSentence,
+            whitelistMatches,
+            runId
+          )
+        : [];
+      const cognateReplacements = state.showObviousCognates
+        ? getObviousCognateReplacements(sourceSentence, translatedSentence, targetLanguage)
+        : [];
+      const replacements = mergeReplacementRanges([...learnedReplacements, ...cognateReplacements]);
 
       if (runId !== applyRunId) {
         return false;
@@ -2153,6 +2187,152 @@
     );
 
     return mergeReplacementRanges([...confidence.replacements, ...deletionReplacements]);
+  }
+
+  function getObviousCognateReplacements(sourceSentence, translatedSentence, targetLanguage) {
+    const sourceTokens = getReplaceableSourceTokens(sourceSentence).filter((token) =>
+      isCognateSourceToken(token.value)
+    );
+    const targetTokens = getReplaceableSourceTokens(translatedSentence)
+      .map((token) => ({ ...token, sound: getTargetCognateSound(token.value, targetLanguage) }))
+      .filter((token) => token.sound.length >= MIN_COGNATE_LENGTH);
+    const candidates = [];
+
+    for (let sourceIndex = 0; sourceIndex < sourceTokens.length; sourceIndex += 1) {
+      const sourceToken = sourceTokens[sourceIndex];
+      const sourceSound = getEnglishCognateSound(sourceToken.value);
+
+      for (let targetIndex = 0; targetIndex < targetTokens.length; targetIndex += 1) {
+        const targetToken = targetTokens[targetIndex];
+        const similarity = getCognateSimilarity(sourceSound, targetToken.sound);
+        if (similarity < MIN_COGNATE_SIMILARITY) {
+          continue;
+        }
+
+        candidates.push({
+          sourceIndex,
+          targetIndex,
+          start: sourceToken.start,
+          end: sourceToken.end,
+          target: targetToken.value,
+          similarity,
+          positionDifference: Math.abs(
+            (sourceIndex + 0.5) / sourceTokens.length - (targetIndex + 0.5) / targetTokens.length
+          )
+        });
+      }
+    }
+
+    candidates.sort(
+      (a, b) =>
+        b.similarity - a.similarity ||
+        a.positionDifference - b.positionDifference ||
+        b.end - b.start - (a.end - a.start)
+    );
+
+    const usedSourceIndexes = new Set();
+    const usedTargetIndexes = new Set();
+    const replacements = [];
+    for (const candidate of candidates) {
+      if (usedSourceIndexes.has(candidate.sourceIndex) || usedTargetIndexes.has(candidate.targetIndex)) {
+        continue;
+      }
+
+      usedSourceIndexes.add(candidate.sourceIndex);
+      usedTargetIndexes.add(candidate.targetIndex);
+      replacements.push({
+        start: candidate.start,
+        end: candidate.end,
+        target: candidate.target,
+        kind: "cognate"
+      });
+    }
+
+    return replacements.sort((a, b) => a.start - b.start || b.end - a.end);
+  }
+
+  function isCognateSourceToken(value) {
+    const token = String(value || "");
+    return /^[A-Za-z]+$/.test(token) && token.length >= MIN_COGNATE_LENGTH;
+  }
+
+  function getEnglishCognateSound(value) {
+    return normalizeCognateSound(value)
+      .replace(/ph/g, "f")
+      .replace(/qu/g, "k")
+      .replace(/ck/g, "k")
+      .replace(/c(?=[eiy])/g, "s")
+      .replace(/c/g, "k")
+      .replace(/x/g, "ks")
+      .replace(/w/g, "v")
+      .replace(/th/g, "t")
+      .replace(/oo/g, "u")
+      .replace(/ee|ea|ie/g, "i")
+      .replace(/ou/g, "u")
+      .replace(/y/g, "i");
+  }
+
+  function getTargetCognateSound(value, targetLanguage) {
+    const normalized = String(value || "").toLocaleLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+    if (targetLanguage === "uk") {
+      return normalizeCognateSound(transliterateCognateText(normalized, UKRAINIAN_COGNATE_TRANSLITERATION));
+    }
+    if (targetLanguage === "ru") {
+      return normalizeCognateSound(transliterateCognateText(normalized, RUSSIAN_COGNATE_TRANSLITERATION));
+    }
+    if (targetLanguage === "el") {
+      return normalizeCognateSound(transliterateCognateText(normalized, GREEK_COGNATE_TRANSLITERATION));
+    }
+    if (/^[\p{Script=Latin}]+$/u.test(normalized)) {
+      return normalizeCognateSound(normalized);
+    }
+    return "";
+  }
+
+  function transliterateCognateText(value, table) {
+    return Array.from(value, (character) => table[character] ?? character).join("");
+  }
+
+  function normalizeCognateSound(value) {
+    return String(value || "")
+      .toLocaleLowerCase()
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "")
+      .replace(/ß/g, "ss")
+      .replace(/æ/g, "ae")
+      .replace(/œ/g, "oe")
+      .replace(/[^a-z]/g, "")
+      .replace(/(.)\1+/g, "$1");
+  }
+
+  function getCognateSimilarity(sourceSound, targetSound) {
+    if (!sourceSound || !targetSound) {
+      return 0;
+    }
+    if (sourceSound === targetSound) {
+      return 1;
+    }
+
+    const longerLength = Math.max(sourceSound.length, targetSound.length);
+    return 1 - getEditDistance(sourceSound, targetSound) / longerLength;
+  }
+
+  function getEditDistance(left, right) {
+    let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+
+    for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+      const current = [leftIndex];
+      for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+        current[rightIndex] = Math.min(
+          current[rightIndex - 1] + 1,
+          previous[rightIndex] + 1,
+          previous[rightIndex - 1] + Number(left[leftIndex - 1] !== right[rightIndex - 1])
+        );
+      }
+      previous = current;
+    }
+
+    return previous[right.length];
   }
 
   function allowsDeletionFallbackAlignment(match) {
@@ -2601,7 +2781,8 @@
         replacementsByNode.get(nodeRange.node).push({
           start: absoluteStart - nodeRange.start,
           end: absoluteEnd - nodeRange.start,
-          target: replacement.target
+          target: replacement.target,
+          kind: replacement.kind
         });
         break;
       }
