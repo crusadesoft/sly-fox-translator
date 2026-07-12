@@ -488,6 +488,10 @@
     return profile ? String(profile.languageCode || "") : "";
   }
 
+  function hasActivePageReplacementFeatures() {
+    return Boolean(state.enabled && (compiledEntries.length || state.showObviousCognates));
+  }
+
   function getTranslationExclusion() {
     let page = "";
     let site = "";
@@ -2862,7 +2866,7 @@
   function startObserver() {
     stopObserver();
 
-    if (!state.enabled || !compiledEntries.length || !document.body || getTranslationExclusion()) {
+    if (!hasActivePageReplacementFeatures() || !document.body || getTranslationExclusion()) {
       return;
     }
 
@@ -2965,7 +2969,7 @@
     globalThis.addEventListener(
       "scroll",
       () => {
-        if (state.enabled && compiledEntries.length && !getTranslationExclusion()) {
+        if (hasActivePageReplacementFeatures() && !getTranslationExclusion()) {
           scheduleApplyIfPendingContext();
         }
       },
@@ -3024,8 +3028,7 @@
     if (
       !document.body ||
       applying ||
-      !state.enabled ||
-      !compiledEntries.length ||
+      !hasActivePageReplacementFeatures() ||
       getTranslationExclusion()
     ) {
       return;
@@ -3091,7 +3094,7 @@
       });
       compileEntries();
 
-      if (!state.enabled || !compiledEntries.length) {
+      if (!hasActivePageReplacementFeatures()) {
         removeStyle();
         updateRuntimeStats({
           status: state.enabled ? "no-active-entries" : "disabled"

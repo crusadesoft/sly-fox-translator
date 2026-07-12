@@ -360,7 +360,7 @@ async function testObviousCognates(browser) {
   const source = "The radio is near the family.";
   const translated = "Радіо біля сім'ї.";
   const createCognateState = (showObviousCognates) => ({
-    ...createState([{ id: "e1", source: "cat", target: "кіт", enabled: true, createdAt: 1 }]),
+    ...createState([]),
     showObviousCognates
   });
 
@@ -431,7 +431,10 @@ async function testObviousCognates(browser) {
   const disabledPage = await browser.newPage();
   await disabledPage.setContent(`<p>${source}</p>`);
   await installHarness(disabledPage, {
-    state: createCognateState(false),
+    state: {
+      ...createState([{ id: "e1", source: "cat", target: "кіт", enabled: true, createdAt: 1 }]),
+      showObviousCognates: false
+    },
     translator: {
       availability: async () => "available",
       translate: async (text) => (text === source ? translated : text)
