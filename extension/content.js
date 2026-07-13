@@ -247,8 +247,13 @@
   }
 
   function getPublicStatus() {
+    const replacementCount = document.body
+      ? countExistingReplacements(document)
+      : runtimeStats.replacementCount;
+
     return {
       ...runtimeStats,
+      replacementCount,
       cacheKey: translatorCacheKey,
       hasTranslator: Boolean(translatorCache),
       activeEntries: compiledEntries.length,

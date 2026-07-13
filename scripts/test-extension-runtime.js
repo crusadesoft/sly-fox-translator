@@ -231,6 +231,38 @@ async function testReplacementUsesTranslatedTokens(browser) {
   await page.close();
 }
 
+async function testRuntimeStatusCountsLiveReplacementSpans(browser) {
+  const page = await browser.newPage();
+  await page.setContent("<p>It is in the house.</p>");
+  await installHarness(page, {
+    state: createState([
+      { id: "e1", source: "house", target: "будинку", enabled: true, createdAt: 1 }
+    ]),
+    translator: {
+      availability: async () => "available",
+      translate: async () => "Це у будинку."
+    }
+  });
+
+  await page.waitForSelector(".learned-word-replacer-token");
+  const result = await page.evaluate(() => {
+    const extra = document.createElement("span");
+    extra.className = "learned-word-replacer-token";
+    extra.textContent = "додатково";
+    document.body.appendChild(extra);
+    return {
+      liveCount: document.querySelectorAll(".learned-word-replacer-token").length,
+      reportedCount: window.__learnedWordReplacerDebug.getSnapshot().replacementCount
+    };
+  });
+
+  assert(
+    result.reportedCount === result.liveCount,
+    "runtime status did not reflect replacement spans currently on the page"
+  );
+  await page.close();
+}
+
 async function testHoverTranslatesEnglishWord(browser) {
   const page = await browser.newPage();
   let houseTranslationCalls = 0;
@@ -2711,6 +2743,7 @@ function testToolbarOpensSidePanel() {
   const browser = await chromium.launch({ headless: true });
   try {
     await testReplacementUsesTranslatedTokens(browser);
+    await testRuntimeStatusCountsLiveReplacementSpans(browser);
     await testHoverTranslatesEnglishWord(browser);
     await testHoverSettingsCanBeDisabled(browser);
     await testProfileLanguageIsInferredFromImportedTargets(browser);
