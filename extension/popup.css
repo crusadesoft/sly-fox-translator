@@ -1057,6 +1057,22 @@ body:not(.tab-view) .file-import {
   margin-top: 8px;
 }
 
+.manual-transfer {
+  border-top: 1px solid #d8dee8;
+  color: #475467;
+  display: grid;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 7px;
+  margin-top: 12px;
+  padding-top: 10px;
+}
+
+.manual-transfer-actions {
+  margin-top: 0;
+  grid-template-columns: 1fr 1fr;
+}
+
 .do-not-translate-list {
   display: grid;
   gap: 6px;

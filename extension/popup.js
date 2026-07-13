@@ -100,6 +100,7 @@ const pageParams = new URLSearchParams(window.location.search);
 const isTabView = pageParams.get("view") === "tab";
 const isSidePanelView = pageParams.get("view") === "sidepanel";
 const shouldAutoImport = pageParams.get("import") === "1";
+const shouldAutoManualImport = pageParams.get("manualImport") === "1";
 document.body.classList.toggle("tab-view", isTabView);
 document.body.classList.toggle("side-panel-view", isSidePanelView);
 
@@ -163,6 +164,8 @@ const elements = {
   importStatus: document.getElementById("import-status"),
   importButton: document.getElementById("import"),
   exportButton: document.getElementById("export"),
+  importManualButton: document.getElementById("import-manual"),
+  exportManualButton: document.getElementById("export-manual"),
   clearAllButton: document.getElementById("clear-all"),
   doNotTranslatePanel: document.getElementById("do-not-translate-panel"),
   doNotTranslateList: document.getElementById("do-not-translate-list"),
@@ -178,6 +181,7 @@ let currentPage = 1;
 let searchQuery = "";
 let pendingDefinition = "";
 let autoImportHandled = false;
+let pendingImportOrigin = "";
 let deleteAllPending = false;
 let deleteAllTimer = null;
 let duolingoSyncInProgress = false;
@@ -1223,6 +1227,7 @@ function render() {
   elements.showOriginalOnHover.checked = state.showOriginalOnHover;
   elements.translateEnglishOnHover.checked = state.translateEnglishOnHover;
   elements.entryCount.textContent = `${replacingCount} replacing / ${manualEntries.length} manual / ${duolingoEntries.length} Duolingo`;
+  elements.exportManualButton.disabled = manualEntries.length === 0;
   elements.search.value = searchQuery;
   updateDeleteAllButtons();
   renderDoNotTranslateList();
@@ -1725,8 +1730,11 @@ function setImportStatus(message, type = "") {
   elements.importStatus.classList.toggle("success", type === "success");
 }
 
-function importEntriesFromText(text, afterSave) {
-  const imported = parseBulkText(text);
+function importEntriesFromText(text, afterSave, options = {}) {
+  const originOverride = options.originOverride === "manual" ? "manual" : "";
+  const imported = parseBulkText(text).map((entry) =>
+    originOverride ? { ...entry, origin: originOverride, mergeTarget: false } : entry
+  );
   if (!imported.length) {
     return null;
   }
@@ -1804,13 +1812,16 @@ async function importEntries() {
   const file = elements.bulkFile.files && elements.bulkFile.files[0];
 
   if (!file) {
+    pendingImportOrigin = "";
     setImportStatus("Choose a CSV, TXT, or Duolingo export file first.", "error");
     return;
   }
 
   try {
     const text = await file.text();
-    const result = importEntriesFromText(text, refreshOpenTabs);
+    const result = importEntriesFromText(text, refreshOpenTabs, {
+      originOverride: pendingImportOrigin
+    });
 
     if (!result) {
       setImportStatus(`No importable entries found in ${file.name}.`, "error");
@@ -1818,17 +1829,19 @@ async function importEntries() {
     }
 
     setImportStatus(
-      `Imported ${result.addedCount} new row${result.addedCount === 1 ? "" : "s"} from ${file.name}. ${result.totalCount} total in this profile.`,
+      `Imported ${result.addedCount} new ${pendingImportOrigin || "vocabulary"} row${result.addedCount === 1 ? "" : "s"} from ${file.name}. ${result.totalCount} total in this profile.`,
       "success"
     );
     elements.bulkFile.value = "";
+    pendingImportOrigin = "";
   } catch (error) {
+    pendingImportOrigin = "";
     setImportStatus(`Could not read ${file.name}.`, "error");
   }
 }
 
-function exportEntries() {
-  const entries = sortEntries(getCurrentEntries());
+function exportEntries(origin = "") {
+  const entries = sortEntries(origin ? getEntriesForSection(origin) : getCurrentEntries());
   const hasDefinitions = entries.some((entry) => entry.definition);
 
   const csv = entries
@@ -1846,12 +1859,15 @@ function exportEntries() {
   const profileName = getCurrentProfile().name || "profile";
 
   link.href = url;
-  link.download = `${slugifyFilename(profileName)}-vocabulary.csv`;
+  link.download = `${slugifyFilename(profileName)}-${origin || "vocabulary"}.csv`;
   document.body.appendChild(link);
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
-  setImportStatus(`Downloaded ${entries.length} entr${entries.length === 1 ? "y" : "ies"}.`, "success");
+  setImportStatus(
+    `Downloaded ${entries.length} ${origin || "vocabulary"} entr${entries.length === 1 ? "y" : "ies"}.`,
+    "success"
+  );
 }
 
 function slugifyFilename(text) {
@@ -2622,21 +2638,29 @@ function openManagerTab(options = {}) {
   if (options.autoImport) {
     params.set("import", "1");
   }
+  if (options.manualImport) {
+    params.set("manualImport", "1");
+  }
 
   chrome.tabs.create({
     url: chrome.runtime.getURL(`popup.html?${params.toString()}`)
   });
 }
 
-function openImportFilePicker() {
+function openImportFilePicker(origin = "") {
   if (!isTabView) {
     return;
   }
 
+  pendingImportOrigin = origin;
   elements.bulkPanel.open = true;
   elements.bulkPanel.scrollIntoView({ block: "center" });
   elements.bulkFile.focus();
-  setImportStatus("Choose a CSV, TXT, or Duolingo export file.");
+  setImportStatus(
+    origin === "manual"
+      ? "Choose a CSV or TXT file to import as Manual vocabulary."
+      : "Choose a CSV, TXT, or Duolingo export file."
+  );
 
   setTimeout(() => {
     elements.bulkFile.click();
@@ -2649,10 +2673,20 @@ function initializeImportPanel() {
     return;
   }
 
-  if (shouldAutoImport && !autoImportHandled) {
+  if ((shouldAutoImport || shouldAutoManualImport) && !autoImportHandled) {
     autoImportHandled = true;
-    openImportFilePicker();
+    openImportFilePicker(shouldAutoManualImport ? "manual" : "");
   }
+}
+
+function importManualEntries() {
+  if (!isTabView) {
+    openManagerTab({ manualImport: true });
+    window.close();
+    return;
+  }
+
+  openImportFilePicker("manual");
 }
 
 function runAfterFirstPaint(callback) {
@@ -2738,9 +2772,16 @@ elements.bulkFile.addEventListener("change", () => {
       ? `Ready to import ${file.name}.`
       : "Choose a CSV, TXT, or Duolingo export file."
   );
+  if (file && pendingImportOrigin === "manual") {
+    importEntries();
+  } else if (!file) {
+    pendingImportOrigin = "";
+  }
 });
 elements.importButton.addEventListener("click", importEntries);
 elements.exportButton.addEventListener("click", exportEntries);
+elements.importManualButton.addEventListener("click", importManualEntries);
+elements.exportManualButton.addEventListener("click", () => exportEntries("manual"));
 elements.clearAllButton.addEventListener("click", clearAllEntries);
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local" || !changes[STORAGE_KEY]) {

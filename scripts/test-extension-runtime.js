@@ -2384,6 +2384,16 @@ async function testPopupStatusPanel(browser) {
   await page.click("#settings-view-tab");
   assert(await page.isVisible("#settings-view"), "settings view did not open");
   assert(await page.isVisible("#show-highlights"), "highlight setting was not moved into settings");
+  assert(await page.locator("#import-manual").count() === 1, "manual import control is missing");
+  assert(await page.locator("#export-manual").count() === 1, "manual export control is missing");
+  assert(
+    await page.textContent("#import-manual") === "Import manual file",
+    "manual import control has the wrong label"
+  );
+  assert(
+    await page.textContent("#export-manual") === "Download manual CSV",
+    "manual export control has the wrong label"
+  );
   const hoverSettings = await page.evaluate(() => ({
     processedSections: document.getElementById("show-processed-sections").checked,
     originalEnglish: document.getElementById("show-original-on-hover").checked,
