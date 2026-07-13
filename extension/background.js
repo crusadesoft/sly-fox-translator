@@ -1,9 +1,10 @@
-if (typeof importScripts === "function") {
-  importScripts("vendor/ukrainian-morphology.js");
-}
+import "./vendor/ukrainian-morphology.js";
 
 const UKRAINIAN_MORPHOLOGY_PATH = "vendor/ukrainian-morphology/ukrainian.dict";
 const UKRAINIAN_LEMMA_REQUEST = "LWR_LOOKUP_UK_LEMMAS";
+const WORD_ALIGNMENT_REQUEST = "LWR_ALIGN_WORDS";
+const WORD_ALIGNMENT_RUN_REQUEST = "LWR_ALIGN_WORDS_RUN";
+const MAX_ALIGNMENT_CACHE_ENTRIES = 300;
 const BLOCKED_STATUSES = new Set([
   "no-translator",
   "translator-unavailable",
@@ -30,6 +31,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     lookupUkrainianLemmas(message.words)
       .then((lemmas) => sendResponse({ ok: true, lemmas }))
       .catch((error) => sendResponse({ ok: false, error: error?.message || "Lemma lookup failed." }));
+    return true;
+  }
+
+  if (message?.type === WORD_ALIGNMENT_REQUEST) {
+    alignWordsCached(String(message.source || ""), String(message.translated || ""))
+      .then((pairs) => sendResponse({ ok: true, pairs }))
+      .catch((error) =>
+        sendResponse({ ok: false, error: error?.message || "Word alignment failed." })
+      );
     return true;
   }
 
@@ -91,6 +101,62 @@ async function loadUkrainianMorphology() {
   }
 
   return globalThis.LWRUkrainianMorphology.create(await response.arrayBuffer());
+}
+
+const alignmentCache = new Map();
+let offscreenDocumentPromise = null;
+
+async function ensureOffscreenDocument() {
+  if (typeof chrome.offscreen?.hasDocument === "function" && (await chrome.offscreen.hasDocument())) {
+    return;
+  }
+
+  if (!offscreenDocumentPromise) {
+    offscreenDocumentPromise = chrome.offscreen
+      .createDocument({
+        url: "offscreen.html",
+        reasons: ["WORKERS"],
+        justification:
+          "Runs the on-device word-alignment model; service workers cannot host onnxruntime."
+      })
+      .catch((error) => {
+        offscreenDocumentPromise = null;
+        if (!String(error?.message || "").toLowerCase().includes("single offscreen")) {
+          throw error;
+        }
+      });
+  }
+
+  await offscreenDocumentPromise;
+}
+
+async function alignWordsCached(sourceText, translatedText) {
+  if (!sourceText.trim() || !translatedText.trim()) {
+    return [];
+  }
+
+  const cacheKey = `${sourceText}\u0000${translatedText}`;
+  if (alignmentCache.has(cacheKey)) {
+    return alignmentCache.get(cacheKey);
+  }
+
+  await ensureOffscreenDocument();
+  const response = await chrome.runtime.sendMessage({
+    type: WORD_ALIGNMENT_RUN_REQUEST,
+    source: sourceText,
+    translated: translatedText
+  });
+
+  if (!response?.ok || !Array.isArray(response.pairs)) {
+    throw new Error(response?.error || "Offscreen word alignment failed.");
+  }
+
+  alignmentCache.set(cacheKey, response.pairs);
+  if (alignmentCache.size > MAX_ALIGNMENT_CACHE_ENTRIES) {
+    alignmentCache.delete(alignmentCache.keys().next().value);
+  }
+
+  return response.pairs;
 }
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {

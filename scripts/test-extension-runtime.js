@@ -97,7 +97,16 @@ function testFullExportDoesNotUseClickEventAsFilter() {
   );
 }
 
-async function installHarness(page, { state, translator, config = {} }) {
+function readBackgroundScriptForVm() {
+  // The service worker is an ES module; the vm-based tests run it as a classic
+  // script, so drop the import statements and stub the aligner dependencies.
+  return fs
+    .readFileSync(BACKGROUND_SCRIPT, "utf8")
+    .replace(/^import[\s\S]*?from\s+"[^"]*";$/gm, "")
+    .replace(/^import\s+"[^"]*";$/gm, "");
+}
+
+async function installHarness(page, { state, translator, config = {}, wordAligner = null }) {
   await page.evaluate(
     ({ savedState, testConfig }) => {
       window.chrome = {
@@ -134,6 +143,7 @@ async function installHarness(page, { state, translator, config = {} }) {
         applyDebounceMs: 20,
         viewportMarginPx: 10000,
         ukrainianLemmas: {},
+        wordAligner: null,
         ...config
       }
     }
@@ -167,6 +177,15 @@ async function installHarness(page, { state, translator, config = {} }) {
       }
     };
   });
+
+  if (wordAligner) {
+    await page.exposeFunction("__testWordAligner", wordAligner);
+    await page.evaluate(() => {
+      window.__learnedWordReplacerTestConfig.wordAligner = (source, translated) =>
+        window.__testWordAligner(source, translated);
+    });
+  }
+
   await page.addScriptTag({ path: CONTENT_SCRIPT });
 }
 
@@ -480,6 +499,151 @@ async function testAmbiguousUkrainianFormPrefersEntryWithEnglishEvidence(browser
     `ambiguous Ukrainian form did not align through the evidenced entry: ${JSON.stringify(result)}`
   );
   assert(result.original === "They", "the evidenced English word was not the replaced span");
+  await page.close();
+}
+
+async function testNeuralAlignerResolvesMatchesWithoutEnglishHints(browser) {
+  const page = await browser.newPage();
+  const source = "The existence of radio waves was first proven.";
+  const translated = "Існування радіохвиль вперше було доведено.";
+  const alignerCalls = [];
+  await page.setContent(`<p>${source}</p>`);
+  await installHarness(page, {
+    state: createState([
+      // "було" is a form of "бути"; the entry's English hint "there is" does
+      // not appear in the sentence, so only the neural aligner can place it.
+      { id: "e1", source: "there is", target: "є", enabled: true, createdAt: 1 }
+    ]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === source ? translated : "")
+    },
+    config: {
+      ukrainianLemmas: {
+        "є": ["бути"],
+        "було": ["бути"]
+      }
+    },
+    wordAligner: async (sourceText, translatedText) => {
+      alignerCalls.push(sourceText);
+      return [
+        {
+          srcStart: sourceText.indexOf("was"),
+          srcEnd: sourceText.indexOf("was") + 3,
+          tgtStart: translatedText.indexOf("було"),
+          tgtEnd: translatedText.indexOf("було") + 4,
+          score: 0.9
+        }
+      ];
+    }
+  });
+
+  await page.waitForFunction(
+    () => document.querySelectorAll(".learned-word-replacer-token").length === 1
+  );
+  const result = await page.evaluate(() => {
+    const token = document.querySelector(".learned-word-replacer-token");
+    return {
+      text: document.body.innerText,
+      original: token?.dataset.learnedWordOriginal,
+      target: token?.dataset.learnedWordTarget,
+      kind: token?.dataset.learnedWordMatchKind
+    };
+  });
+
+  assert(alignerCalls.length > 0, "the neural aligner was never consulted");
+  assert(
+    result.text === "The existence of radio waves було first proven.",
+    `neural alignment did not place the inflected word: ${JSON.stringify(result)}`
+  );
+  assert(result.original === "was", "neural alignment replaced the wrong English span");
+  assert(result.kind === "word-family", "neural replacement lost its match kind");
+  await page.close();
+}
+
+async function testNeuralAlignerNeverReplacesNumericSpans(browser) {
+  const page = await browser.newPage();
+  const source = "In the mid-1890s physicists studied waves.";
+  const translated = "У середині 1890-х років фізики вивчали хвилі.";
+  await page.setContent(`<p>${source}</p>`);
+  await installHarness(page, {
+    state: createState([
+      // "років" is a form of "рік"; Ukrainian spells out the year word next to
+      // the decade, so the aligner links "1890s" to "років" — but replacing a
+      // number with a word would erase the year itself.
+      { id: "e1", source: "year", target: "рік", enabled: true, createdAt: 1 }
+    ]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === source ? translated : "")
+    },
+    config: {
+      ukrainianLemmas: {
+        "рік": ["рік"],
+        "років": ["рік"]
+      }
+    },
+    wordAligner: async (sourceText, translatedText) => [
+      {
+        srcStart: sourceText.indexOf("1890s"),
+        srcEnd: sourceText.indexOf("1890s") + 5,
+        tgtStart: translatedText.indexOf("років"),
+        tgtEnd: translatedText.indexOf("років") + 5,
+        score: 0.9
+      }
+    ]
+  });
+
+  await page.waitForFunction(() => window.__learnedWordReplacerDebug.getSnapshot().finishedAt > 0);
+  const result = await page.evaluate(() => ({
+    text: document.body.innerText,
+    replacementCount: document.querySelectorAll(".learned-word-replacer-token").length
+  }));
+
+  assert(
+    result.text === source && result.replacementCount === 0,
+    `a numeric span was replaced by the aligner: ${JSON.stringify(result)}`
+  );
+  await page.close();
+}
+
+async function testNeuralAlignerIsSkippedWhenEnglishHintsResolve(browser) {
+  const page = await browser.newPage();
+  const source = "They are generated by an electronic device.";
+  let alignerCalls = 0;
+  await page.setContent(`<p>${source}</p>`);
+  await installHarness(page, {
+    state: createState([
+      { id: "e1", source: "they", target: "вони", enabled: true, createdAt: 1 }
+    ]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) =>
+        text === source ? "Вони генеруються електронним пристроєм." : ""
+    },
+    config: {
+      ukrainianLemmas: {
+        вони: ["вони"]
+      }
+    },
+    wordAligner: async () => {
+      alignerCalls += 1;
+      return [];
+    }
+  });
+
+  await page.waitForFunction(
+    () => document.querySelectorAll(".learned-word-replacer-token").length === 1
+  );
+  const result = await page.evaluate(() => ({
+    text: document.body.innerText
+  }));
+
+  assert(
+    result.text === "Вони are generated by an electronic device.",
+    `hint-based alignment stopped working: ${JSON.stringify(result)}`
+  );
+  assert(alignerCalls === 0, "the neural aligner ran even though English hints resolved everything");
   await page.close();
 }
 
@@ -2926,7 +3090,7 @@ async function testPopupStatusPanel(browser) {
 }
 
 function testBackgroundBadge() {
-  const code = fs.readFileSync(BACKGROUND_SCRIPT, "utf8");
+  const code = readBackgroundScriptForVm();
   const calls = [];
   let messageListener = null;
   const context = {
@@ -3026,7 +3190,7 @@ function testBackgroundBadge() {
 }
 
 async function testBackgroundRestoresOpenTabContentScripts() {
-  const code = fs.readFileSync(BACKGROUND_SCRIPT, "utf8");
+  const code = readBackgroundScriptForVm();
   const injections = [];
   let startupListener = null;
   let installedListener = null;
@@ -3100,7 +3264,7 @@ async function testBackgroundRestoresOpenTabContentScripts() {
 }
 
 function testBackgroundBadgeIgnoresMissingTabs() {
-  const code = fs.readFileSync(BACKGROUND_SCRIPT, "utf8");
+  const code = readBackgroundScriptForVm();
   let messageListener = null;
   let removedListener = null;
   let actionCallCount = 0;
@@ -3156,7 +3320,7 @@ function testBackgroundBadgeIgnoresMissingTabs() {
 }
 
 function testToolbarOpensSidePanel() {
-  const code = fs.readFileSync(BACKGROUND_SCRIPT, "utf8");
+  const code = readBackgroundScriptForVm();
   let behavior = null;
   const manifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../extension/manifest.json"), "utf8"));
   const context = {
@@ -3201,6 +3365,9 @@ function testToolbarOpensSidePanel() {
     await testRepeatedWordReplacesEveryOccurrenceInSentence(browser);
     await testBlocksWithInlineMarkupTranslateAllTextNodes(browser);
     await testAmbiguousUkrainianFormPrefersEntryWithEnglishEvidence(browser);
+    await testNeuralAlignerResolvesMatchesWithoutEnglishHints(browser);
+    await testNeuralAlignerNeverReplacesNumericSpans(browser);
+    await testNeuralAlignerIsSkippedWhenEnglishHintsResolve(browser);
     await testPluralEnglishWordAlignsToSingularEntry(browser);
     await testUkrainianWordFamiliesDoNotMatchCompounds(browser);
     await testUkrainianPronounLemmaUsesChromeSurfaceForm(browser);

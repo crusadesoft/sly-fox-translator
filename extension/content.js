@@ -8,6 +8,8 @@
   const STYLE_ID = "learned-word-replacer-style";
   const SOURCE_LANGUAGE = "en";
   const MAX_TRANSLATION_CACHE_ENTRIES = 400;
+  const WORD_ALIGNMENT_TIMEOUT_MS = 30000;
+  const MAX_WORD_ALIGNMENT_CACHE_ENTRIES = 200;
   const MAX_CONTEXT_UNITS_PER_PASS = 35;
   const MAX_TRANSLATION_CALLS_PER_PASS = 70;
   const TRANSLATOR_AVAILABILITY_TIMEOUT_MS = 10000;
@@ -170,6 +172,7 @@
   let pageActivationListenerInstalled = false;
   const translationCache = new Map();
   const ukrainianLemmaCache = new Map();
+  const wordAlignmentCache = new Map();
   let processedBlockSourceTexts = new WeakMap();
   let pendingContextBlocks = new Map();
   let runtimeStats = createRuntimeStats();
@@ -202,8 +205,21 @@
   }
 
   function debugLog(label, data) {
-    if (isDebugLoggingEnabled()) {
-      console.log(`LWR-DEBUG ${label}`, JSON.stringify(data));
+    if (!isDebugLoggingEnabled()) {
+      return;
+    }
+
+    const line = `${label} ${JSON.stringify(data)}`;
+    console.log(`LWR-DEBUG ${line}`);
+
+    // Content-script console output is not always visible to inspection
+    // tooling, so mirror the newest entries onto the DOM as well.
+    try {
+      const root = document.documentElement;
+      const previous = root.getAttribute("data-lwr-debug") || "";
+      root.setAttribute("data-lwr-debug", `${previous}\n${line}`.slice(-8000));
+    } catch (error) {
+      // The document can be gone during unload.
     }
   }
 
@@ -2210,6 +2226,7 @@
           translator,
           targetLanguage,
           sourceText,
+          translatedText,
           whitelistMatches,
           runId,
           alignmentOptions
@@ -2232,6 +2249,7 @@
     translator,
     targetLanguage,
     sourceSentence,
+    translatedText,
     whitelistMatches,
     runId,
     alignmentOptions = {}
@@ -2245,25 +2263,124 @@
       indexedMatches,
       alignmentOptions
     );
-    const unresolvedMatches = indexedMatches.filter(
-      (match) =>
-        !confidence.resolvedMatchIds.has(match.alignmentId) &&
-        allowsDeletionFallbackAlignment(match)
+    let replacements = confidence.replacements;
+    let unresolvedMatches = indexedMatches.filter(
+      (match) => !confidence.resolvedMatchIds.has(match.alignmentId)
     );
 
-    if (!unresolvedMatches.length) {
-      return confidence.replacements;
+    if (unresolvedMatches.length) {
+      const neural = await getNeuralAlignedSentenceReplacements(
+        sourceSentence,
+        translatedText,
+        unresolvedMatches,
+        replacements
+      );
+
+      if (runId !== applyRunId) {
+        return [];
+      }
+
+      if (neural.replacements.length) {
+        replacements = mergeReplacementRanges([...replacements, ...neural.replacements]);
+        unresolvedMatches = unresolvedMatches.filter(
+          (match) => !neural.resolvedMatchIds.has(match.alignmentId)
+        );
+      }
+    }
+
+    const deletionCandidates = unresolvedMatches.filter(allowsDeletionFallbackAlignment);
+    if (!deletionCandidates.length) {
+      return replacements;
     }
 
     const deletionReplacements = await getDeletionAlignedSentenceReplacements(
       translator,
       targetLanguage,
       sourceSentence,
-      unresolvedMatches,
+      deletionCandidates,
       runId
     );
 
-    return mergeReplacementRanges([...confidence.replacements, ...deletionReplacements]);
+    return mergeReplacementRanges([...replacements, ...deletionReplacements]);
+  }
+
+  async function getNeuralAlignedSentenceReplacements(
+    sourceSentence,
+    translatedText,
+    whitelistMatches,
+    existingReplacements
+  ) {
+    const resolvedMatchIds = new Set();
+    const replacements = [];
+    const pairs = await requestWordAlignment(sourceSentence, translatedText);
+    if (!pairs.length) {
+      return { replacements, resolvedMatchIds };
+    }
+
+    const usedRanges = existingReplacements.map((range) => ({
+      start: range.start,
+      end: range.end
+    }));
+
+    for (const match of whitelistMatches) {
+      const matchStart = match.index;
+      const matchEnd = match.index + match.target.length;
+      const linkedPairs = pairs.filter(
+        (pair) =>
+          pair.tgtStart < matchEnd &&
+          matchStart < pair.tgtEnd &&
+          isReplaceableNeuralSourceSpan(sourceSentence.slice(pair.srcStart, pair.srcEnd)) &&
+          !usedRanges.some((range) =>
+            rangesOverlap(range, { start: pair.srcStart, end: pair.srcEnd })
+          )
+      );
+
+      if (!linkedPairs.length) {
+        continue;
+      }
+
+      const best = linkedPairs.reduce((a, b) => (b.score > a.score ? b : a));
+      let start = best.srcStart;
+      let end = best.srcEnd;
+
+      // The aligner links compounds word-by-word ("cell phones" -> "телефонах");
+      // grow the span over adjacent source words aligned to the same target word.
+      let grew = true;
+      while (grew) {
+        grew = false;
+        for (const pair of linkedPairs) {
+          if (pair.srcStart >= start && pair.srcEnd <= end) {
+            continue;
+          }
+
+          if (pair.srcEnd <= start && /^\s*$/u.test(sourceSentence.slice(pair.srcEnd, start))) {
+            start = pair.srcStart;
+            grew = true;
+          } else if (pair.srcStart >= end && /^\s*$/u.test(sourceSentence.slice(end, pair.srcStart))) {
+            end = pair.srcEnd;
+            grew = true;
+          }
+        }
+      }
+
+      replacements.push({
+        start,
+        end,
+        target: match.target,
+        kind: match.kind
+      });
+      usedRanges.push({ start, end });
+      resolvedMatchIds.add(match.alignmentId);
+    }
+
+    return { replacements, resolvedMatchIds };
+  }
+
+  function isReplaceableNeuralSourceSpan(text) {
+    // Words that contain digits ("1890s", "3rd") stay untouched: Ukrainian
+    // often spells out an accompanying word for them ("1890-х років"), and the
+    // aligner links the two, but replacing the number would erase its value.
+    return /\p{L}/u.test(text) && !/\p{N}/u.test(text);
   }
 
   function allowsDeletionFallbackAlignment(match) {
@@ -2879,6 +2996,82 @@
 
   function normalizeUkrainianMorphologyWord(word) {
     return String(word || "").trim().toLocaleLowerCase("uk");
+  }
+
+  async function requestWordAlignment(sourceText, translatedText) {
+    const cacheKey = `${sourceText}\u0000${translatedText}`;
+    if (wordAlignmentCache.has(cacheKey)) {
+      return wordAlignmentCache.get(cacheKey);
+    }
+
+    const pairs = normalizeWordAlignmentPairs(
+      await requestWordAlignmentPairs(sourceText, translatedText)
+    );
+    wordAlignmentCache.set(cacheKey, pairs);
+    if (wordAlignmentCache.size > MAX_WORD_ALIGNMENT_CACHE_ENTRIES) {
+      wordAlignmentCache.delete(wordAlignmentCache.keys().next().value);
+    }
+
+    return pairs;
+  }
+
+  async function requestWordAlignmentPairs(sourceText, translatedText) {
+    const config = getRuntimeConfig();
+    if (Object.prototype.hasOwnProperty.call(config, "wordAligner")) {
+      if (typeof config.wordAligner !== "function") {
+        return [];
+      }
+
+      try {
+        return await config.wordAligner(sourceText, translatedText);
+      } catch (error) {
+        return [];
+      }
+    }
+
+    if (!globalThis.chrome?.runtime?.sendMessage) {
+      return [];
+    }
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const timeout = setTimeout(() => finish(), WORD_ALIGNMENT_TIMEOUT_MS);
+      const finish = (response) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        clearTimeout(timeout);
+        if (!response?.ok) {
+          debugLog("align-error", {
+            error: response?.error || chrome.runtime?.lastError?.message || "no response"
+          });
+        }
+        resolve(response?.ok && Array.isArray(response.pairs) ? response.pairs : []);
+      };
+
+      try {
+        chrome.runtime.sendMessage(
+          { type: "LWR_ALIGN_WORDS", source: sourceText, translated: translatedText },
+          finish
+        );
+      } catch (error) {
+        finish();
+      }
+    });
+  }
+
+  function normalizeWordAlignmentPairs(pairs) {
+    return (Array.isArray(pairs) ? pairs : [])
+      .map((pair) => ({
+        srcStart: Math.max(0, Number(pair.srcStart) || 0),
+        srcEnd: Math.max(0, Number(pair.srcEnd) || 0),
+        tgtStart: Math.max(0, Number(pair.tgtStart) || 0),
+        tgtEnd: Math.max(0, Number(pair.tgtEnd) || 0),
+        score: Number(pair.score) || 0
+      }))
+      .filter((pair) => pair.srcStart < pair.srcEnd && pair.tgtStart < pair.tgtEnd);
   }
 
   function findTargetCandidateMatchesInText(translatedText, candidate) {

@@ -54,6 +54,27 @@ Duolingo export lines are supported too:
 
 Upload that file while the target profile is selected. The importer stores English meanings as notes and stores the learned Duolingo word as the whitelist term, so `фото` can appear on pages only when Chrome's translated sentence uses `фото`.
 
+## Word alignment
+
+Replacements are placed in the English text in two stages. First, each vocabulary
+entry's own English words (the note and the Duolingo meanings, plus simple
+inflections such as plurals) are searched for directly in the sentence. Matches
+that cannot be placed that way go to an on-device neural word aligner: a
+multilingual BERT model (int8 ONNX, awesome-align style) that runs in an
+offscreen extension document via the vendored `transformers.js`/onnxruntime
+runtime in `vendor/transformers/`. This is what places pairs such as
+`was -> було` or `physicist -> фізиком`, where the entry's English gloss never
+appears verbatim in the sentence.
+
+The model weights (`vendor/alignment-model/onnx/model_quantized.onnx`, ~150 MB)
+exceed GitHub's file-size limit, so the repository stores them as chunks in
+`build-assets/alignment-model/`. Run `scripts/assemble-alignment-model.sh` once
+after cloning to reassemble the file; the release workflow does this
+automatically, so release ZIPs are complete. Without the file the extension
+still works and simply falls back to hint-based alignment only. Set
+`localStorage.__lwrDebug = "1"` on a page to log per-sentence pipeline decisions
+to the console and to a `data-lwr-debug` attribute on the document element.
+
 ## Behavior
 
 - Learned phrases are matched before shorter learned words.

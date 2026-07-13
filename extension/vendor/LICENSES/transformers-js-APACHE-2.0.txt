@@ -1,0 +1,14 @@
+Transformers.js and ONNX Runtime Web notice
+
+The files in vendor/transformers/ are unmodified redistributions:
+- transformers.min.js from @huggingface/transformers (Transformers.js),
+  Copyright Hugging Face, licensed under the Apache License 2.0.
+  Source: https://github.com/huggingface/transformers.js
+- ort-wasm-simd-threaded.asyncify.mjs and ort-wasm-simd-threaded.asyncify.wasm
+  from onnxruntime-web, Copyright Microsoft Corporation, licensed under the
+  MIT License. Source: https://github.com/microsoft/onnxruntime
+
+The word-alignment model in vendor/alignment-model/ is an int8 ONNX export of
+a multilingual BERT encoder (bert-base-multilingual-cased lineage, truncated
+to 8 hidden layers for awesome-align-style word alignment). BERT multilingual
+weights are released by Google under the Apache License 2.0.

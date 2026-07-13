@@ -26,6 +26,9 @@ jobs:
             exit 1
           fi
 
+      - name: Assemble the word-alignment model
+        run: ./scripts/assemble-alignment-model.sh
+
       - name: Package the extension
         id: package
         run: |
