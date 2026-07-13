@@ -2133,6 +2133,7 @@ async function testPopupStatusPanel(browser) {
     let statusMode = "not-ready";
     let openedDuolingoUrl = "";
     let hasContentScriptReceiver = false;
+    let runtimeMessageListener = null;
     const injectedScripts = [];
     const notReady = {
       status: "translator-not-ready",
@@ -2173,7 +2174,11 @@ async function testPopupStatusPanel(browser) {
       runtime: {
         lastError: null,
         getURL: (url) => url,
-        onMessage: { addListener() {} }
+        onMessage: {
+          addListener(listener) {
+            runtimeMessageListener = listener;
+          }
+        }
       },
       storage: {
         local: {
@@ -2233,6 +2238,8 @@ async function testPopupStatusPanel(browser) {
       }
     };
     window.__openedDuolingoUrl = () => openedDuolingoUrl;
+    window.__pushRuntimeStatus = (status) =>
+      runtimeMessageListener({ type: "LWR_STATUS", status }, { tab: { id: 10 } });
     window.__injectedScripts = () => injectedScripts;
     window.__setPopupStatusMode = (mode) => {
       statusMode = mode;
@@ -2318,6 +2325,21 @@ async function testPopupStatusPanel(browser) {
     "manual target field did not use the selected language and example"
   );
   assert(before.retry.label === "Retry current page", "retry button is missing its accessible label");
+  await page.evaluate(() =>
+    window.__pushRuntimeStatus({
+      status: "complete",
+      targetLanguage: "uk",
+      replacementCount: 7,
+      enabled: true,
+      startedAt: 1000,
+      finishedAt: 1500
+    })
+  );
+  await page.waitForFunction(() => document.getElementById("runtime-status")?.textContent.includes("7 replacements"));
+  assert(
+    await page.evaluate(() => document.getElementById("page-status-panel").dataset.state) === "ok",
+    "popup did not apply the pushed status from the active tab"
+  );
   const recoveredScripts = await page.evaluate(() => window.__injectedScripts());
   assert(
     JSON.stringify(recoveredScripts) ===
@@ -2481,6 +2503,16 @@ async function testPopupStatusPanel(browser) {
   await page.fill("#target", "");
   await page.click("#settings-view-tab");
   await page.click("#runtime-retry");
+  await page.evaluate(() =>
+    window.__pushRuntimeStatus({
+      status: "complete",
+      targetLanguage: "uk",
+      replacementCount: 3,
+      enabled: true,
+      startedAt: 1000,
+      finishedAt: 2500
+    })
+  );
   await page.waitForFunction(() =>
     document.getElementById("runtime-status")?.textContent.includes("3 replacements")
   );

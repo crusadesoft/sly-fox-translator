@@ -178,13 +178,13 @@ let pendingDefinition = "";
 let autoImportHandled = false;
 let deleteAllPending = false;
 let deleteAllTimer = null;
-let runtimePollTimer = null;
 let duolingoSyncInProgress = false;
 let duolingoSyncNeedsAction = false;
 let vocabularySection = "duolingo";
 let appSection = "vocabulary";
 let activeTabStatusRequestId = 0;
 let duolingoAvailabilityRequestId = 0;
+let runtimeStatusTabId = null;
 const contentScriptInjectionPromises = new Map();
 
 function createId() {
@@ -2361,7 +2361,6 @@ async function prepareActiveTabTranslator(tab) {
 
 async function refreshActiveTabStatus() {
   const requestId = ++activeTabStatusRequestId;
-  clearRuntimePoll();
   renderRuntimeStatus(null, "checking");
   const tab = await getActiveTab();
   if (requestId !== activeTabStatusRequestId) {
@@ -2369,6 +2368,7 @@ async function refreshActiveTabStatus() {
   }
 
   renderDoNotTranslateActions(tab);
+  runtimeStatusTabId = tab?.id || null;
   const response = await sendTabMessageWithRecovery(tab, { type: "LWR_GET_STATUS" });
   if (requestId !== activeTabStatusRequestId) {
     return;
@@ -2380,7 +2380,6 @@ async function refreshActiveTabStatus() {
   }
 
   renderRuntimeStatus(response.status, getRuntimeDisplayState(response.status));
-  scheduleRuntimePollIfNeeded(response.status);
 }
 
 function refreshTabBoundUi() {
@@ -2404,6 +2403,7 @@ async function retryActiveTab() {
   renderRuntimeStatus(null, "checking");
 
   const tab = await getActiveTab();
+  runtimeStatusTabId = tab?.id || null;
   await prepareActiveTabTranslator(tab);
   const response = await sendTabMessageWithRecovery(tab, { type: "LWR_RETRY" });
 
@@ -2411,28 +2411,21 @@ async function retryActiveTab() {
     renderRuntimeStatus({ reason: response.reason }, "unavailable");
   } else {
     renderRuntimeStatus(response.status, getRuntimeDisplayState(response.status));
-    scheduleRuntimePollIfNeeded(response.status);
   }
 
 }
 
-function clearRuntimePoll() {
-  if (runtimePollTimer) {
-    clearTimeout(runtimePollTimer);
-    runtimePollTimer = null;
-  }
-}
-
-function scheduleRuntimePollIfNeeded(status) {
-  if (getRuntimeDisplayState(status) !== "working") {
+function handleRuntimeStatusMessage(message, sender) {
+  if (
+    !message ||
+    message.type !== "LWR_STATUS" ||
+    !sender?.tab?.id ||
+    sender.tab.id !== runtimeStatusTabId
+  ) {
     return;
   }
 
-  clearRuntimePoll();
-  runtimePollTimer = setTimeout(() => {
-    runtimePollTimer = null;
-    refreshActiveTabStatus();
-  }, 1000);
+  renderRuntimeStatus(message.status || null, getRuntimeDisplayState(message.status));
 }
 
 function getRuntimeDisplayState(status) {
@@ -2750,6 +2743,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
   syncStoredState(changes[STORAGE_KEY].newValue);
 });
+chrome.runtime?.onMessage?.addListener(handleRuntimeStatusMessage);
 chrome.tabs?.onActivated?.addListener(refreshTabBoundUi);
 chrome.tabs?.onUpdated?.addListener(refreshUiForActiveTabUpdate);
 
