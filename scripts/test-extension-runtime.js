@@ -2548,6 +2548,38 @@ async function testPopupStatusPanel(browser) {
   assert(await page.isDisabled("#submit-entry"), "Add should be disabled for whitespace-only input");
   await page.fill("#source", "");
   await page.fill("#target", "");
+  await page.fill(
+    "#manual-lines",
+    "radio,радіо,radio receiver\ninternet,інтернет,global computer network"
+  );
+  assert(await page.isEnabled("#add-manual-lines"), "manual line import should enable for non-empty input");
+  await page.click("#add-manual-lines");
+  await page.waitForFunction(() => {
+    const profile = window.__lastSavedPopupState?.profiles?.find(
+      (candidate) => candidate.id === "builtin-es"
+    );
+    return profile?.entries?.some(
+      (entry) => entry.source === "radio" && entry.target === "радіо" && entry.origin === "manual"
+    );
+  });
+  const manualLineEntries = await page.evaluate(() => {
+    const profile = window.__lastSavedPopupState.profiles.find(
+      (candidate) => candidate.id === "builtin-es"
+    );
+    return profile.entries.filter((entry) => entry.origin === "manual");
+  });
+  assert(
+    manualLineEntries.some(
+      (entry) => entry.source === "radio" && entry.definition === "radio receiver"
+    ),
+    "manual line import did not preserve the optional third-column definition"
+  );
+  assert(
+    manualLineEntries.some(
+      (entry) => entry.source === "internet" && entry.definition === "global computer network"
+    ),
+    "manual line import did not add every CSV line"
+  );
   await page.click("#settings-view-tab");
   await page.click("#runtime-retry");
   await page.evaluate(() =>

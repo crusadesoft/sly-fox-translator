@@ -132,6 +132,9 @@ const elements = {
   suggestions: document.getElementById("suggestions"),
   suggestionTitle: document.getElementById("suggestion-title"),
   suggestionList: document.getElementById("suggestion-list"),
+  manualLines: document.getElementById("manual-lines"),
+  addManualLines: document.getElementById("add-manual-lines"),
+  manualLinesStatus: document.getElementById("manual-lines-status"),
   submitEntry: document.getElementById("submit-entry"),
   cancelEdit: document.getElementById("cancel-edit"),
   showHighlights: document.getElementById("show-highlights"),
@@ -1384,6 +1387,36 @@ function startEdit(id) {
 function updateEntrySubmitState() {
   elements.submitEntry.disabled =
     !elements.source.value.trim() || !elements.target.value.trim();
+}
+
+function updateManualLinesSubmitState() {
+  elements.addManualLines.disabled = !elements.manualLines.value.trim();
+}
+
+function setManualLinesStatus(message = "", type = "") {
+  elements.manualLinesStatus.textContent = message;
+  elements.manualLinesStatus.classList.toggle("error", type === "error");
+  elements.manualLinesStatus.classList.toggle("success", type === "success");
+}
+
+function addManualLines() {
+  const text = elements.manualLines.value.trim();
+  if (!text) {
+    return;
+  }
+
+  const result = importEntriesFromText(text, refreshOpenTabs, { originOverride: "manual" });
+  if (!result) {
+    setManualLinesStatus("Use English,target,optional definition on each line.", "error");
+    return;
+  }
+
+  elements.manualLines.value = "";
+  updateManualLinesSubmitState();
+  setManualLinesStatus(
+    `Added ${result.addedCount} manual row${result.addedCount === 1 ? "" : "s"}.`,
+    "success"
+  );
 }
 
 function stopEdit() {
@@ -2744,6 +2777,11 @@ elements.source.addEventListener("input", () => {
   renderSuggestions(false);
 });
 elements.source.addEventListener("focus", () => renderSuggestions(false));
+elements.manualLines.addEventListener("input", () => {
+  setManualLinesStatus();
+  updateManualLinesSubmitState();
+});
+elements.addManualLines.addEventListener("click", addManualLines);
 elements.target.addEventListener("input", () => {
   pendingDefinition = "";
   updateEntrySubmitState();
