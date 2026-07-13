@@ -2,6 +2,7 @@
   const REFRESH_KEY = "__learnedWordReplacerRefresh";
   const STORAGE_KEY = "learnedWordReplacerState";
   const REPLACEMENT_CLASS = "learned-word-replacer-token";
+  const PROCESSED_BLOCK_CLASS = "learned-word-replacer-checked";
   const REVERSE_HOVER_TOOLTIP_CLASS = "learned-word-replacer-hover-tooltip";
   const STYLE_ID = "learned-word-replacer-style";
   const SOURCE_LANGUAGE = "en";
@@ -14,7 +15,6 @@
   const TRANSLATOR_PREPARE_TIMEOUT_MS = 120000;
   const TRANSLATOR_TRANSLATE_TIMEOUT_MS = 20000;
   const APPLY_DEBOUNCE_MS = 700;
-  const FULL_PAGE_SCAN_DELAY_MS = 800;
   const REVERSE_HOVER_DELAY_MS = 260;
   const MAX_REVERSE_HOVER_CACHE_ENTRIES = 200;
   const VIEWPORT_MARGIN_PX = 900;
@@ -160,7 +160,6 @@
   let compiledEntries = [];
   let observer = null;
   let pendingTimer = null;
-  let fullPageScanTimer = null;
   let applying = false;
   let applyRunId = 0;
   let translatorCacheKey = "";
@@ -206,14 +205,6 @@
 
   function getApplyDebounceMs() {
     return getConfigNumber("applyDebounceMs", APPLY_DEBOUNCE_MS);
-  }
-
-  function getFullPageScanDelayMs() {
-    return getConfigNumber("fullPageScanDelayMs", FULL_PAGE_SCAN_DELAY_MS);
-  }
-
-  function shouldScanWholePage() {
-    return getRuntimeConfig().scanWholePage !== false;
   }
 
   function getViewportMarginPx() {
@@ -857,6 +848,11 @@
         }
       `
       : "";
+    const processedBlockStyle = `
+      .${PROCESSED_BLOCK_CLASS} {
+        box-shadow: inset 3px 0 0 rgba(37, 99, 235, 0.62) !important;
+      }
+    `;
 
     if (!state.translateEnglishOnHover) {
       clearReverseHover();
@@ -875,17 +871,18 @@
           position: relative;
         }
 
-      ` + originalHoverStyle + reverseHoverTooltipStyle
+      ` + processedBlockStyle + originalHoverStyle + reverseHoverTooltipStyle
         : `
         .${REPLACEMENT_CLASS} {
           cursor: inherit;
           position: relative;
         }
-      ` + originalHoverStyle + reverseHoverTooltipStyle);
+      ` + processedBlockStyle + originalHoverStyle + reverseHoverTooltipStyle);
   }
 
   function removeStyle() {
     removeReverseHoverTooltip();
+    clearProcessedBlockMarkers();
     const style = document.getElementById(STYLE_ID);
     if (style) {
       style.remove();
@@ -1190,8 +1187,8 @@
   async function processContextRoot(root, runId, options = {}) {
     const targetLanguage = getCurrentLanguageCode();
     const units = options.roots
-      ? collectContextUnitsFromRoots(options.roots, options)
-      : collectContextUnits(root, options);
+      ? collectContextUnitsFromRoots(options.roots)
+      : collectContextUnits(root);
     updateRuntimeStats({
       targetLanguage,
       unitsCollected: units.length
@@ -1283,6 +1280,7 @@
   function recordProcessedUnit(unit) {
     if (unit?.block && unit.block.nodeType === Node.ELEMENT_NODE && unit.text) {
       processedBlockSourceTexts.set(unit.block, unit.text);
+      unit.block.classList.add(PROCESSED_BLOCK_CLASS);
     }
   }
 
@@ -1762,11 +1760,11 @@
     return nodes;
   }
 
-  function collectContextUnits(root, options = {}) {
-    return collectContextUnitsFromRoots([root], options);
+  function collectContextUnits(root) {
+    return collectContextUnitsFromRoots([root]);
   }
 
-  function collectContextUnitsFromRoots(roots, options = {}) {
+  function collectContextUnitsFromRoots(roots) {
     const groups = new Map();
     const seenBlocks = new Set();
 
@@ -1777,7 +1775,7 @@
 
       for (const node of collectTextNodes(root)) {
         const block = getTextBlock(node);
-        if (!block || seenBlocks.has(block) || !isProcessableBlock(block, options)) {
+        if (!block || seenBlocks.has(block) || !isProcessableBlock(block)) {
           continue;
         }
 
@@ -1801,19 +1799,13 @@
           collectionOrder: collectionOrder++
         }))
       )
-      .sort((a, b) => {
-        if (options.includeOffscreen) {
-          return a.collectionOrder - b.collectionOrder;
-        }
-
-        return getContextUnitPriority(b) - getContextUnitPriority(a) || a.collectionOrder - b.collectionOrder;
-      })
-      .slice(0, options.maxUnits || getMaxContextUnitsPerPass())
+      .sort(
+        (a, b) =>
+          getContextUnitPriority(b) - getContextUnitPriority(a) ||
+          a.collectionOrder - b.collectionOrder
+      )
+      .slice(0, getMaxContextUnitsPerPass())
       .sort((a, b) => a.collectionOrder - b.collectionOrder);
-  }
-
-  function hasPendingContextUnits(options = {}) {
-    return collectContextUnits(document.body, { ...options, maxUnits: 1 }).length > 0;
   }
 
   function isProcessedBlockUnchanged(block) {
@@ -1985,7 +1977,7 @@
     return text.length <= 1200 && element.children.length <= 30;
   }
 
-  function isProcessableBlock(block, options = {}) {
+  function isProcessableBlock(block) {
     if (!block || block.nodeType !== Node.ELEMENT_NODE) {
       return false;
     }
@@ -1997,10 +1989,6 @@
       Number(style.opacity || 1) === 0
     ) {
       return false;
-    }
-
-    if (options.includeOffscreen) {
-      return true;
     }
 
     const viewportHeight = globalThis.innerHeight || document.documentElement.clientHeight || 0;
@@ -2696,6 +2684,17 @@
     }
   }
 
+  function clearProcessedBlockMarkers(root = document) {
+    const blocks =
+      root.nodeType === Node.ELEMENT_NODE && root.classList.contains(PROCESSED_BLOCK_CLASS)
+        ? [root]
+        : Array.from(root.querySelectorAll(`.${PROCESSED_BLOCK_CLASS}`));
+
+    for (const block of blocks) {
+      block.classList.remove(PROCESSED_BLOCK_CLASS);
+    }
+  }
+
   function restoreChangedProcessedBlocksForRoots(roots) {
     for (const root of roots || []) {
       if (root && root.isConnected) {
@@ -2726,6 +2725,7 @@
 
       if (getBlockSourceText(block) !== previousSourceText) {
         processedBlockSourceTexts.delete(block);
+        block.classList.remove(PROCESSED_BLOCK_CLASS);
         restoreOriginalText(block);
       }
     }
@@ -2857,7 +2857,7 @@
     );
   }
 
-  function stopObserver(options = {}) {
+  function stopObserver() {
     if (observer) {
       observer.disconnect();
       observer = null;
@@ -2868,36 +2868,6 @@
       pendingTimer = null;
     }
 
-    if (options.cancelFullPageScan && fullPageScanTimer) {
-      clearTimeout(fullPageScanTimer);
-      fullPageScanTimer = null;
-    }
-  }
-
-  function scheduleFullPageScan() {
-    if (
-      fullPageScanTimer ||
-      !shouldScanWholePage() ||
-      !document.body ||
-      !hasActivePageReplacementFeatures() ||
-      getTranslationExclusion() ||
-      !hasPendingContextUnits({ includeOffscreen: true })
-    ) {
-      return false;
-    }
-
-    fullPageScanTimer = setTimeout(() => {
-      fullPageScanTimer = null;
-      applyToPage({ preserveExisting: true, includeOffscreen: true, backgroundScan: true }).catch(
-        (error) => {
-          updateRuntimeStats({
-            status: "translator-error",
-            lastError: error && error.message ? error.message : "Background page scan failed."
-          });
-        }
-      );
-    }, getFullPageScanDelayMs());
-    return true;
   }
 
   function queueContextBlocks(blocks, options = {}) {
@@ -2963,13 +2933,14 @@
 
     const runId = ++applyRunId;
     applying = true;
-    stopObserver({ cancelFullPageScan: true });
+    stopObserver();
 
     try {
       const exclusion = getTranslationExclusion();
       if (exclusion) {
         pendingContextBlocks.clear();
         processedBlockSourceTexts = new WeakMap();
+        clearProcessedBlockMarkers();
         restoreOriginalText(document);
         removeStyle();
         runtimeStats = createRuntimeStats({
@@ -2993,6 +2964,7 @@
       } else {
         pendingContextBlocks.clear();
         processedBlockSourceTexts = new WeakMap();
+        clearProcessedBlockMarkers();
         restoreOriginalText(document);
       }
 
@@ -3028,17 +3000,11 @@
           "translator-preparing",
           "translator-error"
         ]);
-        const completedStatus = blockedStatuses.has(runtimeStats.status)
-          ? runtimeStats.status
-          : "complete";
-        const scanScheduled =
-          completedStatus === "complete" &&
-          shouldScanWholePage() &&
-          hasPendingContextUnits({ includeOffscreen: true }) &&
-          scheduleFullPageScan();
         updateRuntimeStats({
-          status: scanScheduled ? "scanning-page" : completedStatus,
-          finishedAt: scanScheduled ? 0 : Date.now()
+          status: blockedStatuses.has(runtimeStats.status)
+            ? runtimeStats.status
+            : "complete",
+          finishedAt: Date.now()
         });
         applying = false;
         startObserver();
