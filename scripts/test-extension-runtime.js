@@ -8,6 +8,7 @@ const POPUP_PAGE = `file://${path.resolve(__dirname, "../extension/popup.html")}
 const SIDE_PANEL_PAGE = `${POPUP_PAGE}?view=sidepanel`;
 const BACKGROUND_SCRIPT = path.resolve(__dirname, "../extension/background.js");
 const TRANSLATOR_BRIDGE_SCRIPT = path.resolve(__dirname, "../extension/page-translator-bridge.js");
+const TRANSLATOR_BRIDGE_CONTENT = fs.readFileSync(TRANSLATOR_BRIDGE_SCRIPT, "utf8");
 const POPUP_SCRIPT = path.resolve(__dirname, "../extension/popup.js");
 const POPUP_STYLES = path.resolve(__dirname, "../extension/popup.css");
 const LUCIDE_ICON_DIR = path.resolve(__dirname, "../extension/icons/lucide");
@@ -413,6 +414,44 @@ async function testObviousCognates(browser) {
   assert(cognateResult.hasDistinctStyle, "cognate mode did not use its distinct highlight color");
   await page.close();
 
+  const inflectedPage = await browser.newPage();
+  const inflectedSource =
+    "Radio technology uses an antenna, gigahertz, a vacuum, navigation, and information.";
+  const inflectedTranslation =
+    "Радіо технологія використовує антену, гігагерц, вакуумі, навігації та інформацію.";
+  await inflectedPage.setContent(`<p>${inflectedSource}</p>`);
+  await installHarness(inflectedPage, {
+    state: createCognateState(true),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === inflectedSource ? inflectedTranslation : text)
+    }
+  });
+
+  await inflectedPage.waitForFunction(
+    () => window.__learnedWordReplacerDebug.getSnapshot().finishedAt > 0
+  );
+  const inflectedMatches = await inflectedPage.evaluate(() =>
+    Array.from(document.querySelectorAll(".learned-word-replacer-cognate")).map((token) => ({
+      original: token.dataset.learnedWordOriginal,
+      target: token.dataset.learnedWordTarget
+    }))
+  );
+  assert(
+    JSON.stringify(inflectedMatches) ===
+      JSON.stringify([
+        { original: "Radio", target: "Радіо" },
+        { original: "technology", target: "технологія" },
+        { original: "antenna", target: "антену" },
+        { original: "gigahertz", target: "гігагерц" },
+        { original: "vacuum", target: "вакуумі" },
+        { original: "navigation", target: "навігації" },
+        { original: "information", target: "інформацію" }
+      ]),
+    "Ukrainian cognate inflections did not match their English roots"
+  );
+  await inflectedPage.close();
+
   const learnedPage = await browser.newPage();
   await learnedPage.setContent(`<p>${source}</p>`);
   await installHarness(learnedPage, {
@@ -468,6 +507,30 @@ async function testObviousCognates(browser) {
   );
   assert((await disabledPage.textContent("p")) === source, "disabled cognate mode changed the page text");
   await disabledPage.close();
+}
+
+async function testCognatesIgnoreUntranslatedSourceText(browser) {
+  const page = await browser.newPage();
+  const source = "Radio technology uses a computer system.";
+  await page.setContent(`<p>${source}</p>`);
+  await installHarness(page, {
+    state: {
+      ...createState([]),
+      showObviousCognates: true
+    },
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === source ? source : text)
+    }
+  });
+
+  await page.waitForFunction(() => window.__learnedWordReplacerDebug.getSnapshot().finishedAt > 0);
+  assert(
+    (await page.locator(".learned-word-replacer-cognate").count()) === 0,
+    "untranslated English text was treated as Ukrainian cognates"
+  );
+  assert((await page.textContent("p")) === source, "untranslated source text was changed");
+  await page.close();
 }
 
 async function testProfileLanguageIsInferredFromImportedTargets(browser) {
@@ -1574,7 +1637,7 @@ async function testTranslatorBridgeCreatesInsideTrustedPageActivation(browser) {
       }
     });
   });
-  await page.addScriptTag({ path: TRANSLATOR_BRIDGE_SCRIPT });
+  await page.addScriptTag({ content: TRANSLATOR_BRIDGE_CONTENT });
   await page.evaluate(
     () =>
       new Promise((resolve) => {
@@ -2727,6 +2790,7 @@ function testToolbarOpensSidePanel() {
     await testHoverTranslatesEnglishWord(browser);
     await testHoverSettingsCanBeDisabled(browser);
     await testObviousCognates(browser);
+    await testCognatesIgnoreUntranslatedSourceText(browser);
     await testProfileLanguageIsInferredFromImportedTargets(browser);
     await testEnglishHintAlignmentAvoidsDeletionProbe(browser);
     await testEnglishHintBlocksDeletionFallbackMismatch(browser);
