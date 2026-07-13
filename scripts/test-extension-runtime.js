@@ -357,182 +357,6 @@ async function testHoverSettingsCanBeDisabled(browser) {
   await page.close();
 }
 
-async function testObviousCognates(browser) {
-  const source = "The radio, telephone, computer, university, information, and system are near the family.";
-  const translated = "Радіо, телефон, комп'ютер, університет, інформація та система біля сім'ї.";
-  const createCognateState = (showObviousCognates) => ({
-    ...createState([]),
-    showObviousCognates
-  });
-
-  const page = await browser.newPage();
-  await page.setContent(`<p>${source}</p>`);
-  await installHarness(page, {
-    state: createCognateState(true),
-    translator: {
-      availability: async () => "available",
-      translate: async (text) => (text === source ? translated : text)
-    }
-  });
-
-  await page.waitForSelector(".learned-word-replacer-cognate");
-  const cognateResult = await page.evaluate(() => {
-    const cognates = Array.from(document.querySelectorAll(".learned-word-replacer-cognate"));
-    const cognate = cognates[0];
-    return {
-      text: document.body.innerText,
-      count: cognates.length,
-      replacements: cognates.map((token) => ({
-        original: token.dataset.learnedWordOriginal,
-        target: token.dataset.learnedWordTarget,
-        kind: token.dataset.learnedWordKind
-      })),
-      backgroundColor: getComputedStyle(cognate).backgroundColor,
-      hasDistinctStyle: document
-        .getElementById("learned-word-replacer-style")
-        ?.textContent.includes("#12b76a")
-    };
-  });
-
-  assert(cognateResult.count === 6, "cognate mode missed clear sound-alike words");
-  assert(
-    JSON.stringify(cognateResult.replacements) ===
-      JSON.stringify([
-        { original: "radio", target: "Радіо", kind: "cognate" },
-        { original: "telephone", target: "телефон", kind: "cognate" },
-        { original: "computer", target: "комп'ютер", kind: "cognate" },
-        { original: "university", target: "університет", kind: "cognate" },
-        { original: "information", target: "інформація", kind: "cognate" },
-        { original: "system", target: "система", kind: "cognate" }
-      ]),
-    "cognate mode did not preserve the expected source-to-target matches"
-  );
-  assert(
-    cognateResult.text.includes("The Радіо, телефон, комп'ютер, університет, інформація, and система are near the family."),
-    "cognate mode changed unrelated text"
-  );
-  assert(cognateResult.hasDistinctStyle, "cognate mode did not use its distinct highlight color");
-  await page.close();
-
-  const inflectedPage = await browser.newPage();
-  const inflectedSource =
-    "Radio technology uses an antenna, gigahertz, a vacuum, navigation, and information.";
-  const inflectedTranslation =
-    "Радіо технологія використовує антену, гігагерц, вакуумі, навігації та інформацію.";
-  await inflectedPage.setContent(`<p>${inflectedSource}</p>`);
-  await installHarness(inflectedPage, {
-    state: createCognateState(true),
-    translator: {
-      availability: async () => "available",
-      translate: async (text) => (text === inflectedSource ? inflectedTranslation : text)
-    }
-  });
-
-  await inflectedPage.waitForFunction(
-    () => window.__learnedWordReplacerDebug.getSnapshot().finishedAt > 0
-  );
-  const inflectedMatches = await inflectedPage.evaluate(() =>
-    Array.from(document.querySelectorAll(".learned-word-replacer-cognate")).map((token) => ({
-      original: token.dataset.learnedWordOriginal,
-      target: token.dataset.learnedWordTarget
-    }))
-  );
-  assert(
-    JSON.stringify(inflectedMatches) ===
-      JSON.stringify([
-        { original: "Radio", target: "Радіо" },
-        { original: "technology", target: "технологія" },
-        { original: "antenna", target: "антену" },
-        { original: "gigahertz", target: "гігагерц" },
-        { original: "vacuum", target: "вакуумі" },
-        { original: "navigation", target: "навігації" },
-        { original: "information", target: "інформацію" }
-      ]),
-    "Ukrainian cognate inflections did not match their English roots"
-  );
-  await inflectedPage.close();
-
-  const learnedPage = await browser.newPage();
-  await learnedPage.setContent(`<p>${source}</p>`);
-  await installHarness(learnedPage, {
-    state: {
-      ...createState([{ id: "e1", source: "radio", target: "Радіо", enabled: true, createdAt: 1 }]),
-      showObviousCognates: true
-    },
-    translator: {
-      availability: async () => "available",
-      translate: async (text) => (text === source ? translated : text)
-    }
-  });
-  await learnedPage.waitForSelector(".learned-word-replacer-token");
-  assert(
-    !(await learnedPage
-      .locator(".learned-word-replacer-cognate")
-      .evaluateAll((tokens) => tokens.some((token) => token.dataset.learnedWordOriginal === "radio"))),
-    "cognate mode displaced an overlapping learned-word replacement"
-  );
-  assert(
-    (await learnedPage
-      .locator('.learned-word-replacer-token[data-learned-word-original="radio"]')
-      .getAttribute("data-learned-word-kind")) === "learned",
-    "learned-word replacement lost priority over a cognate"
-  );
-  const learnedBackgroundColor = await learnedPage
-    .locator('.learned-word-replacer-token[data-learned-word-original="radio"]')
-    .evaluate((element) => getComputedStyle(element).backgroundColor);
-  assert(
-    cognateResult.backgroundColor !== learnedBackgroundColor,
-    "cognate highlight did not render in a distinct color"
-  );
-  await learnedPage.close();
-
-  const disabledPage = await browser.newPage();
-  await disabledPage.setContent(`<p>${source}</p>`);
-  await installHarness(disabledPage, {
-    state: {
-      ...createState([{ id: "e1", source: "cat", target: "кіт", enabled: true, createdAt: 1 }]),
-      showObviousCognates: false
-    },
-    translator: {
-      availability: async () => "available",
-      translate: async (text) => (text === source ? translated : text)
-    }
-  });
-  await disabledPage.waitForFunction(
-    () => window.__learnedWordReplacerDebug.getSnapshot().status === "complete"
-  );
-  assert(
-    await disabledPage.locator(".learned-word-replacer-cognate").count() === 0,
-    "cognate mode ran while the setting was disabled"
-  );
-  assert((await disabledPage.textContent("p")) === source, "disabled cognate mode changed the page text");
-  await disabledPage.close();
-}
-
-async function testCognatesIgnoreUntranslatedSourceText(browser) {
-  const page = await browser.newPage();
-  const source = "Radio technology uses a computer system.";
-  await page.setContent(`<p>${source}</p>`);
-  await installHarness(page, {
-    state: {
-      ...createState([]),
-      showObviousCognates: true
-    },
-    translator: {
-      availability: async () => "available",
-      translate: async (text) => (text === source ? source : text)
-    }
-  });
-
-  await page.waitForFunction(() => window.__learnedWordReplacerDebug.getSnapshot().finishedAt > 0);
-  assert(
-    (await page.locator(".learned-word-replacer-cognate").count()) === 0,
-    "untranslated English text was treated as Ukrainian cognates"
-  );
-  assert((await page.textContent("p")) === source, "untranslated source text was changed");
-  await page.close();
-}
-
 async function testProfileLanguageIsInferredFromImportedTargets(browser) {
   const page = await browser.newPage();
   const availabilityOptions = [];
@@ -2428,18 +2252,14 @@ async function testPopupStatusPanel(browser) {
   assert(await page.isVisible("#show-highlights"), "highlight setting was not moved into settings");
   const hoverSettings = await page.evaluate(() => ({
     originalEnglish: document.getElementById("show-original-on-hover").checked,
-    englishTranslation: document.getElementById("translate-english-on-hover").checked,
-    obviousCognates: document.getElementById("show-obvious-cognates").checked
+    englishTranslation: document.getElementById("translate-english-on-hover").checked
   }));
   assert(hoverSettings.originalEnglish, "original-English hover should start enabled");
   assert(hoverSettings.englishTranslation, "English hover translation should start enabled");
-  assert(!hoverSettings.obviousCognates, "obvious cognates should start disabled");
   await page.click('label[title="Show original English on hover"]');
   await page.waitForFunction(() => window.__lastSavedPopupState?.showOriginalOnHover === false);
   await page.click('label[title="Translate English on hover"]');
   await page.waitForFunction(() => window.__lastSavedPopupState?.translateEnglishOnHover === false);
-  await page.click('label[title="Show obvious cognates"]');
-  await page.waitForFunction(() => window.__lastSavedPopupState?.showObviousCognates === true);
   const settingsDisclosureOrder = await page.evaluate(() =>
     Array.from(document.querySelectorAll("#settings-view details")).map((element) => element.id)
   );
@@ -2789,8 +2609,6 @@ function testToolbarOpensSidePanel() {
     await testReplacementUsesTranslatedTokens(browser);
     await testHoverTranslatesEnglishWord(browser);
     await testHoverSettingsCanBeDisabled(browser);
-    await testObviousCognates(browser);
-    await testCognatesIgnoreUntranslatedSourceText(browser);
     await testProfileLanguageIsInferredFromImportedTargets(browser);
     await testEnglishHintAlignmentAvoidsDeletionProbe(browser);
     await testEnglishHintBlocksDeletionFallbackMismatch(browser);

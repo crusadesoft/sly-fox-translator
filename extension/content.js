@@ -2,7 +2,6 @@
   const REFRESH_KEY = "__learnedWordReplacerRefresh";
   const STORAGE_KEY = "learnedWordReplacerState";
   const REPLACEMENT_CLASS = "learned-word-replacer-token";
-  const COGNATE_CLASS = "learned-word-replacer-cognate";
   const REVERSE_HOVER_TOOLTIP_CLASS = "learned-word-replacer-hover-tooltip";
   const STYLE_ID = "learned-word-replacer-style";
   const SOURCE_LANGUAGE = "en";
@@ -17,28 +16,6 @@
   const APPLY_DEBOUNCE_MS = 700;
   const REVERSE_HOVER_DELAY_MS = 260;
   const MAX_REVERSE_HOVER_CACHE_ENTRIES = 200;
-  const MIN_COGNATE_LENGTH = 5;
-  const MIN_COGNATE_SIMILARITY = 0.84;
-  const LATIN_COGNATE_LANGUAGES = new Set([
-    "cs", "de", "es", "fr", "hu", "id", "it", "la", "nl", "pl", "pt", "ro", "tr", "vi"
-  ]);
-  const UKRAINIAN_COGNATE_TRANSLITERATION = {
-    а: "a", б: "b", в: "v", г: "h", ґ: "g", д: "d", е: "e", є: "ye", ж: "zh", з: "z",
-    и: "y", і: "i", ї: "yi", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p",
-    р: "r", с: "s", т: "t", у: "u", ф: "f", х: "kh", ц: "ts", ч: "ch", ш: "sh", щ: "shch",
-    ь: "", ю: "yu", я: "ya", "'": "", "’": "", "ʼ": ""
-  };
-  const RUSSIAN_COGNATE_TRANSLITERATION = {
-    а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "yo", ж: "zh", з: "z", и: "i",
-    й: "y", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r", с: "s", т: "t",
-    у: "u", ф: "f", х: "kh", ц: "ts", ч: "ch", ш: "sh", щ: "shch", ъ: "", ы: "y", ь: "",
-    э: "e", ю: "yu", я: "ya", "'": "", "’": "", "ʼ": ""
-  };
-  const GREEK_COGNATE_TRANSLITERATION = {
-    α: "a", β: "v", γ: "g", δ: "d", ε: "e", ζ: "z", η: "i", θ: "th", ι: "i", κ: "k",
-    λ: "l", μ: "m", ν: "n", ξ: "ks", ο: "o", π: "p", ρ: "r", σ: "s", ς: "s", τ: "t",
-    υ: "y", φ: "f", χ: "ch", ψ: "ps", ω: "o"
-  };
   const VIEWPORT_MARGIN_PX = 900;
   const TEST_CONFIG_KEY = "__learnedWordReplacerTestConfig";
   const DEBUG_KEY = "__learnedWordReplacerDebug";
@@ -162,7 +139,6 @@
     showHighlights: true,
     showOriginalOnHover: true,
     translateEnglishOnHover: true,
-    showObviousCognates: false,
     wholeWords: true,
     caseSensitive: false,
     preserveCase: true,
@@ -433,6 +409,7 @@
     };
 
     delete next.replacementMode;
+    delete next.showObviousCognates;
     next.doNotTranslate = normalizeDoNotTranslate(source.doNotTranslate);
 
     if (Array.isArray(source.profiles)) {
@@ -492,7 +469,7 @@
   }
 
   function hasActivePageReplacementFeatures() {
-    return Boolean(state.enabled && (compiledEntries.length || state.showObviousCognates));
+    return Boolean(state.enabled && compiledEntries.length);
   }
 
   function getTranslationExclusion() {
@@ -883,9 +860,6 @@
           position: relative;
         }
 
-        .${REPLACEMENT_CLASS}.${COGNATE_CLASS} {
-          background: color-mix(in srgb, #12b76a 30%, transparent);
-        }
       ` + originalHoverStyle + reverseHoverTooltipStyle
         : `
         .${REPLACEMENT_CLASS} {
@@ -1135,7 +1109,6 @@
         original,
         source: original,
         target: range.target,
-        kind: range.kind || "learned",
         value: range.target
       });
 
@@ -1158,19 +1131,13 @@
       .map((range) => ({
         start: Math.max(0, Number(range.start) || 0),
         end: Math.max(0, Number(range.end) || 0),
-        target: String(range.target || "").trim(),
-        kind: range.kind === "cognate" ? "cognate" : "learned"
+        target: String(range.target || "").trim()
       }))
-      .filter((range) => range.start < range.end && range.target);
-    const priorityRanges = [...normalizedRanges].sort(
-      (a, b) =>
-        Number(a.kind === "cognate") - Number(b.kind === "cognate") ||
-        a.start - b.start ||
-        b.end - a.end
-    );
+      .filter((range) => range.start < range.end && range.target)
+      .sort((a, b) => a.start - b.start || b.end - a.end);
     const merged = [];
 
-    for (const range of priorityRanges) {
+    for (const range of normalizedRanges) {
       if (merged.some((existing) => rangesOverlap(existing, range))) {
         continue;
       }
@@ -1191,12 +1158,10 @@
       }
 
       const span = document.createElement("span");
-      span.className =
-        part.kind === "cognate" ? `${REPLACEMENT_CLASS} ${COGNATE_CLASS}` : REPLACEMENT_CLASS;
+      span.className = REPLACEMENT_CLASS;
       span.dataset.learnedWordOriginal = part.original;
       span.dataset.learnedWordSource = part.source;
       span.dataset.learnedWordTarget = part.target;
-      span.dataset.learnedWordKind = part.kind;
       span.textContent = part.value;
       if (state.showOriginalOnHover) {
         span.title = `${part.original} -> ${part.target}`;
@@ -2183,10 +2148,7 @@
           runId
         )
       : [];
-    const cognateReplacements = state.showObviousCognates
-      ? getObviousCognateReplacements(sourceText, translatedText, targetLanguage)
-      : [];
-    const replacements = mergeReplacementRanges([...learnedReplacements, ...cognateReplacements]);
+    const replacements = mergeReplacementRanges(learnedReplacements);
 
     if (runId !== applyRunId) {
       return false;
@@ -2230,232 +2192,6 @@
     );
 
     return mergeReplacementRanges([...confidence.replacements, ...deletionReplacements]);
-  }
-
-  function getObviousCognateReplacements(sourceSentence, translatedSentence, targetLanguage) {
-    const sourceTokens = getReplaceableSourceTokens(sourceSentence).filter((token) =>
-      isCognateSourceToken(token.value)
-    );
-    const targetTokens = getReplaceableSourceTokens(translatedSentence)
-      .map((token) => ({
-        ...token,
-        sounds: getTargetCognateSoundVariants(token.value, targetLanguage)
-      }))
-      .filter((token) => token.sounds.some((sound) => sound.length >= MIN_COGNATE_LENGTH));
-    const candidates = [];
-
-    for (let sourceIndex = 0; sourceIndex < sourceTokens.length; sourceIndex += 1) {
-      const sourceToken = sourceTokens[sourceIndex];
-      const sourceSounds = getEnglishCognateSoundVariants(sourceToken.value, targetLanguage);
-
-      for (let targetIndex = 0; targetIndex < targetTokens.length; targetIndex += 1) {
-        const targetToken = targetTokens[targetIndex];
-        const similarity = getBestCognateSimilarity(sourceSounds, targetToken.sounds);
-        if (similarity < MIN_COGNATE_SIMILARITY) {
-          continue;
-        }
-
-        candidates.push({
-          sourceIndex,
-          targetIndex,
-          start: sourceToken.start,
-          end: sourceToken.end,
-          target: targetToken.value,
-          similarity,
-          positionDifference: Math.abs(
-            (sourceIndex + 0.5) / sourceTokens.length - (targetIndex + 0.5) / targetTokens.length
-          )
-        });
-      }
-    }
-
-    candidates.sort(
-      (a, b) =>
-        b.similarity - a.similarity ||
-        a.positionDifference - b.positionDifference ||
-        b.end - b.start - (a.end - a.start)
-    );
-
-    const usedSourceIndexes = new Set();
-    const usedTargetIndexes = new Set();
-    const replacements = [];
-    for (const candidate of candidates) {
-      if (usedSourceIndexes.has(candidate.sourceIndex) || usedTargetIndexes.has(candidate.targetIndex)) {
-        continue;
-      }
-
-      usedSourceIndexes.add(candidate.sourceIndex);
-      usedTargetIndexes.add(candidate.targetIndex);
-      replacements.push({
-        start: candidate.start,
-        end: candidate.end,
-        target: candidate.target,
-        kind: "cognate"
-      });
-    }
-
-    return replacements.sort((a, b) => a.start - b.start || b.end - a.end);
-  }
-
-  function isCognateSourceToken(value) {
-    const token = String(value || "");
-    return /^[A-Za-z]+$/.test(token) && token.length >= MIN_COGNATE_LENGTH;
-  }
-
-  function getEnglishCognateSound(value, targetLanguage) {
-    let normalized = normalizeCognateSound(value);
-
-    if (targetLanguage === "uk" || targetLanguage === "ru") {
-      normalized = normalized
-        .replace(/tion$/, "tsiya")
-        .replace(/sion$/, "siya")
-        .replace(/ity$/, "itet")
-        .replace(/ogy$/, "ogiya");
-    }
-
-    normalized = normalized
-      .replace(/ph/g, "f")
-      .replace(/qu/g, "k")
-      .replace(/ck/g, "k")
-      .replace(/c(?=[eiy])/g, "s")
-      .replace(/c/g, "k")
-      .replace(/x/g, "ks")
-      .replace(/w/g, "v")
-      .replace(/th/g, "t")
-      .replace(/oo/g, "u")
-      .replace(/ee|ea|ie/g, "i")
-      .replace(/ou/g, "u")
-      .replace(/z/g, "s");
-
-    return targetLanguage === "uk" ? normalized.replace(/g/g, "h") : normalized;
-  }
-
-  function getEnglishCognateSoundVariants(value, targetLanguage) {
-    const sound = getEnglishCognateSound(value, targetLanguage);
-    const variants = new Set([sound]);
-
-    if (targetLanguage === "uk" || targetLanguage === "ru") {
-      addCognateVariant(variants, sound.replace(/[aeiouy]$/, ""));
-    }
-
-    return Array.from(variants).filter(Boolean);
-  }
-
-  function getTargetCognateSoundVariants(value, targetLanguage) {
-    const normalized = String(value || "").toLocaleLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
-    let sound = "";
-    if (targetLanguage === "uk") {
-      sound = /\p{Script=Cyrillic}/u.test(normalized)
-        ? normalizeCognateSound(transliterateCognateText(normalized, UKRAINIAN_COGNATE_TRANSLITERATION))
-        : "";
-    } else if (targetLanguage === "ru") {
-      sound = /\p{Script=Cyrillic}/u.test(normalized)
-        ? normalizeCognateSound(transliterateCognateText(normalized, RUSSIAN_COGNATE_TRANSLITERATION))
-        : "";
-    } else if (targetLanguage === "el") {
-      sound = /\p{Script=Greek}/u.test(normalized)
-        ? normalizeCognateSound(transliterateCognateText(normalized, GREEK_COGNATE_TRANSLITERATION))
-        : "";
-    } else if (LATIN_COGNATE_LANGUAGES.has(targetLanguage) && /^[\p{Script=Latin}]+$/u.test(normalized)) {
-      sound = normalizeCognateSound(normalized);
-    }
-
-    const variants = new Set([sound]);
-    if (targetLanguage === "uk" || targetLanguage === "ru") {
-      addUkrainianCognateInflectionVariants(variants, sound);
-    }
-
-    return Array.from(variants).filter(Boolean);
-  }
-
-  function addUkrainianCognateInflectionVariants(variants, sound) {
-    addCognateVariant(variants, sound.replace(/tsiyi$/, "tsiya"));
-    addCognateVariant(variants, sound.replace(/tsiyu$/, "tsiya"));
-    addCognateVariant(variants, sound.replace(/iyu$/, "iya"));
-    addCognateVariant(variants, sound.replace(/iyi$/, "iya"));
-    addCognateVariant(variants, sound.replace(/u$/, ""));
-    addCognateVariant(
-      variants,
-      sound.replace(/(?:amy|yamy|yakh|akh|oyu|eyu|omu|emu|oviy|ovyi|iv|yv|nu|yu|u|i|y|a|e|o)$/, "")
-    );
-  }
-
-  function addCognateVariant(variants, value) {
-    const normalized = String(value || "");
-    if (normalized.length >= MIN_COGNATE_LENGTH) {
-      variants.add(normalized);
-    }
-  }
-
-  function transliterateCognateText(value, table) {
-    return Array.from(value, (character) => table[character] ?? character).join("");
-  }
-
-  function normalizeCognateSound(value) {
-    return String(value || "")
-      .toLocaleLowerCase()
-      .normalize("NFD")
-      .replace(/\p{M}/gu, "")
-      .replace(/ß/g, "ss")
-      .replace(/æ/g, "ae")
-      .replace(/œ/g, "oe")
-      .replace(/[^a-z]/g, "")
-      .replace(/(.)\1+/g, "$1");
-  }
-
-  function getCognateSimilarity(sourceSound, targetSound) {
-    if (!sourceSound || !targetSound) {
-      return 0;
-    }
-    if (sourceSound === targetSound) {
-      return 1;
-    }
-
-    const longerLength = Math.max(sourceSound.length, targetSound.length);
-    return 1 - getEditDistance(sourceSound, targetSound) / longerLength;
-  }
-
-  function getBestCognateSimilarity(sourceSounds, targetSounds) {
-    const sourceValues = Array.isArray(sourceSounds) ? sourceSounds : [];
-    const targetValues = Array.isArray(targetSounds) ? targetSounds : [];
-    const fullSimilarity = getCognateSimilarity(sourceValues[0], targetValues[0]);
-    let bestSimilarity = fullSimilarity;
-
-    for (let sourceIndex = 0; sourceIndex < sourceValues.length; sourceIndex += 1) {
-      for (let targetIndex = 0; targetIndex < targetValues.length; targetIndex += 1) {
-        const similarity = getCognateSimilarity(sourceValues[sourceIndex], targetValues[targetIndex]);
-        const usesStem = sourceIndex > 0 || targetIndex > 0;
-        if (
-          usesStem &&
-          fullSimilarity < 0.62 &&
-          (Math.min(sourceValues[sourceIndex].length, targetValues[targetIndex].length) < 7 ||
-            similarity < 0.92)
-        ) {
-          continue;
-        }
-        bestSimilarity = Math.max(bestSimilarity, similarity);
-      }
-    }
-
-    return bestSimilarity;
-  }
-
-  function getEditDistance(left, right) {
-    let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
-
-    for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
-      const current = [leftIndex];
-      for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
-        current[rightIndex] = Math.min(
-          current[rightIndex - 1] + 1,
-          previous[rightIndex] + 1,
-          previous[rightIndex - 1] + Number(left[leftIndex - 1] !== right[rightIndex - 1])
-        );
-      }
-      previous = current;
-    }
-
-    return previous[right.length];
   }
 
   function allowsDeletionFallbackAlignment(match) {
