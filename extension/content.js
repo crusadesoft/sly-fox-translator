@@ -193,6 +193,20 @@
     return getRuntimeConfig().Translator || createBridgeTranslatorApi();
   }
 
+  function isDebugLoggingEnabled() {
+    try {
+      return globalThis.localStorage?.getItem("__lwrDebug") === "1";
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function debugLog(label, data) {
+    if (isDebugLoggingEnabled()) {
+      console.log(`LWR-DEBUG ${label}`, JSON.stringify(data));
+    }
+  }
+
   function getConfigNumber(key, fallback) {
     const value = Number(getRuntimeConfig()[key]);
     return Number.isFinite(value) && value > 0 ? value : fallback;
@@ -1630,6 +1644,12 @@
       const batchText = buildBatchedTranslationInput(batch);
       const translatedBatch = await translateContextText(translator, targetLanguage, batchText);
       const parsedBatch = parseBatchedTranslationOutput(translatedBatch, batch);
+      debugLog("batch", {
+        items: batch.length,
+        inputChars: batchText.length,
+        outputChars: String(translatedBatch || "").length,
+        parsedItems: parsedBatch.size
+      });
 
       for (const item of batch) {
         const parsedTranslation = parsedBatch.get(item.tagName);
@@ -1790,19 +1810,23 @@
 
       for (const node of collectTextNodes(root)) {
         const block = getTextBlock(node);
-        if (!block || seenBlocks.has(block) || !isProcessableBlock(block)) {
+        if (!block) {
           continue;
         }
 
-        seenBlocks.add(block);
-        if (isProcessedBlockUnchanged(block)) {
-          continue;
+        // Run the block-level checks once per block, but keep collecting every
+        // text node of an accepted block: paragraphs with links or formatting
+        // hold their sentences in many sibling text nodes.
+        if (!seenBlocks.has(block)) {
+          seenBlocks.add(block);
+          if (isProcessableBlock(block) && !isProcessedBlockUnchanged(block)) {
+            groups.set(block, []);
+          }
         }
 
-        if (!groups.has(block)) {
-          groups.set(block, []);
+        if (groups.has(block)) {
+          groups.get(block).push(node);
         }
-        groups.get(block).push(node);
       }
     }
 
@@ -2118,10 +2142,17 @@
   ) {
     const translatedSentences = splitTranslatedSentences(translatedText);
     const sentenceCountMatches = translatedSentences.length === unit.sentenceRanges.length;
+    debugLog("unit", {
+      text: unit.text.slice(0, 90),
+      translated: String(translatedText).slice(0, 110),
+      enSentences: unit.sentenceRanges.length,
+      ukSentences: translatedSentences.length
+    });
 
     if (!sentenceCountMatches) {
       // Punctuation can change during translation. Reusing the complete translation for
-      // each source sentence can apply one translated word several times, so align once.
+      // each source sentence can apply one translated word several times, so align once
+      // and keep strict occurrence counts so one word cannot fan out across sentences.
       return addConfirmedRangesForTextRange(
         unit,
         { start: 0, end: unit.text.length },
@@ -2129,7 +2160,8 @@
         replacementsByNode,
         translator,
         targetLanguage,
-        runId
+        runId,
+        { sameWordFanOut: false }
       );
     }
 
@@ -2146,7 +2178,8 @@
         replacementsByNode,
         translator,
         targetLanguage,
-        runId
+        runId,
+        { sameWordFanOut: true }
       );
       if (!completed) {
         return false;
@@ -2163,17 +2196,23 @@
     replacementsByNode,
     translator,
     targetLanguage,
-    runId
+    runId,
+    alignmentOptions = {}
   ) {
     const sourceText = unit.text.slice(sourceRange.start, sourceRange.end);
-    const whitelistMatches = await findWhitelistMatchesInText(translatedText, targetLanguage);
+    const whitelistMatches = await findWhitelistMatchesInText(
+      translatedText,
+      targetLanguage,
+      sourceText
+    );
     const learnedReplacements = whitelistMatches.length
       ? await getAlignedSentenceReplacements(
           translator,
           targetLanguage,
           sourceText,
           whitelistMatches,
-          runId
+          runId,
+          alignmentOptions
         )
       : [];
     const replacements = mergeReplacementRanges(learnedReplacements);
@@ -2194,13 +2233,18 @@
     targetLanguage,
     sourceSentence,
     whitelistMatches,
-    runId
+    runId,
+    alignmentOptions = {}
   ) {
     const indexedMatches = whitelistMatches.map((match, index) => ({
       ...match,
       alignmentId: index
     }));
-    const confidence = getConfidenceAlignedSentenceReplacements(sourceSentence, indexedMatches);
+    const confidence = getConfidenceAlignedSentenceReplacements(
+      sourceSentence,
+      indexedMatches,
+      alignmentOptions
+    );
     const unresolvedMatches = indexedMatches.filter(
       (match) =>
         !confidence.resolvedMatchIds.has(match.alignmentId) &&
@@ -2227,7 +2271,11 @@
     return !Array.isArray(sourceCandidates) || sourceCandidates.length === 0;
   }
 
-  function getConfidenceAlignedSentenceReplacements(sourceSentence, whitelistMatches) {
+  function getConfidenceAlignedSentenceReplacements(
+    sourceSentence,
+    whitelistMatches,
+    alignmentOptions = {}
+  ) {
     const replacements = [];
     const resolvedMatchIds = new Set();
     const usedRanges = [];
@@ -2238,7 +2286,30 @@
         matches.flatMap((match) => findSourceAlignmentCandidates(sourceSentence, match.entry))
       ).filter((candidate) => !usedRanges.some((range) => rangesOverlap(range, candidate)));
 
-      if (candidates.length !== matches.length) {
+      if (!candidates.length) {
+        continue;
+      }
+
+      // Inside one aligned sentence, when every English candidate is the same
+      // word, occurrence counts can legitimately differ from the translation
+      // (compounds such as "radio waves" -> "радіохвилі" absorb the word), so
+      // replace every occurrence of that word instead of requiring a 1:1 count.
+      // Articles and "to" have no direct translation, so never multiply those.
+      const sameWordFanOut =
+        alignmentOptions.sameWordFanOut !== false &&
+        !ALIGNMENT_PREFIX_STOPWORDS.has(getSourceCandidateTerm(candidates[0])) &&
+        candidates.every(
+          (candidate) =>
+            getSourceCandidateTerm(candidate) === getSourceCandidateTerm(candidates[0])
+        );
+
+      if (!sameWordFanOut && candidates.length !== matches.length) {
+        debugLog("align-drop", {
+          target: matches[0].target,
+          matches: matches.length,
+          candidates: candidates.length,
+          sameWordFanOut
+        });
         continue;
       }
 
@@ -2246,14 +2317,21 @@
         (a, b) => a.index - b.index || b.target.length - a.target.length
       );
       const orderedCandidates = candidates.sort((a, b) => a.start - b.start || b.end - a.end);
+      const replacementCount = sameWordFanOut
+        ? orderedCandidates.length
+        : orderedMatches.length;
 
-      for (let index = 0; index < orderedMatches.length; index += 1) {
-        const match = orderedMatches[index];
+      for (let index = 0; index < replacementCount; index += 1) {
         const candidate = orderedCandidates[index];
+        const match = orderedMatches[Math.min(index, orderedMatches.length - 1)];
+        const target =
+          index >= orderedMatches.length
+            ? adaptTargetCaseToSource(match.target, candidate.value)
+            : match.target;
         replacements.push({
           start: candidate.start,
           end: candidate.end,
-          target: match.target,
+          target,
           kind: match.kind
         });
         resolvedMatchIds.add(match.alignmentId);
@@ -2292,28 +2370,76 @@
 
   function findSourceAlignmentCandidateInText(sourceSentence, candidate) {
     const haystack = sourceSentence.toLocaleLowerCase();
-    const needle = String(candidate.value || "").toLocaleLowerCase();
     const matches = [];
 
-    if (!needle) {
-      return matches;
-    }
-
-    let index = haystack.indexOf(needle);
-    while (index >= 0) {
-      if (passesTargetBoundaryCheck(sourceSentence, index, candidate.value.length)) {
-        matches.push({
-          start: index,
-          end: index + candidate.value.length,
-          score: candidate.score,
-          value: sourceSentence.slice(index, index + candidate.value.length)
-        });
+    for (const variant of getEnglishCandidateVariants(candidate.value)) {
+      const needle = variant.toLocaleLowerCase();
+      if (!needle) {
+        continue;
       }
 
-      index = haystack.indexOf(needle, index + Math.max(needle.length, 1));
+      let index = haystack.indexOf(needle);
+      while (index >= 0) {
+        if (passesTargetBoundaryCheck(sourceSentence, index, variant.length)) {
+          matches.push({
+            start: index,
+            end: index + variant.length,
+            score: candidate.score,
+            term: candidate.value,
+            value: sourceSentence.slice(index, index + variant.length)
+          });
+        }
+
+        index = haystack.indexOf(needle, index + Math.max(needle.length, 1));
+      }
     }
 
     return matches;
+  }
+
+  function getSourceCandidateTerm(candidate) {
+    return String(candidate.term || candidate.value || "").toLocaleLowerCase();
+  }
+
+  function getEnglishCandidateVariants(value) {
+    const base = String(value || "").trim();
+    const variants = new Set([base]);
+
+    if (base.length < 3) {
+      return variants;
+    }
+
+    if (/[b-df-hj-np-tv-z]y$/iu.test(base)) {
+      variants.add(base.replace(/y$/iu, "ies"));
+    } else if (/[a-z]$/iu.test(base)) {
+      variants.add(`${base}s`);
+      variants.add(`${base}es`);
+      variants.add(`${base}'s`);
+    }
+
+    if (/[a-z]{3,}s$/iu.test(base) && !/ss$/iu.test(base)) {
+      variants.add(base.replace(/s$/iu, ""));
+    }
+
+    return variants;
+  }
+
+  function adaptTargetCaseToSource(target, sourceValue) {
+    const targetFirst = String(target || "").charAt(0);
+    const sourceFirst = String(sourceValue || "").charAt(0);
+    if (!targetFirst || !sourceFirst || target.slice(1) !== target.slice(1).toLocaleLowerCase()) {
+      return target;
+    }
+
+    if (sourceFirst === sourceFirst.toLocaleLowerCase() && targetFirst !== targetFirst.toLocaleLowerCase()) {
+      return targetFirst.toLocaleLowerCase() + target.slice(1);
+    }
+
+    if (sourceFirst !== sourceFirst.toLocaleLowerCase() && targetFirst === targetFirst.toLocaleLowerCase()) {
+      return targetFirst.toLocaleUpperCase() + target.slice(1);
+    }
+
+    return target;
   }
 
   function getUniqueSourceAlignmentCandidates(candidates) {
@@ -2588,8 +2714,7 @@
     );
   }
 
-  async function findWhitelistMatchesInText(translatedText, targetLanguage) {
-    const seen = new Set();
+  async function findWhitelistMatchesInText(translatedText, targetLanguage, sourceText = "") {
     const exactMatches = compiledEntries.flatMap((entry) =>
       findTargetCandidateMatches(translatedText, entry).map((match) => ({
         ...match,
@@ -2601,17 +2726,34 @@
         ? await findUkrainianWordFamilyMatchesInText(translatedText)
         : [];
 
-    return [...exactMatches, ...wordFamilyMatches]
-      .sort((a, b) => a.index - b.index || b.target.length - a.target.length)
-      .filter((match) => {
-        const key = `${match.index}:${match.target.toLocaleLowerCase()}`;
-        if (seen.has(key)) {
-          return false;
-        }
+    // Several entries can claim the same translated word (ambiguous Ukrainian
+    // forms share lemmas, e.g. "їх" is a form of both "вони" and "їхати").
+    // Keep the entry whose English hints actually appear in the source text,
+    // so alignment gets the entry that can succeed.
+    const bestByKey = new Map();
+    for (const match of [...exactMatches, ...wordFamilyMatches]) {
+      const key = `${match.index}:${match.target.toLocaleLowerCase()}`;
+      const existing = bestByKey.get(key);
+      if (
+        !existing ||
+        (!entryHasSourceEvidence(existing.entry, sourceText) &&
+          entryHasSourceEvidence(match.entry, sourceText))
+      ) {
+        bestByKey.set(key, match);
+      }
+    }
 
-        seen.add(key);
-        return true;
-      });
+    return Array.from(bestByKey.values()).sort(
+      (a, b) => a.index - b.index || b.target.length - a.target.length
+    );
+  }
+
+  function entryHasSourceEvidence(entry, sourceText) {
+    if (!sourceText) {
+      return false;
+    }
+
+    return findSourceAlignmentCandidates(sourceText, entry).length > 0;
   }
 
   function findTargetCandidateMatches(translatedText, entry) {

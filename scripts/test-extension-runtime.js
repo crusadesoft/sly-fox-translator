@@ -309,6 +309,180 @@ async function testUkrainianWordFamiliesUseTranslatedInflections(browser) {
   await page.close();
 }
 
+async function testRepeatedWordReplacesEveryOccurrenceInSentence(browser) {
+  const page = await browser.newPage();
+  const source = "Radio is the technology of communicating using radio waves.";
+  await page.setContent(`<p>${source}</p>`);
+  await installHarness(page, {
+    state: createState([
+      { id: "e1", source: "radio", target: "радіо", enabled: true, createdAt: 1 }
+    ]),
+    translator: {
+      availability: async () => "available",
+      // The second "radio" is absorbed by the compound "радіохвиль", so the
+      // translation contains fewer standalone occurrences than the source.
+      translate: async (text) =>
+        text === source ? "Радіо - це технологія зв'язку за допомогою радіохвиль." : ""
+    }
+  });
+
+  await page.waitForFunction(
+    () => document.querySelectorAll(".learned-word-replacer-token").length === 2
+  );
+  const result = await page.evaluate(() => ({
+    text: document.body.innerText,
+    replacements: Array.from(document.querySelectorAll(".learned-word-replacer-token")).map(
+      (node) => ({
+        text: node.textContent,
+        original: node.dataset.learnedWordOriginal
+      })
+    )
+  }));
+
+  assert(
+    result.text === "Радіо is the technology of communicating using радіо waves.",
+    `repeated learned word was not replaced at every occurrence: ${JSON.stringify(result)}`
+  );
+  assert(
+    result.replacements.some((item) => item.original === "Radio" && item.text === "Радіо"),
+    "sentence-initial occurrence lost Chrome's surface form"
+  );
+  assert(
+    result.replacements.some((item) => item.original === "radio" && item.text === "радіо"),
+    "extra occurrence did not adapt its case to the English original"
+  );
+  await page.close();
+}
+
+async function testBlocksWithInlineMarkupTranslateAllTextNodes(browser) {
+  const page = await browser.newPage();
+  const source = "Radio is the technology of communicating using radio waves.";
+  const translationCalls = [];
+  await page.setContent(
+    "<p><b>Radio</b> is the technology of <a href=\"#\">communicating</a> using <a href=\"#\">radio waves</a>.</p>"
+  );
+  await installHarness(page, {
+    state: createState([
+      { id: "e1", source: "radio", target: "радіо", enabled: true, createdAt: 1 }
+    ]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => {
+        translationCalls.push(text);
+        return text === source ? "Радіо - це технологія зв'язку за допомогою радіохвиль." : "";
+      }
+    }
+  });
+
+  await page.waitForFunction(
+    () => document.querySelectorAll(".learned-word-replacer-token").length === 2
+  );
+  const result = await page.evaluate(() => ({
+    text: document.body.innerText,
+    replacements: Array.from(document.querySelectorAll(".learned-word-replacer-token")).map(
+      (node) => ({
+        text: node.textContent,
+        original: node.dataset.learnedWordOriginal
+      })
+    )
+  }));
+
+  assert(
+    translationCalls.includes(source),
+    `linked paragraph was not translated as one full unit: ${JSON.stringify(translationCalls)}`
+  );
+  assert(
+    result.text === "Радіо is the technology of communicating using радіо waves.",
+    `text nodes after inline markup were not replaced: ${JSON.stringify(result)}`
+  );
+  await page.close();
+}
+
+async function testPluralEnglishWordAlignsToSingularEntry(browser) {
+  const page = await browser.newPage();
+  const source = "These systems are reliable.";
+  await page.setContent(`<p>${source}</p>`);
+  await installHarness(page, {
+    state: createState([
+      { id: "e1", source: "system", target: "система", enabled: true, createdAt: 1 }
+    ]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === source ? "Ці системи надійні." : "")
+    },
+    config: {
+      ukrainianLemmas: {
+        система: ["система"],
+        системи: ["система"]
+      }
+    }
+  });
+
+  await page.waitForFunction(
+    () => document.querySelectorAll(".learned-word-replacer-token").length === 1
+  );
+  const result = await page.evaluate(() => {
+    const token = document.querySelector(".learned-word-replacer-token");
+    return {
+      text: document.body.innerText,
+      original: token?.dataset.learnedWordOriginal,
+      target: token?.dataset.learnedWordTarget
+    };
+  });
+
+  assert(
+    result.text === "These системи are reliable.",
+    `plural English word did not align to the singular entry: ${JSON.stringify(result)}`
+  );
+  assert(result.original === "systems", "plural English occurrence was not the aligned span");
+  assert(result.target === "системи", "inflected Ukrainian form was not inserted");
+  await page.close();
+}
+
+async function testAmbiguousUkrainianFormPrefersEntryWithEnglishEvidence(browser) {
+  const page = await browser.newPage();
+  const source = "They can be received by other antennas.";
+  await page.setContent(`<p>${source}</p>`);
+  await installHarness(page, {
+    state: createState([
+      // "їх" is a form of both "їхати" (go) and "вони" (they); the entry whose
+      // English word appears in the sentence must win the match.
+      { id: "e1", source: "go", target: "їхати", enabled: true, createdAt: 1 },
+      { id: "e2", source: "they", target: "вони", enabled: true, createdAt: 2 }
+    ]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === source ? "Їх можуть приймати інші антени." : "")
+    },
+    config: {
+      ukrainianLemmas: {
+        "їхати": ["їхати"],
+        "вони": ["вони"],
+        "їх": ["їхати", "вони"]
+      }
+    }
+  });
+
+  await page.waitForFunction(
+    () => document.querySelectorAll(".learned-word-replacer-token").length === 1
+  );
+  const result = await page.evaluate(() => {
+    const token = document.querySelector(".learned-word-replacer-token");
+    return {
+      text: document.body.innerText,
+      original: token?.dataset.learnedWordOriginal,
+      target: token?.dataset.learnedWordTarget
+    };
+  });
+
+  assert(
+    result.text === "Їх can be received by other antennas.",
+    `ambiguous Ukrainian form did not align through the evidenced entry: ${JSON.stringify(result)}`
+  );
+  assert(result.original === "They", "the evidenced English word was not the replaced span");
+  await page.close();
+}
+
 async function testUkrainianWordFamiliesDoNotMatchCompounds(browser) {
   const page = await browser.newPage();
   const source = "Radio navigation is useful.";
@@ -3024,6 +3198,10 @@ function testToolbarOpensSidePanel() {
   try {
     await testReplacementUsesTranslatedTokens(browser);
     await testUkrainianWordFamiliesUseTranslatedInflections(browser);
+    await testRepeatedWordReplacesEveryOccurrenceInSentence(browser);
+    await testBlocksWithInlineMarkupTranslateAllTextNodes(browser);
+    await testAmbiguousUkrainianFormPrefersEntryWithEnglishEvidence(browser);
+    await testPluralEnglishWordAlignsToSingularEntry(browser);
     await testUkrainianWordFamiliesDoNotMatchCompounds(browser);
     await testUkrainianPronounLemmaUsesChromeSurfaceForm(browser);
     await testRuntimeStatusCountsLiveReplacementSpans(browser);
