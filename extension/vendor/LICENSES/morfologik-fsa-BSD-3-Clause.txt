@@ -1,0 +1,15 @@
+Morfologik FSA code notice
+
+The Ukrainian morphology reader is derived from Morfologik FSA.
+Source: https://github.com/morfologik/morfologik-stemming
+License: BSD 3-Clause License
+
+Copyright (c) 2006-2026, Dawid Weiss and contributors.
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the copyright notice, this list of conditions and the
+following disclaimer are retained.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE, ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DAMAGES ARISING FROM THE USE OF THIS SOFTWARE.

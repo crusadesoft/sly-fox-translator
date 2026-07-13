@@ -1,3 +1,9 @@
+if (typeof importScripts === "function") {
+  importScripts("vendor/ukrainian-morphology.js");
+}
+
+const UKRAINIAN_MORPHOLOGY_PATH = "vendor/ukrainian-morphology/ukrainian.dict";
+const UKRAINIAN_LEMMA_REQUEST = "LWR_LOOKUP_UK_LEMMAS";
 const BLOCKED_STATUSES = new Set([
   "no-translator",
   "translator-unavailable",
@@ -9,6 +15,8 @@ const WORKING_STATUSES = new Set([
   "translator-preparing",
   "translating"
 ]);
+let ukrainianMorphologyPromise = null;
+const ukrainianLemmaCache = new Map();
 
 if (chrome.sidePanel?.setPanelBehavior) {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
@@ -17,7 +25,14 @@ if (chrome.sidePanel?.setPanelBehavior) {
 chrome.runtime.onStartup?.addListener(restoreOpenTabContentScripts);
 chrome.runtime.onInstalled?.addListener(restoreOpenTabContentScripts);
 
-chrome.runtime.onMessage.addListener((message, sender) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === UKRAINIAN_LEMMA_REQUEST) {
+    lookupUkrainianLemmas(message.words)
+      .then((lemmas) => sendResponse({ ok: true, lemmas }))
+      .catch((error) => sendResponse({ ok: false, error: error?.message || "Lemma lookup failed." }));
+    return true;
+  }
+
   if (
     !message ||
     message.type !== "LWR_STATUS" ||
@@ -33,6 +48,50 @@ chrome.runtime.onMessage.addListener((message, sender) => {
 
   updateBadge(sender.tab.id, message.status || {});
 });
+
+async function lookupUkrainianLemmas(words) {
+  const uniqueWords = Array.from(
+    new Set(
+      (Array.isArray(words) ? words : [])
+        .map((word) => String(word || "").trim().toLocaleLowerCase("uk"))
+        .filter((word) => word && word.length <= 96)
+    )
+  ).slice(0, 600);
+  const missingWords = uniqueWords.filter((word) => !ukrainianLemmaCache.has(word));
+
+  if (missingWords.length) {
+    const morphology = await getUkrainianMorphology();
+    for (const word of missingWords) {
+      ukrainianLemmaCache.set(word, morphology.lookup(word));
+    }
+  }
+
+  return Object.fromEntries(uniqueWords.map((word) => [word, ukrainianLemmaCache.get(word) || []]));
+}
+
+function getUkrainianMorphology() {
+  if (!ukrainianMorphologyPromise) {
+    ukrainianMorphologyPromise = loadUkrainianMorphology().catch((error) => {
+      ukrainianMorphologyPromise = null;
+      throw error;
+    });
+  }
+
+  return ukrainianMorphologyPromise;
+}
+
+async function loadUkrainianMorphology() {
+  if (!globalThis.LWRUkrainianMorphology) {
+    throw new Error("Ukrainian morphology reader is unavailable.");
+  }
+
+  const response = await fetch(chrome.runtime.getURL(UKRAINIAN_MORPHOLOGY_PATH));
+  if (!response.ok) {
+    throw new Error("Ukrainian morphology dictionary could not be loaded.");
+  }
+
+  return globalThis.LWRUkrainianMorphology.create(await response.arrayBuffer());
+}
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.status === "loading") {

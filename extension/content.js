@@ -169,6 +169,7 @@
   let scrollListenerInstalled = false;
   let pageActivationListenerInstalled = false;
   const translationCache = new Map();
+  const ukrainianLemmaCache = new Map();
   let processedBlockSourceTexts = new WeakMap();
   let pendingContextBlocks = new Map();
   let runtimeStats = createRuntimeStats();
@@ -512,7 +513,6 @@
   }
 
   function compileEntries() {
-    const targetLanguage = getCurrentLanguageCode();
     compiledEntries = getCurrentEntries()
       .filter((entry) => state.enabled && entry.enabled)
       .map((entry) => {
@@ -521,7 +521,6 @@
         return {
           ...entry,
           targetCandidates,
-          targetWordFamilyKeys: buildTargetWordFamilyKeys(targetCandidates, targetLanguage),
           sourceCandidates
         };
       })
@@ -557,35 +556,6 @@
 
   function hasTargetAlternativeSeparator(target) {
     return /\s\/\s|;/.test(String(target || ""));
-  }
-
-  function buildTargetWordFamilyKeys(targetCandidates, languageCode) {
-    const keys = new Set();
-
-    for (const candidate of targetCandidates) {
-      const key = getTargetWordFamilyKey(candidate, languageCode);
-      if (key) {
-        keys.add(key);
-      }
-    }
-
-    return Array.from(keys);
-  }
-
-  function getTargetWordFamilyKey(value, languageCode = getCurrentLanguageCode()) {
-    if (languageCode !== "uk" || typeof globalThis.LWRUkrainianStemmer !== "function") {
-      return "";
-    }
-
-    const word = String(value || "").trim();
-    const tokens = getReplaceableSourceTokens(word);
-    if (tokens.length !== 1 || tokens[0].value !== word) {
-      return "";
-    }
-
-    const stem = String(globalThis.LWRUkrainianStemmer(word) || "").trim();
-    // Short stems collide too easily for a whitelist that changes page text.
-    return stem.length >= 4 ? stem.toLocaleLowerCase("uk") : "";
   }
 
   function buildSourceAlignmentCandidates(entry) {
@@ -2196,7 +2166,7 @@
     runId
   ) {
     const sourceText = unit.text.slice(sourceRange.start, sourceRange.end);
-    const whitelistMatches = findWhitelistMatchesInText(translatedText);
+    const whitelistMatches = await findWhitelistMatchesInText(translatedText, targetLanguage);
     const learnedReplacements = whitelistMatches.length
       ? await getAlignedSentenceReplacements(
           translator,
@@ -2420,7 +2390,9 @@
       }
 
       const { tokenIndex } = deletionItems[index];
-      const deletionCounts = countMatchesByTargetKey(findWhitelistMatchesInText(translatedDeletion));
+      const deletionCounts = countMatchesByTargetKey(
+        await findWhitelistMatchesInText(translatedDeletion, targetLanguage)
+      );
       for (const [targetKey, baselineCount] of baselineCounts.entries()) {
         const deletionCount = deletionCounts.get(targetKey) || 0;
         if (deletionCount >= baselineCount) {
@@ -2489,7 +2461,7 @@
           }
         );
         const deletionCounts = countMatchesByTargetKey(
-          findWhitelistMatchesInText(translatedDeletion)
+          await findWhitelistMatchesInText(translatedDeletion, targetLanguage)
         );
         if ((deletionCounts.get(targetKey) || 0) < baselineCount) {
           refinedCandidates.push(candidate);
@@ -2616,16 +2588,20 @@
     );
   }
 
-  function findWhitelistMatchesInText(translatedText) {
+  async function findWhitelistMatchesInText(translatedText, targetLanguage) {
     const seen = new Set();
+    const exactMatches = compiledEntries.flatMap((entry) =>
+      findTargetCandidateMatches(translatedText, entry).map((match) => ({
+        ...match,
+        entry
+      }))
+    );
+    const wordFamilyMatches =
+      targetLanguage === "uk"
+        ? await findUkrainianWordFamilyMatchesInText(translatedText)
+        : [];
 
-    return compiledEntries
-      .flatMap((entry) =>
-        findTargetCandidateMatches(translatedText, entry).map((match) => ({
-          ...match,
-          entry
-        }))
-      )
+    return [...exactMatches, ...wordFamilyMatches]
       .sort((a, b) => a.index - b.index || b.target.length - a.target.length)
       .filter((match) => {
         const key = `${match.index}:${match.target.toLocaleLowerCase()}`;
@@ -2639,34 +2615,128 @@
   }
 
   function findTargetCandidateMatches(translatedText, entry) {
-    const exactMatches = entry.targetCandidates
+    return entry.targetCandidates
       .flatMap((candidate) => findTargetCandidateMatchesInText(translatedText, candidate))
       .sort((a, b) => a.index - b.index || b.target.length - a.target.length);
-    const exactMatchKeys = new Set(
-      exactMatches.map((match) => `${match.index}:${getTargetKey(match.target)}`)
-    );
-    const familyMatches = findTargetWordFamilyMatchesInText(translatedText, entry).filter(
-      (match) => !exactMatchKeys.has(`${match.index}:${getTargetKey(match.target)}`)
-    );
-
-    return [...exactMatches, ...familyMatches].sort(
-      (a, b) => a.index - b.index || b.target.length - a.target.length
-    );
   }
 
-  function findTargetWordFamilyMatchesInText(translatedText, entry) {
-    if (!Array.isArray(entry.targetWordFamilyKeys) || !entry.targetWordFamilyKeys.length) {
+  async function findUkrainianWordFamilyMatchesInText(translatedText) {
+    const translatedTokens = getReplaceableSourceTokens(translatedText);
+    const targetTerms = getSingleWordTargetTerms();
+    if (!translatedTokens.length || !targetTerms.length) {
       return [];
     }
 
-    const familyKeys = new Set(entry.targetWordFamilyKeys);
-    return getReplaceableSourceTokens(translatedText)
-      .filter((token) => familyKeys.has(getTargetWordFamilyKey(token.value)))
-      .map((token) => ({
-        index: token.start,
-        target: token.value,
-        kind: WORD_FAMILY_MATCH_KIND
-      }));
+    const lemmasByWord = await getUkrainianLemmas([
+      ...translatedTokens.map((token) => token.value),
+      ...targetTerms.map((term) => term.value)
+    ]);
+    const entriesByLemma = new Map();
+
+    for (const term of targetTerms) {
+      for (const lemma of lemmasByWord.get(normalizeUkrainianMorphologyWord(term.value)) || []) {
+        if (!entriesByLemma.has(lemma)) {
+          entriesByLemma.set(lemma, []);
+        }
+
+        entriesByLemma.get(lemma).push(term.entry);
+      }
+    }
+
+    const matches = [];
+    for (const token of translatedTokens) {
+      const tokenLemmas = lemmasByWord.get(normalizeUkrainianMorphologyWord(token.value)) || [];
+      for (const lemma of tokenLemmas) {
+        for (const entry of entriesByLemma.get(lemma) || []) {
+          matches.push({
+            index: token.start,
+            target: token.value,
+            kind: WORD_FAMILY_MATCH_KIND,
+            entry
+          });
+        }
+      }
+    }
+
+    return matches;
+  }
+
+  function getSingleWordTargetTerms() {
+    return compiledEntries.flatMap((entry) =>
+      entry.targetCandidates
+        .map((candidate) => String(candidate || "").trim())
+        .filter((candidate) => {
+          const tokens = getReplaceableSourceTokens(candidate);
+          return tokens.length === 1 && tokens[0].value === candidate;
+        })
+        .map((value) => ({ entry, value }))
+    );
+  }
+
+  async function getUkrainianLemmas(words) {
+    const normalizedWords = Array.from(
+      new Set(words.map(normalizeUkrainianMorphologyWord).filter(Boolean))
+    );
+    const missingWords = normalizedWords.filter((word) => !ukrainianLemmaCache.has(word));
+
+    if (missingWords.length) {
+      const received = await requestUkrainianLemmas(missingWords);
+      for (const word of missingWords) {
+        ukrainianLemmaCache.set(word, received.get(word) || []);
+      }
+    }
+
+    return new Map(normalizedWords.map((word) => [word, ukrainianLemmaCache.get(word) || []]));
+  }
+
+  async function requestUkrainianLemmas(words) {
+    const configuredLemmas = getRuntimeConfig().ukrainianLemmas;
+    if (configuredLemmas && typeof configuredLemmas === "object") {
+      return new Map(
+        words.map((word) => [
+          word,
+          Array.isArray(configuredLemmas[word]) ? configuredLemmas[word] : []
+        ])
+      );
+    }
+
+    if (!globalThis.chrome?.runtime?.sendMessage) {
+      return new Map();
+    }
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const timeout = setTimeout(() => finish(), 3000);
+      const finish = (response) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        clearTimeout(timeout);
+        const lemmas = response?.ok && response.lemmas && typeof response.lemmas === "object"
+          ? response.lemmas
+          : {};
+        resolve(
+          new Map(
+            words.map((word) => [
+              word,
+              Array.isArray(lemmas[word]) ? lemmas[word] : []
+            ])
+          )
+        );
+      };
+
+      try {
+        chrome.runtime.sendMessage({ type: "LWR_LOOKUP_UK_LEMMAS", words }, finish);
+      } catch (error) {
+        finish();
+      }
+    });
+  }
+
+  function normalizeUkrainianMorphologyWord(word) {
+    return String(word || "").trim().toLocaleLowerCase("uk");
   }
 
   function findTargetCandidateMatchesInText(translatedText, candidate) {

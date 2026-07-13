@@ -1,0 +1,8 @@
+Morfologik Ukrainian Search Dictionary notice
+
+Source: https://github.com/brown-uk/dict_uk
+Artifact: ua.net.nlp:morfologik-ukrainian-search 4.9.1
+License: Apache License 2.0
+
+The dictionary contains lower-case Ukrainian word forms and their lemmas.
+See https://www.apache.org/licenses/LICENSE-2.0 for the full license text.
