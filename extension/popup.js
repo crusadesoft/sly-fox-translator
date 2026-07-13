@@ -185,6 +185,7 @@ let vocabularySection = "duolingo";
 let appSection = "vocabulary";
 let activeTabStatusRequestId = 0;
 let duolingoAvailabilityRequestId = 0;
+const contentScriptInjectionPromises = new Map();
 
 function createId() {
   if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
@@ -1653,18 +1654,7 @@ function refreshOpenTabs() {
         continue;
       }
 
-      try {
-        const injection = chrome.scripting.executeScript({
-          target: { tabId: tab.id, allFrames: true },
-          files: ["content.js"]
-        });
-
-        if (injection && typeof injection.catch === "function") {
-          injection.catch(() => {});
-        }
-      } catch (error) {
-        // Restricted pages such as chrome:// URLs cannot receive content scripts.
-      }
+      injectContentScripts(tab, { allFrames: true });
     }
   });
 }
@@ -2134,7 +2124,7 @@ async function syncFromDuolingo() {
   setDuolingoSyncStatus("Loading all learned words from Duolingo...");
 
   try {
-    const response = await sendTabMessage(existingTab, { type: "LWR_SYNC_DUOLINGO" });
+    const response = await sendTabMessageWithRecovery(existingTab, { type: "LWR_SYNC_DUOLINGO" });
     if (!response.ok) {
       throw new Error(response.reason || "Could not read Duolingo's learned words.");
     }
@@ -2221,7 +2211,7 @@ async function openSidePanelForTab(tab) {
 
 function sendActiveTabMessage(message) {
   return getActiveTab().then(
-    (tab) => sendTabMessage(tab, message)
+    (tab) => sendTabMessageWithRecovery(tab, message)
   );
 }
 
@@ -2241,6 +2231,67 @@ function sendTabMessage(tab, message) {
       resolve(response || { ok: false, reason: "No response from content script." });
     });
   });
+}
+
+function isMissingContentScriptReceiver(response) {
+  return (
+    !response?.ok &&
+    /could not establish connection|receiving end does not exist|no response from content script/i.test(
+      String(response?.reason || "")
+    )
+  );
+}
+
+async function injectContentScripts(tab, options = {}) {
+  if (!tab?.id || !isInjectableTabUrl(tab.url) || !chrome.scripting) {
+    return false;
+  }
+
+  const target = { tabId: tab.id };
+  if (options.allFrames) {
+    target.allFrames = true;
+  }
+
+  try {
+    await chrome.scripting.executeScript({
+      target,
+      world: "MAIN",
+      files: ["page-translator-bridge.js"]
+    });
+    await chrome.scripting.executeScript({
+      target,
+      files: ["content.js"]
+    });
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+function ensureContentScripts(tab) {
+  if (!tab?.id) {
+    return Promise.resolve(false);
+  }
+
+  const existing = contentScriptInjectionPromises.get(tab.id);
+  if (existing) {
+    return existing;
+  }
+
+  const injection = injectContentScripts(tab).finally(() => {
+    contentScriptInjectionPromises.delete(tab.id);
+  });
+  contentScriptInjectionPromises.set(tab.id, injection);
+  return injection;
+}
+
+async function sendTabMessageWithRecovery(tab, message) {
+  const response = await sendTabMessage(tab, message);
+  if (!isMissingContentScriptReceiver(response) || !(await ensureContentScripts(tab))) {
+    return response;
+  }
+
+  return sendTabMessage(tab, message);
 }
 
 async function prepareActiveTabTranslator(tab) {
@@ -2318,7 +2369,7 @@ async function refreshActiveTabStatus() {
   }
 
   renderDoNotTranslateActions(tab);
-  const response = await sendTabMessage(tab, { type: "LWR_GET_STATUS" });
+  const response = await sendTabMessageWithRecovery(tab, { type: "LWR_GET_STATUS" });
   if (requestId !== activeTabStatusRequestId) {
     return;
   }
@@ -2354,7 +2405,7 @@ async function retryActiveTab() {
 
   const tab = await getActiveTab();
   await prepareActiveTabTranslator(tab);
-  const response = await sendTabMessage(tab, { type: "LWR_RETRY" });
+  const response = await sendTabMessageWithRecovery(tab, { type: "LWR_RETRY" });
 
   if (!response.ok) {
     renderRuntimeStatus({ reason: response.reason }, "unavailable");
@@ -2557,16 +2608,16 @@ function renderRuntimeStatus(status, displayState = "") {
   if (status.status === "translating") {
     const elapsed = formatDuration(getRuntimeDurationMs(status, { includeRunning: true }));
     const elapsedText = elapsed ? ` for ${elapsed}` : "";
-    elements.runtimeStatus.textContent = `Translating visible page text${elapsedText}. ${status.translationCalls || 0} translation call${status.translationCalls === 1 ? "" : "s"} so far.`;
+    elements.runtimeStatus.textContent = `Translating page text as you browse${elapsedText}. ${status.translationCalls || 0} translation call${status.translationCalls === 1 ? "" : "s"} so far.`;
     return;
   }
 
   if (replacementCount > 0) {
-    elements.runtimeStatus.textContent = `${replacementCount} replacement${replacementCount === 1 ? "" : "s"} on visible page text.${getFinishedDurationText(status)}`;
+    elements.runtimeStatus.textContent = `${replacementCount} replacement${replacementCount === 1 ? "" : "s"} on page text processed so far.${getFinishedDurationText(status)}`;
     return;
   }
 
-  const fallbackText = status.lastError || "No matching learned words found in visible page text.";
+  const fallbackText = status.lastError || "No matching learned words found in page text processed so far.";
   elements.runtimeStatus.textContent = `${fallbackText}${getFinishedDurationText(status)}`;
 }
 

@@ -14,6 +14,9 @@ if (chrome.sidePanel?.setPanelBehavior) {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 }
 
+chrome.runtime.onStartup?.addListener(restoreOpenTabContentScripts);
+chrome.runtime.onInstalled?.addListener(restoreOpenTabContentScripts);
+
 chrome.runtime.onMessage.addListener((message, sender) => {
   if (
     !message ||
@@ -40,6 +43,40 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 chrome.tabs.onRemoved.addListener((tabId) => {
   clearBadge(tabId);
 });
+
+function restoreOpenTabContentScripts() {
+  if (!chrome.tabs?.query || !chrome.scripting?.executeScript) {
+    return;
+  }
+
+  chrome.tabs.query({}, (tabs) => {
+    for (const tab of tabs || []) {
+      if (!tab.id || !/^(https?:|file:)/.test(String(tab.url || ""))) {
+        continue;
+      }
+
+      injectScripts(tab.id);
+    }
+  });
+}
+
+async function injectScripts(tabId) {
+  const target = { tabId, allFrames: true };
+
+  try {
+    await chrome.scripting.executeScript({
+      target,
+      world: "MAIN",
+      files: ["page-translator-bridge.js"]
+    });
+    await chrome.scripting.executeScript({
+      target,
+      files: ["content.js"]
+    });
+  } catch (error) {
+    // Tabs can navigate or close while an extension reload is restoring scripts.
+  }
+}
 
 function updateBadge(tabId, status) {
   if (!status.enabled || status.status === "disabled" || status.status === "no-active-entries") {

@@ -2071,6 +2071,8 @@ async function testPopupStatusPanel(browser) {
     let retryStarted = false;
     let statusMode = "not-ready";
     let openedDuolingoUrl = "";
+    let hasContentScriptReceiver = false;
+    const injectedScripts = [];
     const notReady = {
       status: "translator-not-ready",
       targetLanguage: "uk",
@@ -2139,6 +2141,14 @@ async function testPopupStatusPanel(browser) {
           }
 
           window.__lastSendMessageOptions = options;
+          if (!hasContentScriptReceiver) {
+            window.chrome.runtime.lastError = {
+              message: "Could not establish connection. Receiving end does not exist."
+            };
+            callback();
+            window.chrome.runtime.lastError = null;
+            return;
+          }
           if (message.type === "LWR_RETRY") {
             retryStarted = true;
             callback({ ok: true, status: preparing });
@@ -2149,9 +2159,20 @@ async function testPopupStatusPanel(browser) {
         create(options) {
           openedDuolingoUrl = options.url || "";
         }
+      },
+      scripting: {
+        executeScript(options) {
+          injectedScripts.push({
+            files: [...(options.files || [])],
+            world: options.world || "ISOLATED"
+          });
+          hasContentScriptReceiver = true;
+          return Promise.resolve([]);
+        }
       }
     };
     window.__openedDuolingoUrl = () => openedDuolingoUrl;
+    window.__injectedScripts = () => injectedScripts;
     window.__setPopupStatusMode = (mode) => {
       statusMode = mode;
     };
@@ -2236,6 +2257,15 @@ async function testPopupStatusPanel(browser) {
     "manual target field did not use the selected language and example"
   );
   assert(before.retry.label === "Retry current page", "retry button is missing its accessible label");
+  const recoveredScripts = await page.evaluate(() => window.__injectedScripts());
+  assert(
+    JSON.stringify(recoveredScripts) ===
+      JSON.stringify([
+        { files: ["page-translator-bridge.js"], world: "MAIN" },
+        { files: ["content.js"], world: "ISOLATED" }
+      ]),
+    "popup did not restore missing content scripts before reading page status"
+  );
   assert(before.retry.hasIcon && before.retry.inHeader, "retry button was not moved to the header");
   assert(!before.retry.nestedInStatus, "retry button is still nested in the page status panel");
   assert(before.retry.tone === "attention", "retry did not highlight the page activation state");
@@ -2509,6 +2539,80 @@ function testBackgroundBadge() {
   );
 }
 
+async function testBackgroundRestoresOpenTabContentScripts() {
+  const code = fs.readFileSync(BACKGROUND_SCRIPT, "utf8");
+  const injections = [];
+  let startupListener = null;
+  let installedListener = null;
+  const context = {
+    chrome: {
+      sidePanel: {
+        setPanelBehavior() {
+          return { catch() {} };
+        }
+      },
+      runtime: {
+        onMessage: { addListener() {} },
+        onStartup: {
+          addListener(listener) {
+            startupListener = listener;
+          }
+        },
+        onInstalled: {
+          addListener(listener) {
+            installedListener = listener;
+          }
+        }
+      },
+      tabs: {
+        onUpdated: { addListener() {} },
+        onRemoved: { addListener() {} },
+        query(query, callback) {
+          callback([
+            { id: 3, url: "https://en.wikipedia.org/wiki/Radio" },
+            { id: 4, url: "chrome://extensions" }
+          ]);
+        }
+      },
+      scripting: {
+        executeScript(options) {
+          injections.push(options);
+          return Promise.resolve([]);
+        }
+      },
+      action: {
+        setBadgeText() {},
+        setBadgeBackgroundColor() {},
+        setTitle() {}
+      }
+    }
+  };
+
+  vm.createContext(context);
+  vm.runInContext(code, context);
+  assert(typeof startupListener === "function", "background did not register startup restoration");
+  assert(typeof installedListener === "function", "background did not register update restoration");
+
+  startupListener();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  assert(
+    JSON.stringify(injections) ===
+      JSON.stringify([
+        {
+          target: { tabId: 3, allFrames: true },
+          world: "MAIN",
+          files: ["page-translator-bridge.js"]
+        },
+        {
+          target: { tabId: 3, allFrames: true },
+          files: ["content.js"]
+        }
+      ]),
+    "background did not restore the bridge and content script into existing web tabs"
+  );
+}
+
 function testBackgroundBadgeIgnoresMissingTabs() {
   const code = fs.readFileSync(BACKGROUND_SCRIPT, "utf8");
   let messageListener = null;
@@ -2641,6 +2745,7 @@ function testToolbarOpensSidePanel() {
     await testPopupStatusPanel(browser);
     testVendoredLucideIcons();
     testBackgroundBadge();
+    await testBackgroundRestoresOpenTabContentScripts();
     testBackgroundBadgeIgnoresMissingTabs();
     testToolbarOpensSidePanel();
     console.log("extension runtime tests passed");
