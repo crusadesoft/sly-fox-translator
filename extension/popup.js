@@ -1841,7 +1841,10 @@ async function importEntries() {
 }
 
 function exportEntries(origin = "") {
-  const entries = sortEntries(origin ? getEntriesForSection(origin) : getCurrentEntries());
+  const exportOrigin = origin === "manual" ? "manual" : "";
+  const entries = sortEntries(
+    exportOrigin ? getEntriesForSection(exportOrigin) : getCurrentEntries()
+  );
   const hasDefinitions = entries.some((entry) => entry.definition);
 
   const csv = entries
@@ -1859,13 +1862,13 @@ function exportEntries(origin = "") {
   const profileName = getCurrentProfile().name || "profile";
 
   link.href = url;
-  link.download = `${slugifyFilename(profileName)}-${origin || "vocabulary"}.csv`;
+  link.download = `${slugifyFilename(profileName)}-${exportOrigin || "vocabulary"}.csv`;
   document.body.appendChild(link);
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
   setImportStatus(
-    `Downloaded ${entries.length} ${origin || "vocabulary"} entr${entries.length === 1 ? "y" : "ies"}.`,
+    `Downloaded ${entries.length} ${exportOrigin || "vocabulary"} entr${entries.length === 1 ? "y" : "ies"}.`,
     "success"
   );
 }
@@ -2779,7 +2782,7 @@ elements.bulkFile.addEventListener("change", () => {
   }
 });
 elements.importButton.addEventListener("click", importEntries);
-elements.exportButton.addEventListener("click", exportEntries);
+elements.exportButton.addEventListener("click", () => exportEntries());
 elements.importManualButton.addEventListener("click", importManualEntries);
 elements.exportManualButton.addEventListener("click", () => exportEntries("manual"));
 elements.clearAllButton.addEventListener("click", clearAllEntries);

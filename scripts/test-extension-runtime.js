@@ -61,6 +61,18 @@ function testVendoredLucideIcons() {
   }
 }
 
+function testFullExportDoesNotUseClickEventAsFilter() {
+  const popupScript = fs.readFileSync(POPUP_SCRIPT, "utf8");
+  assert(
+    popupScript.includes('elements.exportButton.addEventListener("click", () => exportEntries());'),
+    "all-vocabulary export passes its click event to the export filter"
+  );
+  assert(
+    popupScript.includes('const exportOrigin = origin === "manual" ? "manual" : "";'),
+    "export filter accepts arbitrary values instead of only the manual scope"
+  );
+}
+
 async function installHarness(page, { state, translator, config = {} }) {
   await page.evaluate(
     ({ savedState, testConfig }) => {
@@ -2874,6 +2886,7 @@ function testToolbarOpensSidePanel() {
     await testSidePanelUsesCompactVocabularyList(browser);
     await testPopupStatusPanel(browser);
     testVendoredLucideIcons();
+    testFullExportDoesNotUseClickEventAsFilter();
     testBackgroundBadge();
     await testBackgroundRestoresOpenTabContentScripts();
     testBackgroundBadgeIgnoresMissingTabs();
