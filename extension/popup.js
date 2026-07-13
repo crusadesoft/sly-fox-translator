@@ -2612,6 +2612,7 @@ function renderRuntimeStatus(status, displayState = "") {
   }
 
   const replacementCount = Number(status.replacementCount || 0);
+  const wordFamilyReplacementCount = Number(status.wordFamilyReplacementCount || 0);
   const target = getLanguageDisplayName(status.targetLanguage);
 
   if (status.status === "excluded") {
@@ -2661,7 +2662,7 @@ function renderRuntimeStatus(status, displayState = "") {
   }
 
   if (replacementCount > 0) {
-    elements.runtimeStatus.textContent = `${replacementCount} replacement${replacementCount === 1 ? "" : "s"} on page text processed so far.${getFinishedDurationText(status)}`;
+    elements.runtimeStatus.textContent = `${replacementCount} replacement${replacementCount === 1 ? "" : "s"} on page text processed so far, including ${wordFamilyReplacementCount} inflected word form${wordFamilyReplacementCount === 1 ? "" : "s"}.${getFinishedDurationText(status)}`;
     return;
   }
 

@@ -284,7 +284,8 @@ async function testUkrainianWordFamiliesUseTranslatedInflections(browser) {
     return {
       text: document.body.innerText,
       original: token?.dataset.learnedWordOriginal,
-      target: token?.dataset.learnedWordTarget
+      target: token?.dataset.learnedWordTarget,
+      kind: token?.dataset.learnedWordMatchKind
     };
   });
 
@@ -294,6 +295,7 @@ async function testUkrainianWordFamiliesUseTranslatedInflections(browser) {
   );
   assert(result.original === "machine", "word-family match aligned the wrong English word");
   assert(result.target === "Машину", "word-family match did not retain Chrome's surface form");
+  assert(result.kind === "word-family", "word-family match was not identified in page status");
   await page.close();
 }
 
@@ -2270,6 +2272,7 @@ async function testPopupStatusPanel(browser) {
       targetLanguage: "uk",
       translatorAvailability: "available",
       replacementCount: 3,
+      wordFamilyReplacementCount: 2,
       enabled: true,
       lastError: "",
       startedAt: 1000,
@@ -2667,6 +2670,7 @@ async function testPopupStatusPanel(browser) {
       status: "complete",
       targetLanguage: "uk",
       replacementCount: 3,
+      wordFamilyReplacementCount: 2,
       enabled: true,
       startedAt: 1000,
       finishedAt: 2500
@@ -2686,6 +2690,7 @@ async function testPopupStatusPanel(browser) {
   assert(!before.retryDisabled, "retry should be enabled for blocked translator state");
   assert(after.state === "ok", "popup did not show successful retry state");
   assert(after.text.includes("3 replacements"), "popup did not show replacement count");
+  assert(after.text.includes("2 inflected word forms"), "popup did not show inflected word-form count");
   assert(after.text.includes("Finished in 1.5s"), "popup did not show translation duration");
   assert(after.sendMessageOptions?.frameId === 0, "popup should message the top frame");
   await page.close();

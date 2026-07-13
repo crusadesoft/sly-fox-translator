@@ -4,6 +4,7 @@
   const REPLACEMENT_CLASS = "learned-word-replacer-token";
   const PROCESSED_BLOCK_CLASS = "learned-word-replacer-checked";
   const REVERSE_HOVER_TOOLTIP_CLASS = "learned-word-replacer-hover-tooltip";
+  const WORD_FAMILY_MATCH_KIND = "word-family";
   const STYLE_ID = "learned-word-replacer-style";
   const SOURCE_LANGUAGE = "en";
   const MAX_TRANSLATION_CACHE_ENTRIES = 400;
@@ -229,6 +230,7 @@
       unitsSkipped: 0,
       translationCalls: 0,
       replacementCount: 0,
+      wordFamilyReplacementCount: 0,
       lastError: "",
       ...overrides
     };
@@ -252,10 +254,14 @@
     const replacementCount = document.body
       ? countExistingReplacements(document)
       : runtimeStats.replacementCount;
+    const wordFamilyReplacementCount = document.body
+      ? countExistingWordFamilyReplacements(document)
+      : runtimeStats.wordFamilyReplacementCount;
 
     return {
       ...runtimeStats,
       replacementCount,
+      wordFamilyReplacementCount,
       cacheKey: translatorCacheKey,
       hasTranslator: Boolean(translatorCache),
       activeEntries: compiledEntries.length,
@@ -1155,6 +1161,7 @@
         original,
         source: original,
         target: range.target,
+        kind: range.kind,
         value: range.target
       });
 
@@ -1177,7 +1184,8 @@
       .map((range) => ({
         start: Math.max(0, Number(range.start) || 0),
         end: Math.max(0, Number(range.end) || 0),
-        target: String(range.target || "").trim()
+        target: String(range.target || "").trim(),
+        kind: range.kind === WORD_FAMILY_MATCH_KIND ? WORD_FAMILY_MATCH_KIND : "exact"
       }))
       .filter((range) => range.start < range.end && range.target)
       .sort((a, b) => a.start - b.start || b.end - a.end);
@@ -1208,6 +1216,7 @@
       span.dataset.learnedWordOriginal = part.original;
       span.dataset.learnedWordSource = part.source;
       span.dataset.learnedWordTarget = part.target;
+      span.dataset.learnedWordMatchKind = part.kind || "exact";
       span.textContent = part.value;
       if (state.showOriginalOnHover) {
         span.title = `${part.original} -> ${part.target}`;
@@ -1301,10 +1310,12 @@
 
       const parts = buildReplacementPartsForRanges(node.nodeValue, ranges);
       if (parts) {
+        const replacementParts = parts.filter((part) => part.type === "replacement");
         updateRuntimeStats({
-          replacementCount:
-            runtimeStats.replacementCount +
-            parts.filter((part) => part.type === "replacement").length
+          replacementCount: runtimeStats.replacementCount + replacementParts.length,
+          wordFamilyReplacementCount:
+            runtimeStats.wordFamilyReplacementCount +
+            replacementParts.filter((part) => part.kind === WORD_FAMILY_MATCH_KIND).length
         });
         replaceTextNodeWithParts(node, parts);
       }
@@ -2272,7 +2283,8 @@
         replacements.push({
           start: candidate.start,
           end: candidate.end,
-          target: match.target
+          target: match.target,
+          kind: match.kind
         });
         resolvedMatchIds.add(match.alignmentId);
         usedRanges.push({ start: candidate.start, end: candidate.end });
@@ -2581,7 +2593,8 @@
         replacements.push({
           start: token.start,
           end: token.end,
-          target: matches[index].target
+          target: matches[index].target,
+          kind: matches[index].kind
         });
       }
     }
@@ -2651,7 +2664,8 @@
       .filter((token) => familyKeys.has(getTargetWordFamilyKey(token.value)))
       .map((token) => ({
         index: token.start,
-        target: token.value
+        target: token.value,
+        kind: WORD_FAMILY_MATCH_KIND
       }));
   }
 
@@ -2665,7 +2679,8 @@
       if (passesTargetBoundaryCheck(translatedText, index, candidate.length)) {
         matches.push({
           index,
-          target: translatedText.slice(index, index + candidate.length)
+          target: translatedText.slice(index, index + candidate.length),
+          kind: "exact"
         });
       }
 
@@ -2795,6 +2810,22 @@
     }
 
     return root.querySelectorAll ? root.querySelectorAll(`.${REPLACEMENT_CLASS}`).length : 0;
+  }
+
+  function countExistingWordFamilyReplacements(root = document) {
+    if (
+      root.nodeType === Node.ELEMENT_NODE &&
+      root.classList.contains(REPLACEMENT_CLASS) &&
+      root.dataset.learnedWordMatchKind === WORD_FAMILY_MATCH_KIND
+    ) {
+      return 1;
+    }
+
+    return root.querySelectorAll
+      ? root.querySelectorAll(
+          `.${REPLACEMENT_CLASS}[data-learned-word-match-kind="${WORD_FAMILY_MATCH_KIND}"]`
+        ).length
+      : 0;
   }
 
   function hasExistingReplacements(root) {
@@ -3031,7 +3062,10 @@
         status: "starting",
         startedAt: Date.now(),
         targetLanguage: getCurrentLanguageCode(),
-        replacementCount: options.preserveExisting ? countExistingReplacements(document) : 0
+        replacementCount: options.preserveExisting ? countExistingReplacements(document) : 0,
+        wordFamilyReplacementCount: options.preserveExisting
+          ? countExistingWordFamilyReplacements(document)
+          : 0
       });
       compileEntries();
 
