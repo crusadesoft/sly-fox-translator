@@ -1,0 +1,9 @@
+Ukrainian word-family stemmer
+
+Copyright (c) Constantin Titarenko
+
+This file is derived from ukrstemmer 0.1.0, ported from Drupal's ukstemmer
+project, and is licensed under GNU General Public License version 2 only.
+
+Source: https://github.com/titarenko/ukrstemmer
+License text: https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html

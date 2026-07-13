@@ -506,6 +506,7 @@
   }
 
   function compileEntries() {
+    const targetLanguage = getCurrentLanguageCode();
     compiledEntries = getCurrentEntries()
       .filter((entry) => state.enabled && entry.enabled)
       .map((entry) => {
@@ -514,6 +515,7 @@
         return {
           ...entry,
           targetCandidates,
+          targetWordFamilyKeys: buildTargetWordFamilyKeys(targetCandidates, targetLanguage),
           sourceCandidates
         };
       })
@@ -549,6 +551,35 @@
 
   function hasTargetAlternativeSeparator(target) {
     return /\s\/\s|;/.test(String(target || ""));
+  }
+
+  function buildTargetWordFamilyKeys(targetCandidates, languageCode) {
+    const keys = new Set();
+
+    for (const candidate of targetCandidates) {
+      const key = getTargetWordFamilyKey(candidate, languageCode);
+      if (key) {
+        keys.add(key);
+      }
+    }
+
+    return Array.from(keys);
+  }
+
+  function getTargetWordFamilyKey(value, languageCode = getCurrentLanguageCode()) {
+    if (languageCode !== "uk" || typeof globalThis.LWRUkrainianStemmer !== "function") {
+      return "";
+    }
+
+    const word = String(value || "").trim();
+    const tokens = getReplaceableSourceTokens(word);
+    if (tokens.length !== 1 || tokens[0].value !== word) {
+      return "";
+    }
+
+    const stem = String(globalThis.LWRUkrainianStemmer(word) || "").trim();
+    // Short stems collide too easily for a whitelist that changes page text.
+    return stem.length >= 4 ? stem.toLocaleLowerCase("uk") : "";
   }
 
   function buildSourceAlignmentCandidates(entry) {
@@ -2595,9 +2626,33 @@
   }
 
   function findTargetCandidateMatches(translatedText, entry) {
-    return entry.targetCandidates
+    const exactMatches = entry.targetCandidates
       .flatMap((candidate) => findTargetCandidateMatchesInText(translatedText, candidate))
       .sort((a, b) => a.index - b.index || b.target.length - a.target.length);
+    const exactMatchKeys = new Set(
+      exactMatches.map((match) => `${match.index}:${getTargetKey(match.target)}`)
+    );
+    const familyMatches = findTargetWordFamilyMatchesInText(translatedText, entry).filter(
+      (match) => !exactMatchKeys.has(`${match.index}:${getTargetKey(match.target)}`)
+    );
+
+    return [...exactMatches, ...familyMatches].sort(
+      (a, b) => a.index - b.index || b.target.length - a.target.length
+    );
+  }
+
+  function findTargetWordFamilyMatchesInText(translatedText, entry) {
+    if (!Array.isArray(entry.targetWordFamilyKeys) || !entry.targetWordFamilyKeys.length) {
+      return [];
+    }
+
+    const familyKeys = new Set(entry.targetWordFamilyKeys);
+    return getReplaceableSourceTokens(translatedText)
+      .filter((token) => familyKeys.has(getTargetWordFamilyKey(token.value)))
+      .map((token) => ({
+        index: token.start,
+        target: token.value
+      }));
   }
 
   function findTargetCandidateMatchesInText(translatedText, candidate) {

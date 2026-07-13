@@ -9,6 +9,10 @@ const SIDE_PANEL_PAGE = `${POPUP_PAGE}?view=sidepanel`;
 const BACKGROUND_SCRIPT = path.resolve(__dirname, "../extension/background.js");
 const TRANSLATOR_BRIDGE_SCRIPT = path.resolve(__dirname, "../extension/page-translator-bridge.js");
 const TRANSLATOR_BRIDGE_CONTENT = fs.readFileSync(TRANSLATOR_BRIDGE_SCRIPT, "utf8");
+const UKRAINIAN_STEMMER_SCRIPT = path.resolve(
+  __dirname,
+  "../extension/vendor/ukrainian-stemmer.js"
+);
 const POPUP_SCRIPT = path.resolve(__dirname, "../extension/popup.js");
 const POPUP_STYLES = path.resolve(__dirname, "../extension/popup.css");
 const LUCIDE_ICON_DIR = path.resolve(__dirname, "../extension/icons/lucide");
@@ -59,6 +63,22 @@ function testVendoredLucideIcons() {
       `${asset} is not referenced through the Lucide asset stylesheet`
     );
   }
+}
+
+function testUkrainianWordFamilyRuntimeIsBundled() {
+  const manifest = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, "../extension/manifest.json"), "utf8")
+  );
+  const contentScript = manifest.content_scripts.find((item) => item.js?.includes("content.js"));
+  const stemmerIndex = contentScript?.js?.indexOf("vendor/ukrainian-stemmer.js") ?? -1;
+  const contentIndex = contentScript?.js?.indexOf("content.js") ?? -1;
+
+  assert(fs.existsSync(UKRAINIAN_STEMMER_SCRIPT), "Ukrainian word-family runtime is missing");
+  assert(stemmerIndex >= 0, "manifest does not load the Ukrainian word-family runtime");
+  assert(
+    stemmerIndex < contentIndex,
+    "Ukrainian word-family runtime must load before the content script"
+  );
 }
 
 function testFullExportDoesNotUseClickEventAsFilter() {
@@ -142,6 +162,7 @@ async function installHarness(page, { state, translator, config = {} }) {
       }
     };
   });
+  await page.addScriptTag({ path: UKRAINIAN_STEMMER_SCRIPT });
   await page.addScriptTag({ path: CONTENT_SCRIPT });
 }
 
@@ -240,6 +261,65 @@ async function testReplacementUsesTranslatedTokens(browser) {
   assert(result.text.includes("Це is у the house та це is моє car."), "translated tokens not inserted");
   assert(result.replacements.some((item) => item.original === "It" && item.text === "Це"), "It was not aligned to translated token");
   assert(result.stats.replacementCount >= 4, "replacement count not tracked");
+  await page.close();
+}
+
+async function testUkrainianWordFamiliesUseTranslatedInflections(browser) {
+  const page = await browser.newPage();
+  const source = "The machine is here.";
+  await page.setContent(`<p>${source}</p>`);
+  await installHarness(page, {
+    state: createState([
+      { id: "e1", source: "machine", target: "машина", enabled: true, createdAt: 1 }
+    ]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === source ? "Машину тут." : "")
+    }
+  });
+
+  await page.waitForFunction(() => document.querySelectorAll(".learned-word-replacer-token").length === 1);
+  const result = await page.evaluate(() => {
+    const token = document.querySelector(".learned-word-replacer-token");
+    return {
+      text: document.body.innerText,
+      original: token?.dataset.learnedWordOriginal,
+      target: token?.dataset.learnedWordTarget
+    };
+  });
+
+  assert(
+    result.text === "The Машину is here.",
+    `inflected Ukrainian word was not inserted: ${JSON.stringify(result)}`
+  );
+  assert(result.original === "machine", "word-family match aligned the wrong English word");
+  assert(result.target === "Машину", "word-family match did not retain Chrome's surface form");
+  await page.close();
+}
+
+async function testUkrainianWordFamiliesDoNotMatchCompounds(browser) {
+  const page = await browser.newPage();
+  const source = "Radio navigation is useful.";
+  await page.setContent(`<p>${source}</p>`);
+  await installHarness(page, {
+    state: createState([
+      { id: "e1", source: "radio", target: "радіо", enabled: true, createdAt: 1 },
+      { id: "e2", source: "navigation", target: "навігація", enabled: true, createdAt: 2 }
+    ]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === source ? "Радіонавігація корисна." : "")
+    }
+  });
+
+  await page.waitForFunction(() => window.__learnedWordReplacerDebug.getSnapshot().finishedAt > 0);
+  const result = await page.evaluate(() => ({
+    text: document.body.innerText,
+    replacementCount: document.querySelectorAll(".learned-word-replacer-token").length
+  }));
+
+  assert(result.text === source, "compound was split into unsafe partial replacements");
+  assert(result.replacementCount === 0, "compound produced an unsafe word-family replacement");
   await page.close();
 }
 
@@ -2883,6 +2963,8 @@ function testToolbarOpensSidePanel() {
   const browser = await chromium.launch({ headless: true });
   try {
     await testReplacementUsesTranslatedTokens(browser);
+    await testUkrainianWordFamiliesUseTranslatedInflections(browser);
+    await testUkrainianWordFamiliesDoNotMatchCompounds(browser);
     await testRuntimeStatusCountsLiveReplacementSpans(browser);
     await testProcessedBlocksAreMarkedOnPage(browser);
     await testHoverTranslatesEnglishWord(browser);
@@ -2918,6 +3000,7 @@ function testToolbarOpensSidePanel() {
     await testSidePanelUsesCompactVocabularyList(browser);
     await testPopupStatusPanel(browser);
     testVendoredLucideIcons();
+    testUkrainianWordFamilyRuntimeIsBundled();
     testFullExportDoesNotUseClickEventAsFilter();
     testBackgroundBadge();
     await testBackgroundRestoresOpenTabContentScripts();
