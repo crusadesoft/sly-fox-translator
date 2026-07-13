@@ -138,6 +138,7 @@
     version: 2,
     enabled: true,
     showHighlights: true,
+    showProcessedSections: true,
     showOriginalOnHover: true,
     translateEnglishOnHover: true,
     wholeWords: true,
@@ -848,11 +849,13 @@
         }
       `
       : "";
-    const processedBlockStyle = `
+    const processedBlockStyle = state.showProcessedSections
+      ? `
       .${PROCESSED_BLOCK_CLASS} {
         box-shadow: inset 3px 0 0 rgba(37, 99, 235, 0.62) !important;
       }
-    `;
+    `
+      : "";
 
     if (!state.translateEnglishOnHover) {
       clearReverseHover();

@@ -290,6 +290,27 @@ async function testProcessedBlocksAreMarkedOnPage(browser) {
   assert(result.markedCount === 2, "processed page sections were not marked");
   assert(result.styleIncludesMarker, "processed section marker style was not installed");
   await page.close();
+
+  const hiddenPage = await browser.newPage();
+  await hiddenPage.setContent("<p>It is in the house.</p>");
+  await installHarness(hiddenPage, {
+    state: {
+      ...createState([{ id: "e1", source: "house", target: "будинку", enabled: true, createdAt: 1 }]),
+      showProcessedSections: false
+    },
+    translator: {
+      availability: async () => "available",
+      translate: async () => "Це у будинку."
+    }
+  });
+  await hiddenPage.waitForSelector(".learned-word-replacer-token");
+  const hiddenResult = await hiddenPage.evaluate(() =>
+    document.getElementById("learned-word-replacer-style")?.textContent.includes(
+      ".learned-word-replacer-checked"
+    )
+  );
+  assert(!hiddenResult, "processed section rail rendered while its setting was disabled");
+  await hiddenPage.close();
 }
 
 async function testHoverTranslatesEnglishWord(browser) {
@@ -2364,11 +2385,15 @@ async function testPopupStatusPanel(browser) {
   assert(await page.isVisible("#settings-view"), "settings view did not open");
   assert(await page.isVisible("#show-highlights"), "highlight setting was not moved into settings");
   const hoverSettings = await page.evaluate(() => ({
+    processedSections: document.getElementById("show-processed-sections").checked,
     originalEnglish: document.getElementById("show-original-on-hover").checked,
     englishTranslation: document.getElementById("translate-english-on-hover").checked
   }));
+  assert(hoverSettings.processedSections, "checked-section marker should start enabled");
   assert(hoverSettings.originalEnglish, "original-English hover should start enabled");
   assert(hoverSettings.englishTranslation, "English hover translation should start enabled");
+  await page.click('label[title="Mark checked sections"]');
+  await page.waitForFunction(() => window.__lastSavedPopupState?.showProcessedSections === false);
   await page.click('label[title="Show original English on hover"]');
   await page.waitForFunction(() => window.__lastSavedPopupState?.showOriginalOnHover === false);
   await page.click('label[title="Translate English on hover"]');
