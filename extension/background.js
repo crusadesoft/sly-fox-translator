@@ -7,6 +7,7 @@ const BLOCKED_STATUSES = new Set([
 const WORKING_STATUSES = new Set([
   "checking-translator",
   "translator-preparing",
+  "scanning-page",
   "translating"
 ]);
 
@@ -155,6 +156,10 @@ function getWorkingTitle(status) {
 
   if (status.status === "translator-preparing") {
     return "Preparing Chrome Translator";
+  }
+
+  if (status.status === "scanning-page") {
+    return "Scanning page text";
   }
 
   const calls = Number(status.translationCalls || 0);

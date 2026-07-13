@@ -96,6 +96,7 @@ async function installHarness(page, { state, translator, config = {} }) {
       savedState: state,
       testConfig: {
         applyDebounceMs: 20,
+        scanWholePage: false,
         viewportMarginPx: 10000,
         ...config
       }
@@ -943,6 +944,48 @@ async function testWorkBudget(browser) {
 
   assert(stats.unitsCollected <= 5, `unit budget exceeded: ${stats.unitsCollected}`);
   assert(stats.translationCalls <= 8, `translation call budget exceeded: ${stats.translationCalls}`);
+  await page.close();
+}
+
+async function testBackgroundPageScanFindsOffscreenMatches(browser) {
+  const page = await browser.newPage({ viewport: { width: 900, height: 600 } });
+  await page.setContent(`
+    <p>Nothing matches here.</p>
+    <div style="height: 1600px"></div>
+    <p>It is in the house.</p>
+  `);
+  await installHarness(page, {
+    state: createState([
+      { id: "e1", source: "house", target: "будинку", enabled: true, createdAt: 1 }
+    ]),
+    config: {
+      fullPageScanDelayMs: 20,
+      maxContextUnitsPerPass: 1,
+      scanWholePage: true,
+      viewportMarginPx: 1
+    },
+    translator: {
+      availability: async () => "available",
+      translate: async (text) =>
+        text === "It is in the house." ? "Це у будинку." : "Нічого тут не збігається."
+    }
+  });
+
+  await page.waitForFunction(
+    () => document.querySelectorAll(".learned-word-replacer-token").length === 1,
+    null,
+    { timeout: 5000 }
+  );
+  const result = await page.evaluate(() => ({
+    tokenCount: document.querySelectorAll(".learned-word-replacer-token").length,
+    status: window.__learnedWordReplacerDebug.getSnapshot()
+  }));
+
+  assert(
+    result.tokenCount === 1,
+    `background page scan missed the offscreen learned word: ${JSON.stringify(result.status)}`
+  );
+  assert(result.status.replacementCount === 1, "background scan did not report its live replacement");
   await page.close();
 }
 
@@ -2759,6 +2802,7 @@ function testToolbarOpensSidePanel() {
     await testDownloadableTranslatorFallsBackToActivationWhenCreateFails(browser);
     await testRetryPreparesDownloadableTranslator(browser);
     await testWorkBudget(browser);
+    await testBackgroundPageScanFindsOffscreenMatches(browser);
     await testContentUnitsArePrioritizedOverPageChrome(browser);
     await testLongBlocksAreNotSplitByArbitraryCharacterLimit(browser);
     await testExcludedPageRestoresAndSkipsTranslation(browser);

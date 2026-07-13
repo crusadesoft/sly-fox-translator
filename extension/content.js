@@ -14,6 +14,7 @@
   const TRANSLATOR_PREPARE_TIMEOUT_MS = 120000;
   const TRANSLATOR_TRANSLATE_TIMEOUT_MS = 20000;
   const APPLY_DEBOUNCE_MS = 700;
+  const FULL_PAGE_SCAN_DELAY_MS = 800;
   const REVERSE_HOVER_DELAY_MS = 260;
   const MAX_REVERSE_HOVER_CACHE_ENTRIES = 200;
   const VIEWPORT_MARGIN_PX = 900;
@@ -159,6 +160,7 @@
   let compiledEntries = [];
   let observer = null;
   let pendingTimer = null;
+  let fullPageScanTimer = null;
   let applying = false;
   let applyRunId = 0;
   let translatorCacheKey = "";
@@ -204,6 +206,14 @@
 
   function getApplyDebounceMs() {
     return getConfigNumber("applyDebounceMs", APPLY_DEBOUNCE_MS);
+  }
+
+  function getFullPageScanDelayMs() {
+    return getConfigNumber("fullPageScanDelayMs", FULL_PAGE_SCAN_DELAY_MS);
+  }
+
+  function shouldScanWholePage() {
+    return getRuntimeConfig().scanWholePage !== false;
   }
 
   function getViewportMarginPx() {
@@ -1180,8 +1190,8 @@
   async function processContextRoot(root, runId, options = {}) {
     const targetLanguage = getCurrentLanguageCode();
     const units = options.roots
-      ? collectContextUnitsFromRoots(options.roots)
-      : collectContextUnits(root);
+      ? collectContextUnitsFromRoots(options.roots, options)
+      : collectContextUnits(root, options);
     updateRuntimeStats({
       targetLanguage,
       unitsCollected: units.length
@@ -1752,11 +1762,11 @@
     return nodes;
   }
 
-  function collectContextUnits(root) {
-    return collectContextUnitsFromRoots([root]);
+  function collectContextUnits(root, options = {}) {
+    return collectContextUnitsFromRoots([root], options);
   }
 
-  function collectContextUnitsFromRoots(roots) {
+  function collectContextUnitsFromRoots(roots, options = {}) {
     const groups = new Map();
     const seenBlocks = new Set();
 
@@ -1767,7 +1777,7 @@
 
       for (const node of collectTextNodes(root)) {
         const block = getTextBlock(node);
-        if (!block || seenBlocks.has(block) || !isProcessableBlock(block)) {
+        if (!block || seenBlocks.has(block) || !isProcessableBlock(block, options)) {
           continue;
         }
 
@@ -1791,13 +1801,19 @@
           collectionOrder: collectionOrder++
         }))
       )
-      .sort(
-        (a, b) =>
-          getContextUnitPriority(b) - getContextUnitPriority(a) ||
-          a.collectionOrder - b.collectionOrder
-      )
-      .slice(0, getMaxContextUnitsPerPass())
+      .sort((a, b) => {
+        if (options.includeOffscreen) {
+          return a.collectionOrder - b.collectionOrder;
+        }
+
+        return getContextUnitPriority(b) - getContextUnitPriority(a) || a.collectionOrder - b.collectionOrder;
+      })
+      .slice(0, options.maxUnits || getMaxContextUnitsPerPass())
       .sort((a, b) => a.collectionOrder - b.collectionOrder);
+  }
+
+  function hasPendingContextUnits(options = {}) {
+    return collectContextUnits(document.body, { ...options, maxUnits: 1 }).length > 0;
   }
 
   function isProcessedBlockUnchanged(block) {
@@ -1969,7 +1985,7 @@
     return text.length <= 1200 && element.children.length <= 30;
   }
 
-  function isProcessableBlock(block) {
+  function isProcessableBlock(block, options = {}) {
     if (!block || block.nodeType !== Node.ELEMENT_NODE) {
       return false;
     }
@@ -1981,6 +1997,10 @@
       Number(style.opacity || 1) === 0
     ) {
       return false;
+    }
+
+    if (options.includeOffscreen) {
+      return true;
     }
 
     const viewportHeight = globalThis.innerHeight || document.documentElement.clientHeight || 0;
@@ -2837,7 +2857,7 @@
     );
   }
 
-  function stopObserver() {
+  function stopObserver(options = {}) {
     if (observer) {
       observer.disconnect();
       observer = null;
@@ -2847,6 +2867,37 @@
       clearTimeout(pendingTimer);
       pendingTimer = null;
     }
+
+    if (options.cancelFullPageScan && fullPageScanTimer) {
+      clearTimeout(fullPageScanTimer);
+      fullPageScanTimer = null;
+    }
+  }
+
+  function scheduleFullPageScan() {
+    if (
+      fullPageScanTimer ||
+      !shouldScanWholePage() ||
+      !document.body ||
+      !hasActivePageReplacementFeatures() ||
+      getTranslationExclusion() ||
+      !hasPendingContextUnits({ includeOffscreen: true })
+    ) {
+      return false;
+    }
+
+    fullPageScanTimer = setTimeout(() => {
+      fullPageScanTimer = null;
+      applyToPage({ preserveExisting: true, includeOffscreen: true, backgroundScan: true }).catch(
+        (error) => {
+          updateRuntimeStats({
+            status: "translator-error",
+            lastError: error && error.message ? error.message : "Background page scan failed."
+          });
+        }
+      );
+    }, getFullPageScanDelayMs());
+    return true;
   }
 
   function queueContextBlocks(blocks, options = {}) {
@@ -2912,7 +2963,7 @@
 
     const runId = ++applyRunId;
     applying = true;
-    stopObserver();
+    stopObserver({ cancelFullPageScan: true });
 
     try {
       const exclusion = getTranslationExclusion();
@@ -2977,13 +3028,17 @@
           "translator-preparing",
           "translator-error"
         ]);
+        const completedStatus = blockedStatuses.has(runtimeStats.status)
+          ? runtimeStats.status
+          : "complete";
+        const scanScheduled =
+          completedStatus === "complete" &&
+          shouldScanWholePage() &&
+          hasPendingContextUnits({ includeOffscreen: true }) &&
+          scheduleFullPageScan();
         updateRuntimeStats({
-          status: blockedStatuses.has(runtimeStats.status)
-            ? runtimeStats.status
-            : runtimeStats.status === "starting"
-              ? "idle"
-              : "complete",
-          finishedAt: Date.now()
+          status: scanScheduled ? "scanning-page" : completedStatus,
+          finishedAt: scanScheduled ? 0 : Date.now()
         });
         applying = false;
         startObserver();

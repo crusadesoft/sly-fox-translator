@@ -2458,6 +2458,7 @@ function getRuntimeDisplayState(status) {
   if (
     status.status === "checking-translator" ||
     status.status === "translator-preparing" ||
+    status.status === "scanning-page" ||
     status.status === "translating"
   ) {
     return "working";
@@ -2609,6 +2610,11 @@ function renderRuntimeStatus(status, displayState = "") {
     const elapsed = formatDuration(getRuntimeDurationMs(status, { includeRunning: true }));
     const elapsedText = elapsed ? ` for ${elapsed}` : "";
     elements.runtimeStatus.textContent = `Translating page text as you browse${elapsedText}. ${status.translationCalls || 0} translation call${status.translationCalls === 1 ? "" : "s"} so far.`;
+    return;
+  }
+
+  if (status.status === "scanning-page") {
+    elements.runtimeStatus.textContent = `Scanning more page text. ${replacementCount} replacement${replacementCount === 1 ? "" : "s"} found so far.`;
     return;
   }
 
