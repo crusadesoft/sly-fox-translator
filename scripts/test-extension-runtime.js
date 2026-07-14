@@ -647,6 +647,273 @@ async function testNeuralAlignerIsSkippedWhenEnglishHintsResolve(browser) {
   await page.close();
 }
 
+function createStructureModeAligner() {
+  return async (sourceText, translatedText) => {
+    const pairs = [];
+    const link = (english, ukrainian) => {
+      const srcStart = sourceText.indexOf(english);
+      const tgtStart = translatedText.indexOf(ukrainian);
+      if (srcStart >= 0 && tgtStart >= 0) {
+        pairs.push({
+          srcStart,
+          srcEnd: srcStart + english.length,
+          tgtStart,
+          tgtEnd: tgtStart + ukrainian.length,
+          score: 0.9
+        });
+      }
+    };
+    link("Radio", "\u0420\u0430\u0434\u0456\u043e");
+    link("is", "\u0446\u0435");
+    link("technology", "\u0442\u0435\u0445\u043d\u043e\u043b\u043e\u0433\u0456\u044f");
+    link("communicating", "\u0437\u0432'\u044f\u0437\u043a\u0443");
+    return pairs;
+  };
+}
+
+async function testStructureModeRebuildsSentencesInTargetOrder(browser) {
+  const page = await browser.newPage();
+  const source = "Radio is the technology of communicating.";
+  await page.setContent('<p>Radio is the technology of <a href="#">communicating</a>.</p>');
+  await installHarness(page, {
+    state: {
+      ...createState([{ id: "e1", source: "radio", target: "радіо", enabled: true, createdAt: 1 }]),
+      structureMode: true
+    },
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === source ? "Радіо - це технологія зв'язку." : "")
+    },
+    config: {
+      ukrainianLemmas: { "радіо": ["радіо"] }
+    },
+    wordAligner: createStructureModeAligner()
+  });
+
+  await page.waitForFunction(
+    () => document.querySelector(".learned-word-replacer-structured") !== null
+  );
+  const result = await page.evaluate(() => {
+    const known = document.querySelector(
+      '.learned-word-replacer-token:not([data-learned-word-match-kind="back-translation"])'
+    );
+    const scaffold = [...document.querySelectorAll(
+      '.learned-word-replacer-token[data-learned-word-match-kind="back-translation"]'
+    )];
+    return {
+      text: document.body.innerText,
+      known: { text: known?.textContent, original: known?.dataset.learnedWordOriginal },
+      scaffold: scaffold.map((s) => `${s.dataset.learnedWordOriginal}→${s.textContent}`)
+    };
+  });
+
+  assert(
+    result.text === "Радіо - is technology communicating.",
+    `structure mode did not rebuild the sentence in target order: ${JSON.stringify(result)}`
+  );
+  assert(
+    result.known.text === "Радіо" && result.known.original === "Radio",
+    "the learned word did not stay in the target language with its English original"
+  );
+  assert(
+    result.scaffold.join(",") === "це→is,технологія→technology,зв'язку→communicating",
+    `unlearned words were not back-translated in place: ${JSON.stringify(result.scaffold)}`
+  );
+  await page.close();
+}
+
+async function testStructureModeRestoresOriginalMarkupWhenDisabled(browser) {
+  const page = await browser.newPage();
+  const source = "Radio is the technology of communicating.";
+  const initialState = {
+    ...createState([{ id: "e1", source: "radio", target: "радіо", enabled: true, createdAt: 1 }]),
+    structureMode: true
+  };
+  await page.setContent('<p>Radio is the technology of <a href="#">communicating</a>.</p>');
+  await installHarness(page, {
+    state: initialState,
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === source ? "Радіо - це технологія зв'язку." : "")
+    },
+    config: {
+      ukrainianLemmas: { "радіо": ["радіо"] }
+    },
+    wordAligner: createStructureModeAligner()
+  });
+
+  await page.waitForFunction(
+    () => document.querySelector(".learned-word-replacer-structured") !== null
+  );
+  await page.evaluate((nextState) => {
+    window.__storageChangeListener(
+      { learnedWordReplacerState: { newValue: nextState } },
+      "local"
+    );
+  }, { ...initialState, structureMode: false });
+  await page.waitForFunction(
+    () =>
+      document.querySelector(".learned-word-replacer-structured") === null &&
+      document.body.innerText === "Радіо is the technology of communicating."
+  );
+  const result = await page.evaluate(() => ({
+    html: document.querySelector("p").innerHTML,
+    text: document.body.innerText
+  }));
+
+  assert(
+    result.html.includes("<a href="),
+    `disabling structure mode lost the original inline markup: ${result.html}`
+  );
+  assert(
+    result.text === "Радіо is the technology of communicating.",
+    "normal replacement mode did not resume after structure mode was disabled"
+  );
+  await page.close();
+}
+
+async function testStructureModeHighlightsUnalignedWordsWithHoverGuess(browser) {
+  const page = await browser.newPage();
+  const source = "Radio uses receivers.";
+  const translated = "Радіо використовує радіоприймачі.";
+  await page.setContent(`<p>${source}</p>`);
+  await installHarness(page, {
+    state: {
+      ...createState([{ id: "e1", source: "radio", target: "радіо", enabled: true, createdAt: 1 }]),
+      structureMode: true
+    },
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === source ? translated : "")
+    },
+    config: {
+      ukrainianLemmas: { "радіо": ["радіо"] }
+    },
+    wordAligner: async (sourceText, translatedText) => {
+      const link = (english, ukrainian, extra) => {
+        const srcStart = sourceText.indexOf(english);
+        const tgtStart = translatedText.indexOf(ukrainian);
+        return {
+          srcStart,
+          srcEnd: srcStart + english.length,
+          tgtStart,
+          tgtEnd: tgtStart + ukrainian.length,
+          score: 0.9,
+          ...extra
+        };
+      };
+      return [
+        link("Radio", "Радіо"),
+        link("uses", "використовує"),
+        // Compound: fails the bidirectional confidence check, so the aligner
+        // only offers it as a weak best-guess candidate.
+        link("receivers", "радіоприймачі", { weak: true, score: 0.0004 })
+      ];
+    }
+  });
+
+  await page.waitForFunction(
+    () => document.querySelector(".learned-word-replacer-structured") !== null
+  );
+  const result = await page.evaluate(() => {
+    const unlearned = document.querySelector(
+      '.learned-word-replacer-token[data-learned-word-match-kind="unlearned"]'
+    );
+    return {
+      text: document.body.innerText,
+      unlearned: unlearned
+        ? { text: unlearned.textContent, guess: unlearned.dataset.learnedWordOriginal }
+        : null
+    };
+  });
+
+  assert(
+    result.text === "Радіо uses радіоприймачі.",
+    `a weak guess was substituted into the sentence instead of staying a hover: ${JSON.stringify(result)}`
+  );
+  assert(
+    result.unlearned?.text === "радіоприймачі" && result.unlearned?.guess === "receivers",
+    `the unaligned word was not highlighted with its English guess: ${JSON.stringify(result.unlearned)}`
+  );
+  await page.close();
+}
+
+async function testNormalModeIgnoresWeakAlignmentPairs(browser) {
+  const page = await browser.newPage();
+  const source = "The existence of radio waves was first proven.";
+  const translated = "Існування радіохвиль вперше було доведено.";
+  await page.setContent(`<p>${source}</p>`);
+  await installHarness(page, {
+    state: createState([
+      { id: "e1", source: "there is", target: "є", enabled: true, createdAt: 1 }
+    ]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === source ? translated : "")
+    },
+    config: {
+      ukrainianLemmas: {
+        "є": ["бути"],
+        "було": ["бути"]
+      }
+    },
+    wordAligner: async (sourceText, translatedText) => [
+      {
+        srcStart: sourceText.indexOf("was"),
+        srcEnd: sourceText.indexOf("was") + 3,
+        tgtStart: translatedText.indexOf("було"),
+        tgtEnd: translatedText.indexOf("було") + 4,
+        score: 0.0004,
+        weak: true
+      }
+    ]
+  });
+
+  await page.waitForFunction(() => window.__learnedWordReplacerDebug.getSnapshot().finishedAt > 0);
+  const result = await page.evaluate(() => ({
+    text: document.body.innerText,
+    replacementCount: document.querySelectorAll(".learned-word-replacer-token").length
+  }));
+
+  assert(
+    result.text === source && result.replacementCount === 0,
+    `normal mode replaced through a weak alignment pair: ${JSON.stringify(result)}`
+  );
+  await page.close();
+}
+
+async function testStructureModeKeepsUnalignedSentencesInEnglish(browser) {
+  const page = await browser.newPage();
+  const source = "Radio is the technology of communicating.";
+  await page.setContent(`<p>${source}</p>`);
+  await installHarness(page, {
+    state: {
+      ...createState([{ id: "e1", source: "radio", target: "радіо", enabled: true, createdAt: 1 }]),
+      structureMode: true
+    },
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === source ? "Радіо - це технологія зв'язку." : "")
+    },
+    config: {
+      ukrainianLemmas: { "радіо": ["радіо"] }
+    },
+    wordAligner: async () => []
+  });
+
+  await page.waitForFunction(() => window.__learnedWordReplacerDebug.getSnapshot().finishedAt > 0);
+  const result = await page.evaluate(() => ({
+    text: document.body.innerText,
+    structured: document.querySelectorAll(".learned-word-replacer-structured").length
+  }));
+
+  assert(
+    result.text === source && result.structured === 0,
+    `unaligned sentence was rebuilt anyway: ${JSON.stringify(result)}`
+  );
+  await page.close();
+}
+
 async function testUkrainianWordFamiliesDoNotMatchCompounds(browser) {
   const page = await browser.newPage();
   const source = "Radio navigation is useful.";
@@ -3368,6 +3635,11 @@ function testToolbarOpensSidePanel() {
     await testNeuralAlignerResolvesMatchesWithoutEnglishHints(browser);
     await testNeuralAlignerNeverReplacesNumericSpans(browser);
     await testNeuralAlignerIsSkippedWhenEnglishHintsResolve(browser);
+    await testStructureModeRebuildsSentencesInTargetOrder(browser);
+    await testStructureModeRestoresOriginalMarkupWhenDisabled(browser);
+    await testStructureModeKeepsUnalignedSentencesInEnglish(browser);
+    await testStructureModeHighlightsUnalignedWordsWithHoverGuess(browser);
+    await testNormalModeIgnoresWeakAlignmentPairs(browser);
     await testPluralEnglishWordAlignsToSingularEntry(browser);
     await testUkrainianWordFamiliesDoNotMatchCompounds(browser);
     await testUkrainianPronounLemmaUsesChromeSurfaceForm(browser);

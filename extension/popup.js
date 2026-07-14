@@ -80,6 +80,7 @@ const DEFAULT_STATE = {
   version: 2,
   enabled: true,
   showHighlights: true,
+  structureMode: false,
   showProcessedSections: true,
   showOriginalOnHover: true,
   translateEnglishOnHover: true,
@@ -138,6 +139,7 @@ const elements = {
   submitEntry: document.getElementById("submit-entry"),
   cancelEdit: document.getElementById("cancel-edit"),
   showHighlights: document.getElementById("show-highlights"),
+  structureMode: document.getElementById("structure-mode"),
   showProcessedSections: document.getElementById("show-processed-sections"),
   showOriginalOnHover: document.getElementById("show-original-on-hover"),
   translateEnglishOnHover: document.getElementById("translate-english-on-hover"),
@@ -1226,6 +1228,7 @@ function render() {
   renderVocabularySections(manualEntries, duolingoEntries);
   elements.enabled.checked = state.enabled;
   elements.showHighlights.checked = state.showHighlights;
+  elements.structureMode.checked = Boolean(state.structureMode);
   elements.showProcessedSections.checked = state.showProcessedSections;
   elements.showOriginalOnHover.checked = state.showOriginalOnHover;
   elements.translateEnglishOnHover.checked = state.translateEnglishOnHover;
@@ -2758,6 +2761,9 @@ document.addEventListener("click", (event) => {
 elements.enabled.addEventListener("change", () => updateSetting("enabled", elements.enabled.checked));
 elements.showHighlights.addEventListener("change", () =>
   updateSetting("showHighlights", elements.showHighlights.checked)
+);
+elements.structureMode.addEventListener("change", () =>
+  updateSetting("structureMode", elements.structureMode.checked)
 );
 elements.showProcessedSections.addEventListener("change", () =>
   updateSetting("showProcessedSections", elements.showProcessedSections.checked)

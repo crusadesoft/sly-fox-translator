@@ -12,6 +12,7 @@ const WORD_ALIGNMENT_RUN_REQUEST = "LWR_ALIGN_WORDS_RUN";
 const ALIGNMENT_MODEL_ID = "alignment-model";
 const ALIGNMENT_SOFTMAX_THRESHOLD = 1e-3;
 const MAX_ALIGNMENT_SUBWORDS = 512;
+const WEAK_ALIGNMENT_CANDIDATES_PER_WORD = 3;
 
 let alignmentModelPromise = null;
 
@@ -160,17 +161,13 @@ async function alignWords(sourceText, translatedText) {
 
   for (let i = 0; i < similarity.length; i += 1) {
     for (let j = 0; j < similarity[0].length; j += 1) {
-      if (
-        sourceToTranslated[i][j] <= ALIGNMENT_SOFTMAX_THRESHOLD ||
-        translatedToSource[i][j] <= ALIGNMENT_SOFTMAX_THRESHOLD
-      ) {
-        continue;
-      }
-
       const sourceWord = sourceWords[source.wordIndexOfSubword[i + 1]];
       const translatedWord = translatedWords[translated.wordIndexOfSubword[j + 1]];
       const key = `${sourceWord.start}:${translatedWord.start}`;
       const score = sourceToTranslated[i][j] * translatedToSource[i][j];
+      const confident =
+        sourceToTranslated[i][j] > ALIGNMENT_SOFTMAX_THRESHOLD &&
+        translatedToSource[i][j] > ALIGNMENT_SOFTMAX_THRESHOLD;
       const existing = bestByWordPair.get(key);
 
       if (!existing || existing.score < score) {
@@ -179,13 +176,59 @@ async function alignWords(sourceText, translatedText) {
           srcEnd: sourceWord.end,
           tgtStart: translatedWord.start,
           tgtEnd: translatedWord.end,
-          score
+          score,
+          confident: Boolean(existing?.confident) || confident
         });
+      } else if (confident && !existing.confident) {
+        existing.confident = true;
       }
     }
   }
 
-  return Array.from(bestByWordPair.values()).sort(
-    (a, b) => a.srcStart - b.srcStart || a.tgtStart - b.tgtStart
-  );
+  const pairs = [];
+  const coveredTranslatedStarts = new Set();
+
+  for (const record of bestByWordPair.values()) {
+    if (record.confident) {
+      pairs.push({
+        srcStart: record.srcStart,
+        srcEnd: record.srcEnd,
+        tgtStart: record.tgtStart,
+        tgtEnd: record.tgtEnd,
+        score: record.score
+      });
+      coveredTranslatedStarts.add(record.tgtStart);
+    }
+  }
+
+  // Translated words without a confident pair still get their best-guess
+  // English candidates, flagged weak so callers can decide whether coverage
+  // or precision matters for them.
+  const weakByTranslatedStart = new Map();
+  for (const record of bestByWordPair.values()) {
+    if (record.confident || coveredTranslatedStarts.has(record.tgtStart)) {
+      continue;
+    }
+
+    if (!weakByTranslatedStart.has(record.tgtStart)) {
+      weakByTranslatedStart.set(record.tgtStart, []);
+    }
+    weakByTranslatedStart.get(record.tgtStart).push(record);
+  }
+
+  for (const records of weakByTranslatedStart.values()) {
+    records.sort((a, b) => b.score - a.score);
+    for (const record of records.slice(0, WEAK_ALIGNMENT_CANDIDATES_PER_WORD)) {
+      pairs.push({
+        srcStart: record.srcStart,
+        srcEnd: record.srcEnd,
+        tgtStart: record.tgtStart,
+        tgtEnd: record.tgtEnd,
+        score: record.score,
+        weak: true
+      });
+    }
+  }
+
+  return pairs.sort((a, b) => a.srcStart - b.srcStart || a.tgtStart - b.tgtStart);
 }

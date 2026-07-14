@@ -75,6 +75,18 @@ still works and simply falls back to hint-based alignment only. Set
 `localStorage.__lwrDebug = "1"` on a page to log per-sentence pipeline decisions
 to the console and to a `data-lwr-debug` attribute on the document element.
 
+## Target-language sentence structure
+
+The `Target-language sentence structure` setting inverts the display: checked
+sections are rebuilt in the target language's word order. Words you have
+learned stay in the target language, and every other word is translated back
+into English in its target-language position, so the sentence teaches the
+language's structure and mindset rather than only vocabulary. Hovering a kept
+target-language word shows its English original; hovering an English scaffold
+word shows the target-language word it stands for. The mode depends on the
+word aligner; sentences it cannot align are left in their original English,
+and turning the setting off restores the original page markup.
+
 ## Behavior
 
 - Learned phrases are matched before shorter learned words.

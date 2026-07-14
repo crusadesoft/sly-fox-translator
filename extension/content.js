@@ -5,6 +5,9 @@
   const PROCESSED_BLOCK_CLASS = "learned-word-replacer-checked";
   const REVERSE_HOVER_TOOLTIP_CLASS = "learned-word-replacer-hover-tooltip";
   const WORD_FAMILY_MATCH_KIND = "word-family";
+  const BACK_TRANSLATION_MATCH_KIND = "back-translation";
+  const UNLEARNED_MATCH_KIND = "unlearned";
+  const STRUCTURED_BLOCK_CLASS = "learned-word-replacer-structured";
   const STYLE_ID = "learned-word-replacer-style";
   const SOURCE_LANGUAGE = "en";
   const MAX_TRANSLATION_CACHE_ENTRIES = 400;
@@ -141,6 +144,7 @@
     version: 2,
     enabled: true,
     showHighlights: true,
+    structureMode: false,
     showProcessedSections: true,
     showOriginalOnHover: true,
     translateEnglishOnHover: true,
@@ -174,6 +178,7 @@
   const ukrainianLemmaCache = new Map();
   const wordAlignmentCache = new Map();
   let processedBlockSourceTexts = new WeakMap();
+  let structuredBlockOriginals = new WeakMap();
   let pendingContextBlocks = new Map();
   let runtimeStats = createRuntimeStats();
   let statusPublishTimer = null;
@@ -860,32 +865,16 @@
         opacity: 1;
         visibility: visible;
       }
+
+      .${REVERSE_HOVER_TOOLTIP_CLASS}[data-placement="below"] {
+        transform: translate(-50%, 12px);
+      }
     `;
 
-    const originalHoverStyle = state.showOriginalOnHover
-      ? `
-        .${REPLACEMENT_CLASS}:hover::after {
-          background: #101828;
-          border-radius: 0.3em;
-          bottom: calc(100% + 0.35em);
-          box-shadow: 0 4px 12px rgba(16, 24, 40, 0.22);
-          color: #ffffff;
-          content: attr(data-learned-word-original);
-          font: 600 12px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-          left: 50%;
-          max-width: min(320px, 80vw);
-          overflow-wrap: anywhere;
-          padding: 0.35em 0.5em;
-          pointer-events: none;
-          position: absolute;
-          text-align: center;
-          transform: translateX(-50%);
-          white-space: normal;
-          width: max-content;
-          z-index: 2147483647;
-        }
-      `
-      : "";
+    // The original-word tooltip is the fixed-position element attached to the
+    // document root: page stacking contexts (e.g. Wikipedia's page container)
+    // and overflow-clipping ancestors would trap or cut off a CSS ::after.
+    const originalHoverStyle = "";
     const processedBlockStyle = state.showProcessedSections
       ? `
       .${PROCESSED_BLOCK_CLASS} {
@@ -909,6 +898,15 @@
           cursor: inherit;
           padding: 0 0.08em;
           position: relative;
+        }
+
+        .${REPLACEMENT_CLASS}[data-learned-word-match-kind="${BACK_TRANSLATION_MATCH_KIND}"] {
+          background: none;
+          padding: 0;
+        }
+
+        .${REPLACEMENT_CLASS}[data-learned-word-match-kind="${UNLEARNED_MATCH_KIND}"] {
+          background: color-mix(in srgb, #93c5fd 35%, transparent);
         }
 
       ` + processedBlockStyle + originalHoverStyle + reverseHoverTooltipStyle
@@ -964,13 +962,26 @@
 
   function handleReverseHoverPointerMove(event) {
     const target = event.target;
+    const replacementSpan =
+      state.enabled && target && typeof target.closest === "function"
+        ? target.closest(`.${REPLACEMENT_CLASS}`)
+        : null;
+
+    if (replacementSpan) {
+      if (state.showOriginalOnHover && replacementSpan.dataset.learnedWordOriginal) {
+        showReplacementOriginalTooltip(replacementSpan);
+      } else {
+        clearReverseHover();
+      }
+      return;
+    }
+
     if (
       !state.enabled ||
       !state.translateEnglishOnHover ||
       !compiledEntries.length ||
       !getCurrentLanguageCode() ||
-      getTranslationExclusion() ||
-      (target && typeof target.closest === "function" && target.closest(`.${REPLACEMENT_CLASS}`))
+      getTranslationExclusion()
     ) {
       clearReverseHover();
       return;
@@ -1116,8 +1127,40 @@
       return;
     }
 
+    reverseHoverTooltip.dataset.placement = "above";
     reverseHoverTooltip.style.left = `${Math.max(8, Math.min(globalThis.innerWidth - 8, reverseHoverPointer.x))}px`;
     reverseHoverTooltip.style.top = `${Math.max(28, reverseHoverPointer.y)}px`;
+  }
+
+  function showReplacementOriginalTooltip(span) {
+    const original = span.dataset.learnedWordOriginal;
+    const key = `original\u0000${original}\u0000${span.dataset.learnedWordTarget || ""}`;
+
+    if (key === reverseHoverKey) {
+      positionTooltipOverSpan(span);
+      return;
+    }
+
+    clearReverseHover();
+    reverseHoverKey = key;
+    const tooltip = ensureReverseHoverTooltip();
+    tooltip.textContent = original;
+    positionTooltipOverSpan(span);
+    tooltip.dataset.visible = "true";
+  }
+
+  function positionTooltipOverSpan(span) {
+    const tooltip = ensureReverseHoverTooltip();
+    if (!span.isConnected) {
+      return;
+    }
+
+    const rect = span.getBoundingClientRect();
+    const centerX = Math.max(8, Math.min(globalThis.innerWidth - 8, rect.left + rect.width / 2));
+    const fitsAbove = rect.top - tooltip.offsetHeight - 16 >= 4;
+    tooltip.dataset.placement = fitsAbove ? "above" : "below";
+    tooltip.style.left = `${centerX}px`;
+    tooltip.style.top = `${fitsAbove ? rect.top : rect.bottom}px`;
   }
 
   function clearReverseHover() {
@@ -1202,7 +1245,7 @@
     return merged.sort((a, b) => a.start - b.start || b.end - a.end);
   }
 
-  function replaceTextNodeWithParts(textNode, parts) {
+  function createReplacementFragment(parts) {
     const fragment = document.createDocumentFragment();
 
     for (const part of parts) {
@@ -1218,13 +1261,14 @@
       span.dataset.learnedWordTarget = part.target;
       span.dataset.learnedWordMatchKind = part.kind || "exact";
       span.textContent = part.value;
-      if (state.showOriginalOnHover) {
-        span.title = `${part.original} -> ${part.target}`;
-      }
       fragment.appendChild(span);
     }
 
-    textNode.replaceWith(fragment);
+    return fragment;
+  }
+
+  function replaceTextNodeWithParts(textNode, parts) {
+    textNode.replaceWith(createReplacementFragment(parts));
   }
 
   async function processContextRoot(root, runId, options = {}) {
@@ -1280,6 +1324,19 @@
         continue;
       }
 
+      if (state.structureMode) {
+        const structured = await applyStructuredUnit(unit, translatedText, targetLanguage, runId);
+        if (!structured) {
+          return;
+        }
+
+        recordProcessedUnit(unit);
+        if (index % 4 === 3) {
+          await yieldToBrowser();
+        }
+        continue;
+      }
+
       const completed = await addConfirmedRangesFromTranslation(
         unit,
         translatedText,
@@ -1327,6 +1384,253 @@
       processedBlockSourceTexts.set(unit.block, unit.text);
       unit.block.classList.add(PROCESSED_BLOCK_CLASS);
     }
+  }
+
+  // Structure mode: rebuild the block in the target language's word order.
+  // Learned words stay in the target language; every other word is translated
+  // back into English through the word aligner, so the sentence teaches the
+  // target language's structure instead of only its vocabulary.
+  async function applyStructuredUnit(unit, translatedText, targetLanguage, runId) {
+    const block = unit.block;
+    if (!block || block.nodeType !== Node.ELEMENT_NODE || !block.isConnected) {
+      return true;
+    }
+
+    const translatedSentences = splitTranslatedSentences(translatedText);
+    const sentencePairs =
+      translatedSentences.length === unit.sentenceRanges.length
+        ? unit.sentenceRanges.map((range, index) => ({
+            source: unit.text.slice(range.start, range.end),
+            translated: translatedSentences[index]
+          }))
+        : [{ source: unit.text, translated: translatedText }];
+
+    const parts = [];
+    for (const pair of sentencePairs) {
+      if (parts.length) {
+        parts.push({ type: "text", value: " " });
+      }
+
+      const matches = await findWhitelistMatchesInText(pair.translated, targetLanguage, pair.source);
+      const alignmentPairs = await requestWordAlignment(pair.source, pair.translated);
+      if (runId !== applyRunId) {
+        return false;
+      }
+
+      if (!alignmentPairs.length) {
+        // Without alignment the rebuilt sentence would be unreadable, so keep
+        // the original English for this sentence.
+        parts.push({ type: "text", value: pair.source });
+        continue;
+      }
+
+      parts.push(
+        ...buildStructuredSentenceParts(pair.source, pair.translated, matches, alignmentPairs)
+      );
+    }
+
+    const replacementParts = parts.filter((part) => part.type === "replacement");
+    if (!replacementParts.length) {
+      return true;
+    }
+
+    captureStructuredBlockOriginal(block, unit.text);
+    block.replaceChildren(createReplacementFragment(parts));
+    block.classList.add(STRUCTURED_BLOCK_CLASS);
+    updateRuntimeStats({
+      replacementCount:
+        runtimeStats.replacementCount +
+        replacementParts.filter(
+          (part) => part.kind !== BACK_TRANSLATION_MATCH_KIND && part.kind !== UNLEARNED_MATCH_KIND
+        ).length,
+      wordFamilyReplacementCount:
+        runtimeStats.wordFamilyReplacementCount +
+        replacementParts.filter((part) => part.kind === WORD_FAMILY_MATCH_KIND).length
+    });
+    return true;
+  }
+
+  function buildStructuredSentenceParts(sourceSentence, translatedSentence, whitelistMatches, alignmentPairs) {
+    const knownRanges = getMergedKnownRanges(whitelistMatches);
+    const tokens = getReplaceableSourceTokens(translatedSentence);
+    const strongPairs = alignmentPairs.filter((pair) => !pair.weak);
+    const weakPairs = alignmentPairs.filter((pair) => pair.weak);
+    const usedEnglishKeys = new Set();
+
+    // Assign confident English first, in sentence order.
+    const plan = tokens.map((token) => {
+      const known = knownRanges.find(
+        (range) => range.start <= token.start && token.start < range.end
+      );
+      if (known) {
+        return { token, known };
+      }
+
+      return {
+        token,
+        english: collectAlignedEnglish(
+          strongPairs,
+          sourceSentence,
+          token.start,
+          token.end,
+          usedEnglishKeys
+        )
+      };
+    });
+
+    // Tokens the confident pairs could not cover stay in the target language,
+    // but carry the aligner's best-guess English so hovering still teaches
+    // the word. Guesses are never substituted into the sentence.
+    for (const item of plan) {
+      if (item.known || item.english) {
+        continue;
+      }
+
+      const candidates = weakPairs
+        .filter((pair) => pair.tgtStart < item.token.end && item.token.start < pair.tgtEnd)
+        .sort((a, b) => b.score - a.score);
+
+      for (const candidate of candidates) {
+        const value = sourceSentence.slice(candidate.srcStart, candidate.srcEnd);
+        // Only content words make useful hover guesses; articles and other
+        // filler would just mislead.
+        if (
+          !isReplaceableNeuralSourceSpan(value) ||
+          value.length < 3 ||
+          ALIGNMENT_COMMON_WORDS.has(value.toLocaleLowerCase())
+        ) {
+          continue;
+        }
+
+        item.guess = value;
+        break;
+      }
+    }
+
+    const parts = [];
+    let cursor = 0;
+
+    const pushText = (value) => {
+      if (value) {
+        parts.push({ type: "text", value });
+      }
+    };
+
+    for (const item of plan) {
+      const token = item.token;
+      if (token.start < cursor) {
+        continue;
+      }
+
+      pushText(translatedSentence.slice(cursor, token.start));
+
+      if (item.known) {
+        const known = item.known;
+        const value = translatedSentence.slice(known.start, known.end);
+        const english =
+          collectAlignedEnglish(strongPairs, sourceSentence, known.start, known.end, null) ||
+          String(known.source || "");
+        parts.push({
+          type: "replacement",
+          value,
+          original: english,
+          source: english,
+          target: value,
+          kind: known.kind
+        });
+        cursor = known.end;
+        continue;
+      }
+
+      if (item.english) {
+        const value = adaptTargetCaseToSource(item.english, token.value);
+        parts.push({
+          type: "replacement",
+          value,
+          original: token.value,
+          source: token.value,
+          target: value,
+          kind: BACK_TRANSLATION_MATCH_KIND
+        });
+      } else if (item.guess) {
+        parts.push({
+          type: "replacement",
+          value: token.value,
+          original: item.guess,
+          source: item.guess,
+          target: token.value,
+          kind: UNLEARNED_MATCH_KIND
+        });
+      } else {
+        pushText(token.value);
+      }
+      cursor = token.end;
+    }
+
+    pushText(translatedSentence.slice(cursor));
+    return parts;
+  }
+
+  function getMergedKnownRanges(whitelistMatches) {
+    const ranges = whitelistMatches
+      .map((match) => ({
+        start: match.index,
+        end: match.index + match.target.length,
+        kind: match.kind,
+        source: match.entry?.source || ""
+      }))
+      .filter((range) => range.start < range.end)
+      .sort((a, b) => a.start - b.start || b.end - a.end);
+    const merged = [];
+
+    for (const range of ranges) {
+      if (!merged.some((existing) => rangesOverlap(existing, range))) {
+        merged.push(range);
+      }
+    }
+
+    return merged;
+  }
+
+  function collectAlignedEnglish(alignmentPairs, sourceSentence, tgtStart, tgtEnd, usedKeys) {
+    const words = [];
+    const seen = new Set();
+    const linked = alignmentPairs
+      .filter((pair) => pair.tgtStart < tgtEnd && tgtStart < pair.tgtEnd)
+      .sort((a, b) => a.srcStart - b.srcStart);
+
+    for (const pair of linked) {
+      const key = `${pair.srcStart}:${pair.srcEnd}`;
+      if (seen.has(key) || (usedKeys && usedKeys.has(key))) {
+        continue;
+      }
+
+      const value = sourceSentence.slice(pair.srcStart, pair.srcEnd);
+      if (!isReplaceableNeuralSourceSpan(value)) {
+        continue;
+      }
+
+      seen.add(key);
+      if (usedKeys) {
+        usedKeys.add(key);
+      }
+      words.push(value);
+    }
+
+    return words.join(" ");
+  }
+
+  function captureStructuredBlockOriginal(block, sourceText) {
+    if (structuredBlockOriginals.has(block)) {
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    while (block.firstChild) {
+      fragment.appendChild(block.firstChild);
+    }
+    structuredBlockOriginals.set(block, { fragment, sourceText });
+    block.dataset.lwrOriginalText = sourceText;
   }
 
   async function getContextTranslator(targetLanguage, options = {}) {
@@ -1872,6 +2176,15 @@
   }
 
   function getBlockSourceText(block) {
+    const structured = structuredBlockOriginals.get(block);
+    if (structured) {
+      return structured.sourceText;
+    }
+
+    if (block.nodeType === Node.ELEMENT_NODE && block.dataset.lwrOriginalText) {
+      return block.dataset.lwrOriginalText;
+    }
+
     let text = "";
 
     function visit(node) {
@@ -2312,7 +2625,9 @@
   ) {
     const resolvedMatchIds = new Set();
     const replacements = [];
-    const pairs = await requestWordAlignment(sourceSentence, translatedText);
+    const pairs = (await requestWordAlignment(sourceSentence, translatedText)).filter(
+      (pair) => !pair.weak
+    );
     if (!pairs.length) {
       return { replacements, resolvedMatchIds };
     }
@@ -3069,7 +3384,8 @@
         srcEnd: Math.max(0, Number(pair.srcEnd) || 0),
         tgtStart: Math.max(0, Number(pair.tgtStart) || 0),
         tgtEnd: Math.max(0, Number(pair.tgtEnd) || 0),
-        score: Number(pair.score) || 0
+        score: Number(pair.score) || 0,
+        weak: Boolean(pair.weak)
       }))
       .filter((pair) => pair.srcStart < pair.srcEnd && pair.tgtStart < pair.tgtEnd);
   }
@@ -3140,6 +3456,25 @@
   }
 
   function restoreOriginalText(root = document) {
+    const structuredBlocks =
+      root.nodeType === Node.ELEMENT_NODE && root.classList.contains(STRUCTURED_BLOCK_CLASS)
+        ? [root]
+        : Array.from(root.querySelectorAll?.(`.${STRUCTURED_BLOCK_CLASS}`) || []);
+
+    for (const block of structuredBlocks) {
+      const stored = structuredBlockOriginals.get(block);
+      block.classList.remove(STRUCTURED_BLOCK_CLASS);
+      if (stored) {
+        structuredBlockOriginals.delete(block);
+        block.replaceChildren(stored.fragment);
+      } else if (block.dataset.lwrOriginalText) {
+        // The original nodes are gone (e.g. the extension was reloaded), so
+        // fall back to restoring the plain original text.
+        block.textContent = block.dataset.lwrOriginalText;
+      }
+      delete block.dataset.lwrOriginalText;
+    }
+
     const replacements =
       root.nodeType === Node.ELEMENT_NODE && root.classList.contains(REPLACEMENT_CLASS)
         ? [root]
@@ -3210,11 +3545,16 @@
   }
 
   function countExistingReplacements(root = document) {
+    const scaffoldKinds = new Set([BACK_TRANSLATION_MATCH_KIND, UNLEARNED_MATCH_KIND]);
     if (root.nodeType === Node.ELEMENT_NODE && root.classList.contains(REPLACEMENT_CLASS)) {
-      return 1;
+      return scaffoldKinds.has(root.dataset.learnedWordMatchKind) ? 0 : 1;
     }
 
-    return root.querySelectorAll ? root.querySelectorAll(`.${REPLACEMENT_CLASS}`).length : 0;
+    return root.querySelectorAll
+      ? root.querySelectorAll(
+          `.${REPLACEMENT_CLASS}:not([data-learned-word-match-kind="${BACK_TRANSLATION_MATCH_KIND}"]):not([data-learned-word-match-kind="${UNLEARNED_MATCH_KIND}"])`
+        ).length
+      : 0;
   }
 
   function countExistingWordFamilyReplacements(root = document) {
