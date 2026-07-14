@@ -46,6 +46,7 @@ function testVendoredLucideIcons() {
     "check.svg",
     "import.svg",
     "pencil.svg",
+    "power.svg",
     "rotate-ccw.svg",
     "settings.svg",
     "square-arrow-out-up-right.svg",
@@ -2321,6 +2322,71 @@ async function testDuolingoSyncScrapesEveryLoadedPageInExportFormat(browser) {
   await page.close();
 }
 
+async function testDuolingoSyncLoadsMoreThanTwentyPages(browser) {
+  const page = await browser.newPage();
+  await page.route("https://www.duolingo.com/practice-hub/words", (route) =>
+    route.fulfill({
+      contentType: "text/html; charset=utf-8",
+      body: `
+        <h2>Practice your Ukrainian words</h2>
+        <h2>52 words</h2>
+        <ul id="words">
+          <li><div><h3>слово0</h3><p>meaning 0</p></div></li>
+          <li><div><h3>слово1</h3><p>meaning 1</p></div></li>
+          <li id="load-more" role="button">Load more</li>
+        </ul>
+        <script>
+          let batch = 0;
+          const loadMore = document.getElementById("load-more");
+          loadMore.addEventListener("click", () => {
+            setTimeout(() => {
+              batch += 1;
+              for (let i = 0; i < 2; i += 1) {
+                const n = batch * 2 + i;
+                const row = document.createElement("li");
+                row.innerHTML = "<div><h3>слово" + n + "</h3><p>meaning " + n + "</p></div>";
+                loadMore.parentElement.insertBefore(row, loadMore);
+              }
+              if (batch === 25) {
+                loadMore.remove();
+              }
+            }, 5);
+          });
+        </script>
+      `
+    })
+  );
+  await page.goto("https://www.duolingo.com/practice-hub/words");
+  await installHarness(page, {
+    state: createState([]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => text
+    }
+  });
+
+  const response = await page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        window.__runtimeMessageListener(
+          { type: "LWR_SYNC_DUOLINGO" },
+          {},
+          resolve
+        );
+      })
+  );
+
+  assert(response.ok, `large Duolingo sync failed: ${response.reason || "unknown error"}`);
+  assert(
+    response.count === 52 && response.expectedCount === 52,
+    `large vocabulary was cut off by a load-more click cap: ${JSON.stringify({
+      count: response.count,
+      expectedCount: response.expectedCount
+    })}`
+  );
+  await page.close();
+}
+
 async function testTranslatorBridgeCreatesInsideTrustedPageActivation(browser) {
   const page = await browser.newPage();
   await page.setContent('<button id="activate">Activate</button>');
@@ -2912,6 +2978,99 @@ async function testSidePanelUsesCompactVocabularyList(browser) {
   assert(manualResult.rowCount === 1, "side panel did not render the compact manual row");
   assert(manualResult.compactText.includes("чай") && manualResult.compactText.includes("tea"), "compact manual row lost vocabulary text");
   assert(manualResult.hasToggle && manualResult.hasDelete, "compact manual row lost replacement controls");
+  await page.close();
+}
+
+async function testPanicButtonTogglesEnabledSetting(browser) {
+  const page = await browser.newPage();
+  await page.addInitScript(() => {
+    const state = {
+      version: 2,
+      enabled: true,
+      showHighlights: true,
+      currentProfileId: "uk",
+      profiles: [
+        {
+          id: "uk",
+          name: "Ukrainian",
+          languageCode: "uk",
+          entries: [{ id: "1", source: "it", target: "це", enabled: true, createdAt: 1 }]
+        }
+      ]
+    };
+
+    window.chrome = {
+      runtime: {
+        lastError: null,
+        getURL: (url) => url,
+        onMessage: { addListener() {} }
+      },
+      storage: {
+        local: {
+          get(defaults, callback) {
+            callback({ learnedWordReplacerState: state });
+          },
+          set(values, callback) {
+            window.__lastSavedPopupState = JSON.parse(
+              JSON.stringify(values.learnedWordReplacerState)
+            );
+            if (callback) {
+              callback();
+            }
+          }
+        },
+        onChanged: { addListener() {} }
+      },
+      tabs: {
+        query(query, callback) {
+          callback([]);
+        },
+        sendMessage(tabId, message, options, callback) {
+          if (typeof options === "function") {
+            callback = options;
+          }
+          callback();
+        },
+        create() {}
+      },
+      scripting: {
+        executeScript() {}
+      }
+    };
+  });
+  await page.goto(POPUP_PAGE);
+  await page.waitForSelector("#panic-toggle");
+
+  const before = await page.evaluate(() => ({
+    pressed: document.getElementById("panic-toggle").getAttribute("aria-pressed"),
+    checkbox: document.getElementById("enabled").checked
+  }));
+  assert(
+    before.pressed === "false" && before.checkbox === true,
+    `panic button did not reflect the enabled state: ${JSON.stringify(before)}`
+  );
+
+  await page.click("#panic-toggle");
+  const afterOff = await page.evaluate(() => ({
+    pressed: document.getElementById("panic-toggle").getAttribute("aria-pressed"),
+    checkbox: document.getElementById("enabled").checked,
+    saved: window.__lastSavedPopupState?.enabled
+  }));
+  assert(
+    afterOff.pressed === "true" && afterOff.checkbox === false && afterOff.saved === false,
+    `panic button did not turn replacements off everywhere: ${JSON.stringify(afterOff)}`
+  );
+
+  await page.click("#panic-toggle");
+  const afterOn = await page.evaluate(() => ({
+    pressed: document.getElementById("panic-toggle").getAttribute("aria-pressed"),
+    checkbox: document.getElementById("enabled").checked,
+    saved: window.__lastSavedPopupState?.enabled
+  }));
+  assert(
+    afterOn.pressed === "false" && afterOn.checkbox === true && afterOn.saved === true,
+    `panic button did not turn replacements back on: ${JSON.stringify(afterOn)}`
+  );
   await page.close();
 }
 
@@ -3720,11 +3879,13 @@ function testToolbarOpensSidePanel() {
     await testScrollDoesNotRewriteStructuralContainerSiblings(browser);
     await testNavigationAndAsideTextIsIgnored(browser);
     await testDuolingoSyncScrapesEveryLoadedPageInExportFormat(browser);
+    await testDuolingoSyncLoadsMoreThanTwentyPages(browser);
     await testTranslatorBridgeCreatesInsideTrustedPageActivation(browser);
     await testDuolingoSyncKeepsManualEntriesSeparate(browser);
     await testDuolingoSyncRequiresActivePageAndExplainsRefresh(browser);
     await testDuolingoLoginRedirectShowsInstructions(browser);
     await testSidePanelUsesCompactVocabularyList(browser);
+    await testPanicButtonTogglesEnabledSetting(browser);
     await testPopupStatusPanel(browser);
     testVendoredLucideIcons();
     testUkrainianMorphologyDictionary();

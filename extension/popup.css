@@ -262,6 +262,18 @@ button.icon-button.settings-button {
   width: 18px;
 }
 
+.lucide-icon-power {
+  --lucide-icon: url("icons/lucide/power.svg");
+  height: 18px;
+  width: 18px;
+}
+
+.panic-button[aria-pressed="true"] {
+  background: #fee2e2;
+  border-color: #dc2626;
+  color: #b91c1c;
+}
+
 .app-view {
   display: grid;
   gap: 12px;
@@ -501,7 +513,7 @@ p {
   align-items: end;
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(0, 1fr) 36px;
+  grid-template-columns: minmax(0, 1fr) 36px 36px;
 }
 
 .language-trigger {

@@ -140,6 +140,7 @@ const elements = {
   cancelEdit: document.getElementById("cancel-edit"),
   showHighlights: document.getElementById("show-highlights"),
   structureMode: document.getElementById("structure-mode"),
+  panicToggle: document.getElementById("panic-toggle"),
   showProcessedSections: document.getElementById("show-processed-sections"),
   showOriginalOnHover: document.getElementById("show-original-on-hover"),
   translateEnglishOnHover: document.getElementById("translate-english-on-hover"),
@@ -1227,6 +1228,9 @@ function render() {
   renderProfileOptions();
   renderVocabularySections(manualEntries, duolingoEntries);
   elements.enabled.checked = state.enabled;
+  elements.panicToggle.setAttribute("aria-pressed", String(!state.enabled));
+  elements.panicToggle.title = state.enabled ? "Turn replacements off" : "Turn replacements on";
+  elements.panicToggle.setAttribute("aria-label", elements.panicToggle.title);
   elements.showHighlights.checked = state.showHighlights;
   elements.structureMode.checked = Boolean(state.structureMode);
   elements.showProcessedSections.checked = state.showProcessedSections;
@@ -2759,6 +2763,7 @@ document.addEventListener("click", (event) => {
   }
 });
 elements.enabled.addEventListener("change", () => updateSetting("enabled", elements.enabled.checked));
+elements.panicToggle.addEventListener("click", () => updateSetting("enabled", !state.enabled));
 elements.showHighlights.addEventListener("change", () =>
   updateSetting("showHighlights", elements.showHighlights.checked)
 );
