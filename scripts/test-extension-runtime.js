@@ -882,6 +882,54 @@ async function testNormalModeIgnoresWeakAlignmentPairs(browser) {
   await page.close();
 }
 
+async function testStructureModeLeavesUiBlocksToNormalReplacement(browser) {
+  const page = await browser.newPage();
+  const source = "It is in the house. ";
+  await page.setContent("<p>It is in the house. <button>menu</button></p>");
+  await installHarness(page, {
+    state: {
+      ...createState([{ id: "e1", source: "it", target: "це", enabled: true, createdAt: 1 }]),
+      structureMode: true
+    },
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === source ? "Це у будинку." : "")
+    },
+    config: {
+      ukrainianLemmas: { "це": ["це"] }
+    },
+    wordAligner: async (sourceText, translatedText) => [
+      {
+        srcStart: sourceText.indexOf("It"),
+        srcEnd: sourceText.indexOf("It") + 2,
+        tgtStart: translatedText.indexOf("Це"),
+        tgtEnd: translatedText.indexOf("Це") + 2,
+        score: 0.9
+      }
+    ]
+  });
+
+  await page.waitForFunction(
+    () => document.querySelectorAll(".learned-word-replacer-token").length >= 1
+  );
+  const result = await page.evaluate(() => ({
+    structured: document.querySelectorAll(".learned-word-replacer-structured").length,
+    buttonIntact: document.querySelector("p button")?.textContent === "menu",
+    text: document.body.innerText.replace(/\s+/g, " ").trim()
+  }));
+
+  assert(
+    result.structured === 0,
+    "a block containing UI markup was flattened by structure mode"
+  );
+  assert(result.buttonIntact, "the button inside the block was destroyed");
+  assert(
+    result.text === "Це is in the house. menu",
+    `normal replacement did not run on the UI block: ${JSON.stringify(result)}`
+  );
+  await page.close();
+}
+
 async function testStructureModeKeepsUnalignedSentencesInEnglish(browser) {
   const page = await browser.newPage();
   const source = "Radio is the technology of communicating.";
@@ -3638,6 +3686,7 @@ function testToolbarOpensSidePanel() {
     await testStructureModeRebuildsSentencesInTargetOrder(browser);
     await testStructureModeRestoresOriginalMarkupWhenDisabled(browser);
     await testStructureModeKeepsUnalignedSentencesInEnglish(browser);
+    await testStructureModeLeavesUiBlocksToNormalReplacement(browser);
     await testStructureModeHighlightsUnalignedWordsWithHoverGuess(browser);
     await testNormalModeIgnoresWeakAlignmentPairs(browser);
     await testPluralEnglishWordAlignsToSingularEntry(browser);

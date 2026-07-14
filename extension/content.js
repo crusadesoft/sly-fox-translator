@@ -8,6 +8,31 @@
   const BACK_TRANSLATION_MATCH_KIND = "back-translation";
   const UNLEARNED_MATCH_KIND = "unlearned";
   const STRUCTURED_BLOCK_CLASS = "learned-word-replacer-structured";
+  const STRUCTURE_SAFE_INLINE_TAGS = new Set([
+    "A",
+    "ABBR",
+    "B",
+    "BDI",
+    "BDO",
+    "BR",
+    "CITE",
+    "DEL",
+    "DFN",
+    "EM",
+    "I",
+    "INS",
+    "MARK",
+    "Q",
+    "S",
+    "SMALL",
+    "SPAN",
+    "STRONG",
+    "SUB",
+    "SUP",
+    "TIME",
+    "U",
+    "WBR"
+  ]);
   const STYLE_ID = "learned-word-replacer-style";
   const SOURCE_LANGUAGE = "en";
   const MAX_TRANSLATION_CACHE_ENTRIES = 400;
@@ -1324,7 +1349,7 @@
         continue;
       }
 
-      if (state.structureMode) {
+      if (state.structureMode && isSafeToRestructureBlock(unit.block, unit.text)) {
         const structured = await applyStructuredUnit(unit, translatedText, targetLanguage, runId);
         if (!structured) {
           return;
@@ -1384,6 +1409,36 @@
       processedBlockSourceTexts.set(unit.block, unit.text);
       unit.block.classList.add(PROCESSED_BLOCK_CLASS);
     }
+  }
+
+  // Structure mode may only rebuild pure prose. Blocks that carry UI markup
+  // (images, buttons, custom components) or text that is not actually
+  // rendered (hidden menus, screen-reader labels) would be destroyed by
+  // flattening — Reddit comment headers, for example — so those blocks fall
+  // back to normal per-word replacement.
+  function isSafeToRestructureBlock(block, unitText) {
+    if (!block || block.nodeType !== Node.ELEMENT_NODE || !block.getClientRects().length) {
+      return false;
+    }
+
+    for (const element of block.querySelectorAll("*")) {
+      if (
+        !STRUCTURE_SAFE_INLINE_TAGS.has(element.tagName) &&
+        !element.classList.contains(REPLACEMENT_CLASS)
+      ) {
+        return false;
+      }
+    }
+
+    const rendered = String(block.innerText || "")
+      .replace(/\s+/gu, " ")
+      .trim()
+      .toLocaleLowerCase();
+    const raw = String(unitText || "")
+      .replace(/\s+/gu, " ")
+      .trim()
+      .toLocaleLowerCase();
+    return Boolean(rendered) && rendered === raw;
   }
 
   // Structure mode: rebuild the block in the target language's word order.
