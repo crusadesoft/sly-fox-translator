@@ -208,6 +208,8 @@
   let runtimeStats = createRuntimeStats();
   let statusPublishTimer = null;
   let translatorPreparationPromise = null;
+  let translatorRequestPromise = null;
+  let translatorRequestKey = "";
   let reverseHoverTooltip = null;
   let reverseHoverListenerInstalled = false;
   let reverseHoverTimer = null;
@@ -1322,69 +1324,88 @@
       targetLanguage
     });
 
-    const translatedTexts = await translateContextTexts(
-      translator,
-      targetLanguage,
-      units.map((unit) => unit.text)
-    );
+    // Each block is its own unit, so a finished unit's text nodes are never
+    // touched again by later units and its replacements can be painted right
+    // away instead of holding the whole pass invisible until the last block.
+    let nextUnitIndex = 0;
+    let halted = false;
 
-    for (let index = 0; index < units.length; index += 1) {
-      if (runId !== applyRunId) {
-        return;
-      }
+    const processTranslatedUnits = async (translatedTexts, limit) => {
+      while (nextUnitIndex < limit && !halted) {
+        const index = nextUnitIndex;
+        nextUnitIndex += 1;
 
-      if (runtimeStats.translationCalls >= getMaxTranslationCallsPerPass()) {
-        updateRuntimeStats({
-          unitsSkipped: runtimeStats.unitsSkipped + units.length - index,
-          lastError: "Translation budget reached for this pass."
-        });
-        break;
-      }
+        if (runId !== applyRunId) {
+          halted = true;
+          return;
+        }
 
-      const unit = units[index];
-      updateRuntimeStats({ unitsProcessed: runtimeStats.unitsProcessed + 1 });
+        if (runtimeStats.translationCalls >= getMaxTranslationCallsPerPass()) {
+          updateRuntimeStats({
+            unitsSkipped: runtimeStats.unitsSkipped + units.length - index,
+            lastError: "Translation budget reached for this pass."
+          });
+          halted = true;
+          return;
+        }
 
-      const translatedText = translatedTexts[index];
-      if (!translatedText) {
-        continue;
-      }
+        const unit = units[index];
+        updateRuntimeStats({ unitsProcessed: runtimeStats.unitsProcessed + 1 });
 
-      if (state.structureMode && isSafeToRestructureBlock(unit.block, unit.text)) {
-        const structured = await applyStructuredUnit(unit, translatedText, targetLanguage, runId);
-        if (!structured) {
+        const translatedText = translatedTexts[index];
+        if (!translatedText) {
+          continue;
+        }
+
+        if (state.structureMode && isSafeToRestructureBlock(unit.block, unit.text)) {
+          const structured = await applyStructuredUnit(unit, translatedText, targetLanguage, runId);
+          if (!structured) {
+            halted = true;
+            return;
+          }
+
+          recordProcessedUnit(unit);
+          if (index % 4 === 3) {
+            await yieldToBrowser();
+          }
+          continue;
+        }
+
+        const completed = await addConfirmedRangesFromTranslation(
+          unit,
+          translatedText,
+          replacementsByNode,
+          translator,
+          targetLanguage,
+          runId
+        );
+        if (!completed) {
+          halted = true;
           return;
         }
 
         recordProcessedUnit(unit);
+        applyNodeReplacements(replacementsByNode);
+
         if (index % 4 === 3) {
           await yieldToBrowser();
         }
-        continue;
       }
+    };
 
-      const completed = await addConfirmedRangesFromTranslation(
-        unit,
-        translatedText,
-        replacementsByNode,
-        translator,
-        targetLanguage,
-        runId
-      );
-      if (!completed) {
-        return;
-      }
+    const translatedTexts = await translateContextTexts(
+      translator,
+      targetLanguage,
+      units.map((unit) => unit.text),
+      { onBatchTranslated: processTranslatedUnits }
+    );
 
-      recordProcessedUnit(unit);
+    // Units whose translations all came from cache never trigger a batch
+    // callback, so finish whatever is left.
+    await processTranslatedUnits(translatedTexts, units.length);
+  }
 
-      if (index % 4 === 3) {
-        await yieldToBrowser();
-      }
-    }
-
-    if (runId !== applyRunId) {
-      return;
-    }
-
+  function applyNodeReplacements(replacementsByNode) {
     for (const [node, ranges] of replacementsByNode.entries()) {
       if (!node.isConnected || shouldIgnoreTextNode(node)) {
         continue;
@@ -1402,6 +1423,8 @@
         replaceTextNodeWithParts(node, parts);
       }
     }
+
+    replacementsByNode.clear();
   }
 
   function recordProcessedUnit(unit) {
@@ -1711,6 +1734,29 @@
       return null;
     }
 
+    // The eager warm-up and the first page pass can request the same
+    // translator concurrently; share the in-flight request so the model is
+    // only spun up once.
+    const requestKey = `${key}:${options.allowTranslatorDownload ? "download" : "ready"}`;
+    if (translatorRequestPromise && translatorRequestKey === requestKey) {
+      return translatorRequestPromise;
+    }
+
+    const request = resolveContextTranslator(translatorApi, targetLanguage, options);
+    translatorRequestPromise = request;
+    translatorRequestKey = requestKey;
+
+    try {
+      return await request;
+    } finally {
+      if (translatorRequestPromise === request) {
+        translatorRequestPromise = null;
+        translatorRequestKey = "";
+      }
+    }
+  }
+
+  async function resolveContextTranslator(translatorApi, targetLanguage, options) {
     const translatorOptions = {
       sourceLanguage: SOURCE_LANGUAGE,
       targetLanguage
@@ -1990,6 +2036,8 @@
     const pending = [];
     const readCache = options.readCache !== false;
     const writeCache = options.writeCache !== false;
+    const onBatchTranslated =
+      typeof options.onBatchTranslated === "function" ? options.onBatchTranslated : null;
 
     for (let index = 0; index < texts.length; index += 1) {
       const text = String(texts[index] || "");
@@ -2045,6 +2093,12 @@
           item.text,
           options
         );
+      }
+
+      if (onBatchTranslated) {
+        // Batches preserve ascending text order, so every index up to this
+        // batch's last item now holds its final translation.
+        await onBatchTranslated(translations, batch[batch.length - 1].index + 1);
       }
     }
 
@@ -4017,7 +4071,11 @@
       throw new Error("Open Duolingo's Words page before syncing.");
     }
 
-    for (let loadAttempt = 0; loadAttempt < 20; loadAttempt += 1) {
+    // Keep clicking "Load more" until the whole list is on the page. Progress
+    // is enforced per click — waitForDuolingoWordCountIncrease rejects when a
+    // click loads nothing new — so the cap is only a runaway guard, sized far
+    // above any real vocabulary (1000 clicks ~ 100k words).
+    for (let loadAttempt = 0; loadAttempt < 1000; loadAttempt += 1) {
       const collection = getDuolingoWordCollection();
       const loadMore = getDuolingoLoadMoreControl(collection.list);
       if (!loadMore) {
@@ -4057,9 +4115,32 @@
     };
   }
 
+  function warmContextTranslator() {
+    // Only the top frame warms up eagerly: ad iframes would otherwise each
+    // spin up a translator that their (usually empty) page pass never needs.
+    if (globalThis !== globalThis.top || getTranslationExclusion()) {
+      return;
+    }
+
+    const targetLanguage = getCurrentLanguageCode();
+    if (
+      !state.enabled ||
+      !targetLanguage ||
+      targetLanguage === SOURCE_LANGUAGE ||
+      !getCurrentEntries().some((entry) => entry.enabled)
+    ) {
+      return;
+    }
+
+    getContextTranslator(targetLanguage).catch(() => {});
+  }
+
   function loadState() {
     chrome.storage.local.get({ [STORAGE_KEY]: DEFAULT_STATE }, (stored) => {
       state = normalizeState(stored[STORAGE_KEY]);
+      // Start the translator spin-up now so it overlaps the DOM walk that
+      // applyToPage does before it needs the translator.
+      warmContextTranslator();
       applyToPage();
     });
   }
