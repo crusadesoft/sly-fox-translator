@@ -174,6 +174,7 @@
     showOriginalOnHover: true,
     translateEnglishOnHover: true,
     duolingoAutoContinue: false,
+    duolingoTypeAnswers: false,
     wholeWords: true,
     caseSensitive: false,
     preserveCase: true,
@@ -3996,6 +3997,400 @@
     }
   }
 
+  const DUOLINGO_TYPE_INPUT_ID = "learned-word-replacer-duolingo-type-input";
+  const DUOLINGO_TYPE_WRAP_ID = "learned-word-replacer-duolingo-type-wrap";
+  const DUOLINGO_BANK_TOGGLE_ID = "learned-word-replacer-duolingo-bank-toggle";
+  // Lucide "eye" and "eye-closed" (ISC license), inlined because the page
+  // CSP has no say over content-script-created DOM but network fetches of
+  // icon packs would be blocked and slow anyway.
+  const DUOLINGO_EYE_ICON =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>';
+  const DUOLINGO_EYE_CLOSED_ICON =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-.722-3.25"/><path d="M2 8a10.645 10.645 0 0 0 20 0"/><path d="m20 15-1.726-2.05"/><path d="m4 15 1.726-2.05"/><path d="m9 18 .722-3.25"/></svg>';
+  let duolingoTypeObserver = null;
+  let duolingoTypeClickListener = null;
+  let duolingoTypeKeyListener = null;
+  let duolingoTypeKeySwallower = null;
+  let duolingoTypeFocusListener = null;
+  let duolingoTypeBlurListener = null;
+  let duolingoBankHidden = false;
+
+  function isDuolingoTypeInputTarget(event) {
+    return event.target && event.target.id === DUOLINGO_TYPE_INPUT_ID;
+  }
+
+  function syncDuolingoTypeAnswers() {
+    const shouldRun =
+      globalThis === globalThis.top && isDuolingoHost() && Boolean(state.duolingoTypeAnswers);
+
+    if (shouldRun && !duolingoTypeObserver) {
+      duolingoTypeObserver = new MutationObserver(() => {
+        ensureDuolingoTypeInput();
+      });
+      duolingoTypeObserver.observe(document.documentElement, {
+        childList: true,
+        subtree: true
+      });
+      duolingoTypeClickListener = (event) => {
+        const toggle =
+          event.target && event.target.closest
+            ? event.target.closest(`[id='${DUOLINGO_BANK_TOGGLE_ID}']`)
+            : null;
+        if (toggle) {
+          duolingoBankHidden = !duolingoBankHidden;
+          applyDuolingoBankVisibility();
+          // Refocus synchronously: keystrokes right after the toggle click
+          // must land in the input, not on the button.
+          const typeInput = document.getElementById(DUOLINGO_TYPE_INPUT_ID);
+          if (typeInput) {
+            typeInput.focus();
+          }
+          return;
+        }
+        refocusDuolingoTypeInput(event);
+      };
+      document.addEventListener("click", duolingoTypeClickListener, true);
+      // Window-capture (not element-level) handlers, for two reasons:
+      // Duolingo's transition animations swap in cloneNode copies of the
+      // challenge subtree (clones silently drop element listeners), and on
+      // tap challenges Duolingo preventDefaults keydown in a document-level
+      // capture listener, which kills text insertion into any input on the
+      // page. Window capture runs first, so stopping propagation there keeps
+      // our keystrokes out of Duolingo's blocker while the browser's default
+      // text insertion still happens.
+      duolingoTypeKeyListener = (event) => {
+        if (isDuolingoTypeInputTarget(event)) {
+          handleDuolingoTypeKeydown(event);
+        }
+      };
+      window.addEventListener("keydown", duolingoTypeKeyListener, true);
+      duolingoTypeKeySwallower = (event) => {
+        if (isDuolingoTypeInputTarget(event)) {
+          event.stopPropagation();
+        }
+      };
+      window.addEventListener("keyup", duolingoTypeKeySwallower, true);
+      window.addEventListener("keypress", duolingoTypeKeySwallower, true);
+      window.addEventListener("beforeinput", duolingoTypeKeySwallower, true);
+      duolingoTypeFocusListener = (event) => {
+        if (isDuolingoTypeInputTarget(event)) {
+          event.target.style.borderColor = "rgb(28, 176, 246)";
+        }
+      };
+      duolingoTypeBlurListener = (event) => {
+        if (isDuolingoTypeInputTarget(event)) {
+          event.target.style.borderColor = "rgb(229, 229, 229)";
+        }
+      };
+      document.addEventListener("focusin", duolingoTypeFocusListener, true);
+      document.addEventListener("focusout", duolingoTypeBlurListener, true);
+      ensureDuolingoTypeInput();
+    } else if (!shouldRun && duolingoTypeObserver) {
+      duolingoTypeObserver.disconnect();
+      duolingoTypeObserver = null;
+      document.removeEventListener("click", duolingoTypeClickListener, true);
+      window.removeEventListener("keydown", duolingoTypeKeyListener, true);
+      window.removeEventListener("keyup", duolingoTypeKeySwallower, true);
+      window.removeEventListener("keypress", duolingoTypeKeySwallower, true);
+      window.removeEventListener("beforeinput", duolingoTypeKeySwallower, true);
+      document.removeEventListener("focusin", duolingoTypeFocusListener, true);
+      document.removeEventListener("focusout", duolingoTypeBlurListener, true);
+      duolingoTypeClickListener = null;
+      duolingoTypeKeyListener = null;
+      duolingoTypeKeySwallower = null;
+      duolingoTypeFocusListener = null;
+      duolingoTypeBlurListener = null;
+      removeDuolingoTypeInput();
+    }
+  }
+
+  function getDuolingoWordBank() {
+    // Duolingo keeps hidden clones of the challenge subtree around for its
+    // slide transitions; only the visible bank is the real one.
+    return [...document.querySelectorAll("[data-test='word-bank']")].find(
+      (bank) => bank.offsetParent !== null
+    );
+  }
+
+  function removeDuolingoTypeInput() {
+    document
+      .querySelectorAll(`[id='${DUOLINGO_TYPE_WRAP_ID}'], [id='${DUOLINGO_TYPE_INPUT_ID}']`)
+      .forEach((host) => host.remove());
+    document
+      .querySelectorAll("[data-test='word-bank']")
+      .forEach((bank) => (bank.style.visibility = ""));
+  }
+
+  function applyDuolingoBankVisibility() {
+    // Guard every write: this runs from the MutationObserver, so an
+    // unconditional innerHTML/style write would re-trigger it forever.
+    const wanted = duolingoBankHidden ? "hidden" : "";
+    const bank = getDuolingoWordBank();
+    if (bank && bank.style.visibility !== wanted) {
+      bank.style.visibility = wanted;
+    }
+
+    const state = duolingoBankHidden ? "hidden" : "shown";
+    document.querySelectorAll(`[id='${DUOLINGO_BANK_TOGGLE_ID}']`).forEach((toggle) => {
+      if (toggle.getAttribute("data-bank-state") === state) {
+        return;
+      }
+      toggle.setAttribute("data-bank-state", state);
+      toggle.innerHTML = duolingoBankHidden ? DUOLINGO_EYE_CLOSED_ICON : DUOLINGO_EYE_ICON;
+      toggle.title = duolingoBankHidden ? "Show the word bank" : "Hide the word bank";
+      toggle.setAttribute("aria-label", toggle.title);
+      toggle.setAttribute("aria-pressed", String(duolingoBankHidden));
+    });
+  }
+
+  function ensureDuolingoTypeInput() {
+    const bank = getDuolingoWordBank();
+
+    // Keep exactly one input row: the one sitting before the visible bank.
+    // Anything else is a leftover or a transition-clone copy.
+    let keep = null;
+    document.querySelectorAll(`[id='${DUOLINGO_TYPE_WRAP_ID}']`).forEach((host) => {
+      if (!keep && bank && host.nextElementSibling === bank) {
+        keep = host;
+      } else {
+        host.remove();
+      }
+    });
+
+    if (!bank || keep) {
+      if (keep) {
+        applyDuolingoBankVisibility();
+      }
+      return;
+    }
+
+    const input = document.createElement("input");
+    input.id = DUOLINGO_TYPE_INPUT_ID;
+    input.type = "text";
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    input.placeholder = "Type a word, then space — Enter checks";
+    input.setAttribute("aria-label", "Type a word from the word bank");
+    input.style.cssText = [
+      "display: block",
+      "width: 100%",
+      "box-sizing: border-box",
+      "margin: 0",
+      "padding: 10px 48px 10px 14px",
+      "border: 2px solid rgb(229, 229, 229)",
+      "border-radius: 12px",
+      "background: #ffffff",
+      "color: rgb(60, 60, 60)",
+      "font-family: 'duolingo-sans', -apple-system, sans-serif",
+      "font-size: 17px",
+      "font-weight: 500",
+      "outline: none",
+      "transition: border-color 0.15s ease"
+    ].join(";");
+
+    const wrap = document.createElement("div");
+    wrap.id = DUOLINGO_TYPE_WRAP_ID;
+    wrap.style.cssText =
+      "position: relative; width: 100%; box-sizing: border-box; margin: 0 0 12px";
+
+    const toggle = document.createElement("button");
+    toggle.id = DUOLINGO_BANK_TOGGLE_ID;
+    toggle.type = "button";
+    toggle.tabIndex = -1;
+    toggle.style.cssText = [
+      "position: absolute",
+      "right: 8px",
+      "top: 50%",
+      "transform: translateY(-50%)",
+      "display: flex",
+      "align-items: center",
+      "justify-content: center",
+      "width: 32px",
+      "height: 32px",
+      "padding: 0",
+      "border: none",
+      "border-radius: 8px",
+      "background: none",
+      "color: rgb(175, 175, 175)",
+      "cursor: pointer"
+    ].join(";");
+
+    wrap.append(input, toggle);
+    bank.parentElement.insertBefore(wrap, bank);
+    applyDuolingoBankVisibility();
+    input.focus();
+  }
+
+  function refocusDuolingoTypeInput(event) {
+    const bank = getDuolingoWordBank();
+    const input = bank ? document.getElementById(DUOLINGO_TYPE_INPUT_ID) : null;
+    if (!input || !input.isConnected) {
+      return;
+    }
+
+    if (event.target === input) {
+      return;
+    }
+
+    // Leave real text fields (report dialogs etc.) alone.
+    setTimeout(() => {
+      const active = document.activeElement;
+      if (
+        active &&
+        (active === input ||
+          active.tagName === "INPUT" ||
+          active.tagName === "TEXTAREA" ||
+          active.isContentEditable)
+      ) {
+        return;
+      }
+      input.focus();
+    }, 0);
+  }
+
+  function normalizeDuolingoTypedText(value) {
+    return String(value || "")
+      .normalize("NFC")
+      .toLocaleLowerCase()
+      .replace(/[’ʼ`]/g, "'")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function getDuolingoBankTokens() {
+    const bank = getDuolingoWordBank();
+    if (!bank) {
+      return [];
+    }
+
+    return [...bank.querySelectorAll("button[data-test*='challenge-tap-token']")]
+      .filter(
+        (button) => !button.disabled && button.getAttribute("aria-disabled") !== "true"
+      )
+      .map((button) => ({
+        button,
+        // textContent, not innerText: the bank may be visibility:hidden via
+        // the eye toggle, and innerText reads as "" inside hidden subtrees.
+        raw: String(button.textContent || "").replace(/\s+/g, " ").trim(),
+        text: normalizeDuolingoTypedText(button.textContent)
+      }))
+      .filter((token) => token.text);
+  }
+
+  function findDuolingoBankToken(typed) {
+    const query = normalizeDuolingoTypedText(typed);
+    if (!query) {
+      return { match: null, couldExtend: false };
+    }
+
+    const tokens = getDuolingoBankTokens();
+    const exact = tokens.filter((token) => token.text === query);
+    if (exact.length) {
+      // "a" vs "A" can both be in the bank; prefer the typed casing.
+      const rawTyped = String(typed).replace(/\s+/g, " ").trim();
+      const caseMatch = exact.find((token) => token.raw === rawTyped);
+      return { match: caseMatch || exact[0], couldExtend: false };
+    }
+
+    const prefixed = tokens.filter((token) => token.text.startsWith(query));
+    const uniqueTexts = new Set(prefixed.map((token) => token.text));
+    if (uniqueTexts.size === 1) {
+      return { match: prefixed[0], couldExtend: false };
+    }
+
+    return {
+      match: null,
+      couldExtend: prefixed.some((token) => token.text.startsWith(`${query} `))
+    };
+  }
+
+  function getLastPlacedDuolingoToken() {
+    const bank = getDuolingoWordBank();
+    if (!bank) {
+      return null;
+    }
+
+    const placed = [...document.querySelectorAll("button[data-test*='challenge-tap-token']")]
+      .filter(
+        (button) =>
+          !bank.contains(button) &&
+          button.offsetParent !== null &&
+          button.innerText.trim()
+      );
+    return placed[placed.length - 1] || null;
+  }
+
+  function flashDuolingoTypeInput(input) {
+    input.style.borderColor = "rgb(234, 43, 43)";
+    setTimeout(() => {
+      input.style.borderColor =
+        document.activeElement === input ? "rgb(28, 176, 246)" : "rgb(229, 229, 229)";
+    }, 350);
+  }
+
+  function handleDuolingoTypeKeydown(event) {
+    event.stopPropagation();
+
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+      return;
+    }
+
+    const input = event.target;
+    const typed = input.value.trim();
+
+    if (event.key === "Backspace" && !input.value) {
+      const lastPlaced = getLastPlacedDuolingoToken();
+      if (lastPlaced) {
+        lastPlaced.click();
+      }
+      event.preventDefault();
+      return;
+    }
+
+    if (event.key !== " " && event.key !== "Enter") {
+      return;
+    }
+
+    if (!typed) {
+      if (event.key === "Enter") {
+        const check = document.querySelector("[data-test='player-next']");
+        if (
+          check &&
+          !check.disabled &&
+          check.getAttribute("aria-disabled") !== "true"
+        ) {
+          check.click();
+        }
+        event.preventDefault();
+      } else {
+        event.preventDefault();
+      }
+      return;
+    }
+
+    const { match, couldExtend } = findDuolingoBankToken(typed);
+
+    if (match) {
+      match.button.click();
+      input.value = "";
+      event.preventDefault();
+      return;
+    }
+
+    // A space may be the middle of a multi-word token ("мене звуть"):
+    // let it through while the buffer still prefixes several tokens.
+    if (event.key === " " && couldExtend) {
+      return;
+    }
+
+    // No match: flash, but let spaces land so a stuck buffer stays readable
+    // ("brother is not" instead of "brotherisnot").
+    if (event.key === "Enter") {
+      event.preventDefault();
+    }
+    flashDuolingoTypeInput(input);
+  }
+
   function skipDuolingoContinueScreen() {
     const blame = document.querySelector("[data-test~='blame']");
     if (!blame || duolingoHandledBlames.has(blame)) {
@@ -4318,6 +4713,7 @@
       // applyToPage does before it needs the translator.
       warmContextTranslator();
       syncDuolingoAutoContinue();
+      syncDuolingoTypeAnswers();
       applyToPage();
     });
   }
@@ -4331,6 +4727,7 @@
 
     state = normalizeState(changes[STORAGE_KEY].newValue);
     syncDuolingoAutoContinue();
+    syncDuolingoTypeAnswers();
     applyToPage();
   });
 

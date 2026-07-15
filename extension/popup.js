@@ -85,6 +85,7 @@ const DEFAULT_STATE = {
   showOriginalOnHover: true,
   translateEnglishOnHover: true,
   duolingoAutoContinue: false,
+  duolingoTypeAnswers: false,
   wholeWords: true,
   caseSensitive: false,
   preserveCase: true,
@@ -146,6 +147,7 @@ const elements = {
   showOriginalOnHover: document.getElementById("show-original-on-hover"),
   translateEnglishOnHover: document.getElementById("translate-english-on-hover"),
   duolingoAutoContinue: document.getElementById("duolingo-auto-continue"),
+  duolingoTypeAnswers: document.getElementById("duolingo-type-answers"),
   runtimePanel: document.getElementById("page-status-panel"),
   runtimeTitle: document.getElementById("runtime-title"),
   runtimeStatus: document.getElementById("runtime-status"),
@@ -1239,6 +1241,7 @@ function render() {
   elements.showOriginalOnHover.checked = state.showOriginalOnHover;
   elements.translateEnglishOnHover.checked = state.translateEnglishOnHover;
   elements.duolingoAutoContinue.checked = Boolean(state.duolingoAutoContinue);
+  elements.duolingoTypeAnswers.checked = Boolean(state.duolingoTypeAnswers);
   elements.entryCount.textContent = `${replacingCount} replacing / ${manualEntries.length} manual / ${duolingoEntries.length} Duolingo`;
   elements.exportManualButton.disabled = manualEntries.length === 0;
   elements.search.value = searchQuery;
@@ -2784,6 +2787,9 @@ elements.translateEnglishOnHover.addEventListener("change", () =>
 );
 elements.duolingoAutoContinue.addEventListener("change", () =>
   updateSetting("duolingoAutoContinue", elements.duolingoAutoContinue.checked)
+);
+elements.duolingoTypeAnswers.addEventListener("change", () =>
+  updateSetting("duolingoTypeAnswers", elements.duolingoTypeAnswers.checked)
 );
 elements.runtimeRetry.addEventListener("click", retryActiveTab);
 elements.excludePage.addEventListener("click", () => toggleDoNotTranslate("page"));
