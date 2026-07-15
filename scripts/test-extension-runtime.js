@@ -788,7 +788,9 @@ async function testStructureModeHighlightsUnalignedWordsWithHoverGuess(browser) 
       translate: async (text) => (text === source ? translated : "")
     },
     config: {
-      ukrainianLemmas: { "радіо": ["радіо"] }
+      // The fidelity check vets every displayed unlearned Ukrainian word
+      // against the dictionary, so the stub must know the scaffold word too.
+      ukrainianLemmas: { "радіо": ["радіо"], "радіоприймачі": ["радіоприймач"] }
     },
     wordAligner: async (sourceText, translatedText) => {
       const link = (english, ukrainian, extra) => {
@@ -835,6 +837,96 @@ async function testStructureModeHighlightsUnalignedWordsWithHoverGuess(browser) 
   assert(
     result.unlearned?.text === "радіоприймачі" && result.unlearned?.guess === "receivers",
     `the unaligned word was not highlighted with its English guess: ${JSON.stringify(result.unlearned)}`
+  );
+  await page.close();
+}
+
+async function testStructureModeFallsBackWhenTranslationIsMangled(browser) {
+  const page = await browser.newPage();
+  // Two ways the small on-device model mangles proper-noun runs: dropping a
+  // name outright, and inventing a non-word. Both sentences must abandon
+  // structure mode instead of painting the mangled frame into the page.
+  const droppedSource = "The Republic of Yucatan no longer exists.";
+  const droppedTranslation = "Республіка більше не існує.";
+  const inventedSource = "The Bolivian Confederation was real.";
+  const inventedTranslation = "Боліва конфедерація була справжньою.";
+  await page.setContent(`<p>${droppedSource}</p><p>${inventedSource}</p>`);
+  await installHarness(page, {
+    state: {
+      ...createState([{ id: "e1", source: "not", target: "не", enabled: true, createdAt: 1 }]),
+      structureMode: true
+    },
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => {
+        if (text === droppedSource) {
+          return droppedTranslation;
+        }
+        return text === inventedSource ? inventedTranslation : "";
+      }
+    },
+    config: {
+      // Every real word resolves; only the invented "Боліва" is unknown.
+      ukrainianLemmas: {
+        "республіка": ["республіка"],
+        "більше": ["більше"],
+        "існує": ["існувати"],
+        "конфедерація": ["конфедерація"],
+        "була": ["бути"],
+        "справжньою": ["справжній"]
+      }
+    },
+    wordAligner: async (sourceText, translatedText) => {
+      const link = (english, ukrainian, extra) => {
+        const srcStart = sourceText.indexOf(english);
+        const tgtStart = translatedText.indexOf(ukrainian);
+        return {
+          srcStart,
+          srcEnd: srcStart + english.length,
+          tgtStart,
+          tgtEnd: tgtStart + ukrainian.length,
+          score: 0.9,
+          ...extra
+        };
+      };
+      if (sourceText === droppedSource) {
+        // "Yucatan" is aligned to nothing anywhere: the translation lost it.
+        return [
+          link("Republic", "Республіка"),
+          link("longer", "більше"),
+          link("exists", "існує")
+        ];
+      }
+      return [
+        // The invented word is only a weak best guess, like a real aligner
+        // would produce for a token the model made up.
+        link("Bolivian", "Боліва", { weak: true, score: 0.0005 }),
+        link("Confederation", "конфедерація"),
+        link("was", "була"),
+        link("real", "справжньою")
+      ];
+    }
+  });
+
+  await page.waitForFunction(
+    () => document.querySelectorAll(".learned-word-replacer-checked").length === 2
+  );
+  const result = await page.evaluate(() => ({
+    structured: document.querySelectorAll(".learned-word-replacer-structured").length,
+    text: document.body.innerText
+  }));
+
+  assert(
+    result.structured === 0,
+    `a mangled translation was still used as a structure-mode frame: ${JSON.stringify(result)}`
+  );
+  assert(
+    result.text.includes("Yucatan") && result.text.includes("Bolivian Confederation"),
+    `fallback did not preserve the original sentences: ${JSON.stringify(result.text)}`
+  );
+  assert(
+    !result.text.includes("Боліва"),
+    `the invented translator word leaked into the page: ${JSON.stringify(result.text)}`
   );
   await page.close();
 }
@@ -3847,6 +3939,7 @@ function testToolbarOpensSidePanel() {
     await testStructureModeKeepsUnalignedSentencesInEnglish(browser);
     await testStructureModeLeavesUiBlocksToNormalReplacement(browser);
     await testStructureModeHighlightsUnalignedWordsWithHoverGuess(browser);
+    await testStructureModeFallsBackWhenTranslationIsMangled(browser);
     await testNormalModeIgnoresWeakAlignmentPairs(browser);
     await testPluralEnglishWordAlignsToSingularEntry(browser);
     await testUkrainianWordFamiliesDoNotMatchCompounds(browser);

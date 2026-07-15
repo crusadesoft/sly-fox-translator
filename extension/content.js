@@ -1361,16 +1361,21 @@
 
         if (state.structureMode && isSafeToRestructureBlock(unit.block, unit.text)) {
           const structured = await applyStructuredUnit(unit, translatedText, targetLanguage, runId);
-          if (!structured) {
+          if (structured === STRUCTURED_UNIT_HALTED) {
             halted = true;
             return;
           }
 
-          recordProcessedUnit(unit);
-          if (index % 4 === 3) {
-            await yieldToBrowser();
+          if (structured === STRUCTURED_UNIT_APPLIED) {
+            recordProcessedUnit(unit);
+            if (index % 4 === 3) {
+              await yieldToBrowser();
+            }
+            continue;
           }
-          continue;
+
+          // STRUCTURED_UNIT_REJECTED: the translation failed the fidelity
+          // checks, so this block gets plain per-word replacement instead.
         }
 
         const completed = await addConfirmedRangesFromTranslation(
@@ -1466,6 +1471,10 @@
     return Boolean(rendered) && rendered === raw;
   }
 
+  const STRUCTURED_UNIT_HALTED = null;
+  const STRUCTURED_UNIT_APPLIED = "applied";
+  const STRUCTURED_UNIT_REJECTED = "rejected";
+
   // Structure mode: rebuild the block in the target language's word order.
   // Learned words stay in the target language; every other word is translated
   // back into English through the word aligner, so the sentence teaches the
@@ -1473,7 +1482,7 @@
   async function applyStructuredUnit(unit, translatedText, targetLanguage, runId) {
     const block = unit.block;
     if (!block || block.nodeType !== Node.ELEMENT_NODE || !block.isConnected) {
-      return true;
+      return STRUCTURED_UNIT_APPLIED;
     }
 
     const translatedSentences = splitTranslatedSentences(translatedText);
@@ -1494,7 +1503,7 @@
       const matches = await findWhitelistMatchesInText(pair.translated, targetLanguage, pair.source);
       const alignmentPairs = await requestWordAlignment(pair.source, pair.translated);
       if (runId !== applyRunId) {
-        return false;
+        return STRUCTURED_UNIT_HALTED;
       }
 
       if (!alignmentPairs.length) {
@@ -1504,14 +1513,35 @@
         continue;
       }
 
-      parts.push(
-        ...buildStructuredSentenceParts(pair.source, pair.translated, matches, alignmentPairs)
+      const sentenceParts = buildStructuredSentenceParts(
+        pair.source,
+        pair.translated,
+        matches,
+        alignmentPairs
       );
+      const faithful = await structuredSentencePartsAreFaithful(
+        pair.source,
+        sentenceParts,
+        targetLanguage
+      );
+      if (runId !== applyRunId) {
+        return STRUCTURED_UNIT_HALTED;
+      }
+
+      if (!faithful) {
+        debugLog("structure-reject", {
+          source: pair.source.slice(0, 90),
+          translated: pair.translated.slice(0, 90)
+        });
+        return STRUCTURED_UNIT_REJECTED;
+      }
+
+      parts.push(...sentenceParts);
     }
 
     const replacementParts = parts.filter((part) => part.type === "replacement");
     if (!replacementParts.length) {
-      return true;
+      return STRUCTURED_UNIT_APPLIED;
     }
 
     captureStructuredBlockOriginal(block, unit.text);
@@ -1527,7 +1557,87 @@
         runtimeStats.wordFamilyReplacementCount +
         replacementParts.filter((part) => part.kind === WORD_FAMILY_MATCH_KIND).length
     });
-    return true;
+    return STRUCTURED_UNIT_APPLIED;
+  }
+
+  // Structure mode trusts the machine translation as the sentence frame, but
+  // the small on-device model sometimes mangles dense proper-noun runs --
+  // dropping, duplicating, or inventing words ("Peru-Bolivian Confederation"
+  // once came back containing the non-word "Боліва"). Only use the rebuilt
+  // sentence when it keeps every distinctive source token and every
+  // target-language word it shows is a real dictionary word.
+  async function structuredSentencePartsAreFaithful(sourceSentence, parts, targetLanguage) {
+    const visibleText = parts.map((part) => part.value).join(" ");
+    const retainedText = `${visibleText} ${parts
+      .filter((part) => part.type === "replacement")
+      .map((part) => part.original || "")
+      .join(" ")}`.toLocaleLowerCase();
+
+    for (const token of getDistinctiveSourceTokens(sourceSentence)) {
+      if (!retainedText.includes(token.toLocaleLowerCase())) {
+        return false;
+      }
+    }
+
+    if (targetLanguage !== "uk") {
+      return true;
+    }
+
+    // Ukrainian words the learner has not studied are shown verbatim from the
+    // translation, so vet those against the morphology dictionary. Learned
+    // words (whitelist matches) are trusted as-is.
+    const scaffoldWords = [];
+    for (const part of parts) {
+      if (part.type === "text" || part.kind === UNLEARNED_MATCH_KIND) {
+        scaffoldWords.push(...getCyrillicValidationWords(part.value));
+      }
+    }
+
+    if (!scaffoldWords.length) {
+      return true;
+    }
+
+    const lemmasByWord = await getUkrainianLemmas(scaffoldWords);
+    return scaffoldWords.every(
+      (word) => (lemmasByWord.get(normalizeUkrainianMorphologyWord(word)) || []).length > 0
+    );
+  }
+
+  // Capitalized words (except the sentence opener) and numbers are the tokens
+  // a translation must not lose; lowercase filler may legitimately disappear
+  // into the target language's grammar.
+  function getDistinctiveSourceTokens(sourceSentence) {
+    const tokens = [];
+    let isFirstWord = true;
+
+    for (const match of String(sourceSentence).matchAll(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu)) {
+      const wasFirstWord = isFirstWord;
+      isFirstWord = false;
+
+      // Hyphenated compounds ("Rio-Grande") may be legitimately reordered or
+      // split by translation, so require each half on its own.
+      for (const piece of match[0].split("-")) {
+        if (!piece) {
+          continue;
+        }
+
+        if (/\p{N}/u.test(piece)) {
+          tokens.push(piece);
+        } else if (!wasFirstWord && /^\p{Lu}/u.test(piece)) {
+          tokens.push(piece);
+        }
+      }
+    }
+
+    return tokens;
+  }
+
+  function getCyrillicValidationWords(value) {
+    const words =
+      String(value || "").match(/[\p{Script=Cyrillic}][\p{Script=Cyrillic}'’ʼ]*/gu) || [];
+    // One- and two-letter words are particles the dictionary may not list;
+    // translator-invented garbage is longer.
+    return words.filter((word) => word.length >= 3);
   }
 
   function buildStructuredSentenceParts(sourceSentence, translatedSentence, whitelistMatches, alignmentPairs) {
