@@ -2554,6 +2554,83 @@ async function testTranslatorBridgeCreatesInsideTrustedPageActivation(browser) {
   await page.close();
 }
 
+async function testCorruptedEntryPartsAreHealedOnLoad(browser) {
+  const page = await browser.newPage();
+  await page.addInitScript(() => {
+    // A corrupted import once stored every target/definition alternate five
+    // times over; loading the popup must dedupe and persist the repair.
+    const state = {
+      version: 2,
+      enabled: true,
+      showHighlights: true,
+      currentProfileId: "uk",
+      builtInProfilesVersion: 4,
+      deletedBuiltInProfileIds: [],
+      profiles: [
+        {
+          id: "uk",
+          name: "Ukrainian",
+          languageCode: "uk",
+          entries: [
+            {
+              id: "dup",
+              source: "million",
+              target: "мільйони / мільйонів / мільйони / мільйонів / мільйони",
+              definition:
+                "Duolingo meanings: million, millions; Duolingo meanings: million; Duolingo meanings: million, millions",
+              origin: "duolingo",
+              enabled: true,
+              createdAt: 1
+            }
+          ]
+        }
+      ]
+    };
+    window.chrome = {
+      runtime: {
+        lastError: null,
+        getURL: (url) => url,
+        onMessage: { addListener() {} }
+      },
+      storage: {
+        local: {
+          get(defaults, callback) {
+            callback({ learnedWordReplacerState: state });
+          },
+          set(values, callback) {
+            window.__healedState = JSON.parse(JSON.stringify(values.learnedWordReplacerState));
+            if (callback) {
+              callback();
+            }
+          }
+        },
+        onChanged: { addListener() {} }
+      },
+      tabs: {
+        query(query, callback) {
+          callback([]);
+        }
+      }
+    };
+  });
+
+  await page.goto(POPUP_PAGE);
+  await page.waitForFunction(() => window.__healedState);
+  const entry = await page.evaluate(
+    () => window.__healedState.profiles.find((profile) => profile.id === "uk").entries[0]
+  );
+
+  assert(
+    entry.target === "мільйони / мільйонів",
+    `duplicate target alternates were not healed on load: ${JSON.stringify(entry.target)}`
+  );
+  assert(
+    entry.definition === "Duolingo meanings: million, millions; Duolingo meanings: million",
+    `duplicate definition parts were not healed on load: ${JSON.stringify(entry.definition)}`
+  );
+  await page.close();
+}
+
 async function testDuolingoSyncKeepsManualEntriesSeparate(browser) {
   const page = await browser.newPage();
   await page.addInitScript(() => {
@@ -3974,6 +4051,7 @@ function testToolbarOpensSidePanel() {
     await testDuolingoSyncScrapesEveryLoadedPageInExportFormat(browser);
     await testDuolingoSyncLoadsMoreThanTwentyPages(browser);
     await testTranslatorBridgeCreatesInsideTrustedPageActivation(browser);
+    await testCorruptedEntryPartsAreHealedOnLoad(browser);
     await testDuolingoSyncKeepsManualEntriesSeparate(browser);
     await testDuolingoSyncRequiresActivePageAndExplainsRefresh(browser);
     await testDuolingoLoginRedirectShowsInstructions(browser);

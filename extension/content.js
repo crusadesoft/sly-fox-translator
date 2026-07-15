@@ -391,18 +391,36 @@
           .map((entry) => ({
             id: String(entry.id || createId()),
             source: String(entry.source || "").trim(),
-            target: String(entry.target || "").trim(),
+            // Dedupe joined alternates: corrupted import files have stored
+            // targets like "мільйони / мільйонів" repeated five times over.
+            target: dedupeJoinedText(entry.target, " / "),
             learned: true,
             enabled: entry.enabled !== false,
             origin:
               entry.origin === "duolingo" || String(entry.definition || "").startsWith("Duolingo meanings:")
                 ? "duolingo"
                 : "manual",
-            definition: String(entry.definition || "").trim(),
+            definition: dedupeJoinedText(entry.definition, "; "),
             createdAt: Number(entry.createdAt || Date.now())
           }))
           .filter((entry) => entry.source && entry.target)
       : [];
+  }
+
+  function dedupeJoinedText(text, separator) {
+    const seen = new Set();
+    const unique = [];
+
+    for (const part of String(text || "").split(separator)) {
+      const value = part.trim();
+      const key = value.toLocaleLowerCase();
+      if (value && !seen.has(key)) {
+        seen.add(key);
+        unique.push(value);
+      }
+    }
+
+    return unique.join(separator);
   }
 
   function inferLanguageCodeFromEntries(entries) {

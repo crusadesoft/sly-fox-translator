@@ -217,16 +217,34 @@ function normalizeEntries(entries) {
         .map((entry) => ({
           id: String(entry.id || createId()),
           source: String(entry.source || "").trim(),
-          target: String(entry.target || "").trim(),
+          // Dedupe joined alternates: corrupted import files have stored
+          // targets like "мільйони / мільйонів" repeated five times over.
+          target: dedupeJoinedText(entry.target, " / "),
           learned: true,
           enabled: entry.enabled !== false,
           languageCode: String(entry.languageCode || ""),
-          definition: String(entry.definition || "").trim(),
+          definition: dedupeJoinedText(entry.definition, "; "),
           origin: getEntryOrigin(entry),
           createdAt: Number(entry.createdAt || Date.now())
         }))
         .filter((entry) => entry.source && entry.target && !isInvalidDuolingoImportEntry(entry))
     : [];
+}
+
+function dedupeJoinedText(text, separator) {
+  const seen = new Set();
+  const unique = [];
+
+  for (const part of String(text || "").split(separator)) {
+    const value = part.trim();
+    const key = value.toLocaleLowerCase();
+    if (value && !seen.has(key)) {
+      seen.add(key);
+      unique.push(value);
+    }
+  }
+
+  return unique.join(separator);
 }
 
 function getEntryOrigin(entry) {
@@ -1678,23 +1696,14 @@ function toCsvLine(values) {
 }
 
 function mergeUniqueText(existingText, incomingText, separator) {
-  const incoming = String(incomingText || "").trim();
-  if (!incoming) {
-    return String(existingText || "").trim();
-  }
-
-  const existingParts = String(existingText || "")
-    .split(separator)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  const seen = new Set(existingParts.map((part) => part.toLocaleLowerCase()));
-  const incomingKey = incoming.toLocaleLowerCase();
-
-  if (!seen.has(incomingKey)) {
-    existingParts.push(incoming);
-  }
-
-  return existingParts.join(separator);
+  // dedupeJoinedText also repairs an existing value that already carries
+  // duplicate parts, so merges never preserve corrupted text.
+  return dedupeJoinedText(
+    [String(existingText || "").trim(), String(incomingText || "").trim()]
+      .filter(Boolean)
+      .join(separator),
+    separator
+  );
 }
 
 function refreshOpenTabs() {
@@ -1801,15 +1810,19 @@ function importEntriesFromText(text, afterSave, options = {}) {
     const origin = importedEntry.origin === "duolingo" ? "duolingo" : "manual";
     const key = `${origin}\u0000${importedEntry.source.toLocaleLowerCase()}`;
     const existing = entriesBySource.get(key);
+    // Import files can carry already-duplicated cells ("A / B / A / B");
+    // never store those verbatim.
+    const importedTarget = dedupeJoinedText(importedEntry.target, " / ");
+    const importedDefinition = dedupeJoinedText(importedEntry.definition, "; ");
 
     if (existing) {
       const target = importedEntry.mergeTarget
-        ? mergeUniqueText(existing.target, importedEntry.target, " / ")
-        : importedEntry.target;
+        ? mergeUniqueText(existing.target, importedTarget, " / ")
+        : importedTarget;
       const definition = importedEntry.mergeTarget
-        ? mergeUniqueText(existing.definition, importedEntry.definition, "; ")
-        : importedEntry.definition ||
-          (existing.target === importedEntry.target ? existing.definition : "");
+        ? mergeUniqueText(existing.definition, importedDefinition, "; ")
+        : importedDefinition ||
+          (existing.target === importedTarget ? existing.definition : "");
 
       entriesBySource.set(key, {
         ...existing,
@@ -1824,9 +1837,9 @@ function importEntriesFromText(text, afterSave, options = {}) {
       entriesBySource.set(key, {
         id: createId(),
         source: importedEntry.source,
-        target: importedEntry.target,
+        target: importedTarget,
         languageCode,
-        definition: importedEntry.definition,
+        definition: importedDefinition,
         origin,
         learned: true,
         enabled: true,
