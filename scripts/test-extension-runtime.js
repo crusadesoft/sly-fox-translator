@@ -2479,6 +2479,96 @@ async function testDuolingoSyncLoadsMoreThanTwentyPages(browser) {
   await page.close();
 }
 
+async function testDuolingoTypeHintShowsNextLettersAndDeadEnds(browser) {
+  const page = await browser.newPage();
+  await page.route("https://www.duolingo.com/lesson", (route) =>
+    route.fulfill({
+      contentType: "text/html; charset=utf-8",
+      body: `
+        <div data-test="word-bank">
+          <button data-test="challenge-tap-token">кіт</button>
+          <button data-test="challenge-tap-token">мене</button>
+          <button data-test="challenge-tap-token">мене звуть</button>
+        </div>
+      `
+    })
+  );
+  await page.goto("https://www.duolingo.com/lesson");
+  await installHarness(page, {
+    state: { ...createState([]), duolingoTypeAnswers: true },
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => text
+    }
+  });
+
+  await page.waitForSelector("#learned-word-replacer-duolingo-type-input");
+
+  const probe = (typed) =>
+    page.evaluate((value) => {
+      const input = document.getElementById("learned-word-replacer-duolingo-type-input");
+      input.value = value;
+      input.dispatchEvent(new InputEvent("input", { bubbles: true }));
+      const borderAfterInput = input.style.borderColor;
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+      const badge = document.getElementById("learned-word-replacer-duolingo-hint-badge");
+      return {
+        borderAfterInput,
+        badgeText: badge.textContent,
+        badgeShown: badge.style.display === "block",
+        badgeBackground: badge.style.background
+      };
+    }, typed);
+
+  const single = await probe("к");
+  assert(single.badgeShown, "hint badge did not appear for a viable prefix");
+  assert(single.badgeText === "next: і", `wrong single-letter hint: ${single.badgeText}`);
+  assert(
+    single.borderAfterInput !== "rgb(234, 43, 43)",
+    "viable prefix was marked as a dead end"
+  );
+
+  const complete = await probe("мене");
+  assert(
+    complete.badgeText === "space places it · or continue: ␣",
+    `wrong completed-word hint: ${complete.badgeText}`
+  );
+
+  const midToken = await probe("мене ");
+  assert(
+    midToken.badgeText === "next: з",
+    `trailing space was not kept in the hint prefix: ${midToken.badgeText}`
+  );
+
+  const empty = await probe("");
+  assert(
+    empty.badgeText === "next: к / м",
+    `empty buffer should hint the remaining first letters: ${empty.badgeText}`
+  );
+
+  const deadEnd = await probe("яб");
+  assert(
+    deadEnd.borderAfterInput === "rgb(234, 43, 43)",
+    "dead-end prefix did not turn the input border red"
+  );
+  assert(
+    deadEnd.badgeText === "✗ no bank word matches — backspace",
+    `wrong dead-end hint: ${deadEnd.badgeText}`
+  );
+  assert(
+    deadEnd.badgeBackground === "rgb(234, 43, 43)",
+    "dead-end hint badge is not red"
+  );
+
+  const recovered = await probe("кіт");
+  assert(
+    recovered.borderAfterInput !== "rgb(234, 43, 43)",
+    "border did not recover once the prefix became viable again"
+  );
+
+  await page.close();
+}
+
 async function testTranslatorBridgeCreatesInsideTrustedPageActivation(browser) {
   const page = await browser.newPage();
   await page.setContent('<button id="activate">Activate</button>');
@@ -4050,6 +4140,7 @@ function testToolbarOpensSidePanel() {
     await testNavigationAndAsideTextIsIgnored(browser);
     await testDuolingoSyncScrapesEveryLoadedPageInExportFormat(browser);
     await testDuolingoSyncLoadsMoreThanTwentyPages(browser);
+    await testDuolingoTypeHintShowsNextLettersAndDeadEnds(browser);
     await testTranslatorBridgeCreatesInsideTrustedPageActivation(browser);
     await testCorruptedEntryPartsAreHealedOnLoad(browser);
     await testDuolingoSyncKeepsManualEntriesSeparate(browser);

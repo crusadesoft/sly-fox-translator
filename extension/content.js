@@ -4128,19 +4128,25 @@
   const DUOLINGO_TYPE_INPUT_ID = "learned-word-replacer-duolingo-type-input";
   const DUOLINGO_TYPE_WRAP_ID = "learned-word-replacer-duolingo-type-wrap";
   const DUOLINGO_BANK_TOGGLE_ID = "learned-word-replacer-duolingo-bank-toggle";
-  // Lucide "eye" and "eye-closed" (ISC license), inlined because the page
-  // CSP has no say over content-script-created DOM but network fetches of
-  // icon packs would be blocked and slow anyway.
+  const DUOLINGO_TYPE_HINT_BUTTON_ID = "learned-word-replacer-duolingo-hint-button";
+  const DUOLINGO_TYPE_HINT_BADGE_ID = "learned-word-replacer-duolingo-hint-badge";
+  // Lucide "eye", "eye-closed" and "lightbulb" (ISC license), inlined because
+  // the page CSP has no say over content-script-created DOM but network
+  // fetches of icon packs would be blocked and slow anyway.
   const DUOLINGO_EYE_ICON =
     '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>';
   const DUOLINGO_EYE_CLOSED_ICON =
     '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-.722-3.25"/><path d="M2 8a10.645 10.645 0 0 0 20 0"/><path d="m20 15-1.726-2.05"/><path d="m4 15 1.726-2.05"/><path d="m9 18 .722-3.25"/></svg>';
+  const DUOLINGO_LIGHTBULB_ICON =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>';
   let duolingoTypeObserver = null;
   let duolingoTypeClickListener = null;
   let duolingoTypeKeyListener = null;
   let duolingoTypeKeySwallower = null;
   let duolingoTypeFocusListener = null;
   let duolingoTypeBlurListener = null;
+  let duolingoTypeInputListener = null;
+  let duolingoTypeHintTimer = null;
   let duolingoBankHidden = false;
 
   function isDuolingoTypeInputTarget(event) {
@@ -4175,6 +4181,18 @@
           }
           return;
         }
+        const hintButton =
+          event.target && event.target.closest
+            ? event.target.closest(`[id='${DUOLINGO_TYPE_HINT_BUTTON_ID}']`)
+            : null;
+        if (hintButton) {
+          const typeInput = document.getElementById(DUOLINGO_TYPE_INPUT_ID);
+          if (typeInput) {
+            showDuolingoTypeHint(typeInput);
+            typeInput.focus();
+          }
+          return;
+        }
         refocusDuolingoTypeInput(event);
       };
       document.addEventListener("click", duolingoTypeClickListener, true);
@@ -4202,16 +4220,23 @@
       window.addEventListener("beforeinput", duolingoTypeKeySwallower, true);
       duolingoTypeFocusListener = (event) => {
         if (isDuolingoTypeInputTarget(event)) {
-          event.target.style.borderColor = "rgb(28, 176, 246)";
+          setDuolingoTypeBorder(event.target);
         }
       };
       duolingoTypeBlurListener = (event) => {
         if (isDuolingoTypeInputTarget(event)) {
-          event.target.style.borderColor = "rgb(229, 229, 229)";
+          setDuolingoTypeBorder(event.target);
         }
       };
       document.addEventListener("focusin", duolingoTypeFocusListener, true);
       document.addEventListener("focusout", duolingoTypeBlurListener, true);
+      duolingoTypeInputListener = (event) => {
+        if (isDuolingoTypeInputTarget(event)) {
+          hideDuolingoTypeHint();
+          updateDuolingoTypeDeadEnd(event.target);
+        }
+      };
+      document.addEventListener("input", duolingoTypeInputListener, true);
       ensureDuolingoTypeInput();
     } else if (!shouldRun && duolingoTypeObserver) {
       duolingoTypeObserver.disconnect();
@@ -4223,11 +4248,13 @@
       window.removeEventListener("beforeinput", duolingoTypeKeySwallower, true);
       document.removeEventListener("focusin", duolingoTypeFocusListener, true);
       document.removeEventListener("focusout", duolingoTypeBlurListener, true);
+      document.removeEventListener("input", duolingoTypeInputListener, true);
       duolingoTypeClickListener = null;
       duolingoTypeKeyListener = null;
       duolingoTypeKeySwallower = null;
       duolingoTypeFocusListener = null;
       duolingoTypeBlurListener = null;
+      duolingoTypeInputListener = null;
       removeDuolingoTypeInput();
     }
   }
@@ -4297,14 +4324,14 @@
     input.type = "text";
     input.autocomplete = "off";
     input.spellcheck = false;
-    input.placeholder = "Type a word, then space — Enter checks";
+    input.placeholder = "Type a word, then space — Tab hints, Enter checks";
     input.setAttribute("aria-label", "Type a word from the word bank");
     input.style.cssText = [
       "display: block",
       "width: 100%",
       "box-sizing: border-box",
       "margin: 0",
-      "padding: 10px 48px 10px 14px",
+      "padding: 10px 84px 10px 14px",
       "border: 2px solid rgb(229, 229, 229)",
       "border-radius: 12px",
       "background: #ffffff",
@@ -4343,7 +4370,52 @@
       "cursor: pointer"
     ].join(";");
 
-    wrap.append(input, toggle);
+    const hintButton = document.createElement("button");
+    hintButton.id = DUOLINGO_TYPE_HINT_BUTTON_ID;
+    hintButton.type = "button";
+    hintButton.tabIndex = -1;
+    hintButton.title = "Hint the next letter (Tab)";
+    hintButton.setAttribute("aria-label", hintButton.title);
+    hintButton.innerHTML = DUOLINGO_LIGHTBULB_ICON;
+    hintButton.style.cssText = [
+      "position: absolute",
+      "right: 44px",
+      "top: 50%",
+      "transform: translateY(-50%)",
+      "display: flex",
+      "align-items: center",
+      "justify-content: center",
+      "width: 32px",
+      "height: 32px",
+      "padding: 0",
+      "border: none",
+      "border-radius: 8px",
+      "background: none",
+      "color: rgb(175, 175, 175)",
+      "cursor: pointer"
+    ].join(";");
+
+    const badge = document.createElement("div");
+    badge.id = DUOLINGO_TYPE_HINT_BADGE_ID;
+    badge.setAttribute("role", "status");
+    badge.style.cssText = [
+      "position: absolute",
+      "right: 8px",
+      "bottom: calc(100% + 6px)",
+      "display: none",
+      "padding: 6px 12px",
+      "border-radius: 10px",
+      "background: rgb(60, 60, 60)",
+      "color: #ffffff",
+      "font-family: 'duolingo-sans', -apple-system, sans-serif",
+      "font-size: 15px",
+      "font-weight: 600",
+      "white-space: nowrap",
+      "pointer-events: none",
+      "z-index: 2000"
+    ].join(";");
+
+    wrap.append(input, hintButton, toggle, badge);
     bank.parentElement.insertBefore(wrap, bank);
     applyDuolingoBankVisibility();
     input.focus();
@@ -4432,6 +4504,111 @@
     };
   }
 
+  function normalizeDuolingoTypedPrefix(value) {
+    // Like normalizeDuolingoTypedText, but a single trailing space survives:
+    // mid multi-word token ("мене ") the space is part of the typed prefix,
+    // and trimming it would hint the space the user already typed.
+    return String(value || "")
+      .normalize("NFC")
+      .toLocaleLowerCase()
+      .replace(/[’ʼ`]/g, "'")
+      .replace(/\s+/g, " ")
+      .replace(/^ /, "");
+  }
+
+  function getDuolingoNextLetterHint(typed) {
+    const tokens = getDuolingoBankTokens();
+    if (!tokens.length) {
+      return null;
+    }
+
+    const query = normalizeDuolingoTypedPrefix(typed);
+    const letters = new Set();
+    let complete = false;
+    for (const text of new Set(tokens.map((token) => token.text))) {
+      if (!text.startsWith(query)) {
+        continue;
+      }
+      if (text.length === query.length) {
+        complete = true;
+      } else {
+        letters.add(text[query.length]);
+      }
+    }
+
+    return { viable: complete || letters.size > 0, letters: [...letters].sort(), complete };
+  }
+
+  function setDuolingoTypeBorder(input) {
+    if (input.getAttribute("data-lwr-dead-end") === "true") {
+      input.style.borderColor = "rgb(234, 43, 43)";
+    } else if (document.activeElement === input) {
+      input.style.borderColor = "rgb(28, 176, 246)";
+    } else {
+      input.style.borderColor = "rgb(229, 229, 229)";
+    }
+  }
+
+  function updateDuolingoTypeDeadEnd(input) {
+    const hint = input.value.trim() ? getDuolingoNextLetterHint(input.value) : null;
+    const deadEnd = Boolean(hint && !hint.viable);
+    if (input.getAttribute("data-lwr-dead-end") !== String(deadEnd)) {
+      input.setAttribute("data-lwr-dead-end", String(deadEnd));
+    }
+    setDuolingoTypeBorder(input);
+  }
+
+  function hideDuolingoTypeHint() {
+    if (duolingoTypeHintTimer) {
+      clearTimeout(duolingoTypeHintTimer);
+      duolingoTypeHintTimer = null;
+    }
+    // Guarded write: display changes feed the MutationObserver.
+    document.querySelectorAll(`[id='${DUOLINGO_TYPE_HINT_BADGE_ID}']`).forEach((badge) => {
+      if (badge.style.display !== "none") {
+        badge.style.display = "none";
+      }
+    });
+  }
+
+  function showDuolingoTypeHint(input) {
+    const badge = document.getElementById(DUOLINGO_TYPE_HINT_BADGE_ID);
+    const hint = getDuolingoNextLetterHint(input.value);
+    if (!badge || !hint) {
+      return;
+    }
+
+    let text;
+    if (!hint.viable) {
+      text = "✗ no bank word matches — backspace";
+    } else {
+      const letters = hint.letters
+        .map((letter) => (letter === " " ? "␣" : letter))
+        .join(" / ");
+      if (hint.complete) {
+        text = letters ? `space places it · or continue: ${letters}` : "space places it";
+      } else {
+        text = `next: ${letters}`;
+      }
+    }
+
+    if (badge.textContent !== text) {
+      badge.textContent = text;
+    }
+    const background = hint.viable ? "rgb(60, 60, 60)" : "rgb(234, 43, 43)";
+    if (badge.style.background !== background) {
+      badge.style.background = background;
+    }
+    if (badge.style.display !== "block") {
+      badge.style.display = "block";
+    }
+
+    if (duolingoTypeHintTimer) {
+      clearTimeout(duolingoTypeHintTimer);
+    }
+    duolingoTypeHintTimer = setTimeout(() => hideDuolingoTypeHint(), 2500);
+  }
+
   function getLastPlacedDuolingoToken() {
     const bank = getDuolingoWordBank();
     if (!bank) {
@@ -4451,8 +4628,7 @@
   function flashDuolingoTypeInput(input) {
     input.style.borderColor = "rgb(234, 43, 43)";
     setTimeout(() => {
-      input.style.borderColor =
-        document.activeElement === input ? "rgb(28, 176, 246)" : "rgb(229, 229, 229)";
+      setDuolingoTypeBorder(input);
     }, 350);
   }
 
@@ -4471,6 +4647,12 @@
       if (lastPlaced) {
         lastPlaced.click();
       }
+      event.preventDefault();
+      return;
+    }
+
+    if (event.key === "Tab") {
+      showDuolingoTypeHint(input);
       event.preventDefault();
       return;
     }
@@ -4501,6 +4683,10 @@
     if (match) {
       match.button.click();
       input.value = "";
+      // Clearing the value programmatically fires no input event, so reset
+      // the hint UI here.
+      hideDuolingoTypeHint();
+      updateDuolingoTypeDeadEnd(input);
       event.preventDefault();
       return;
     }
