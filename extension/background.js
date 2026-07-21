@@ -1,7 +1,12 @@
 import "./vendor/ukrainian-morphology.js";
+import "./import-core.js";
 
+const STORAGE_KEY = "learnedWordReplacerState";
 const UKRAINIAN_MORPHOLOGY_PATH = "vendor/ukrainian-morphology/ukrainian.dict";
 const UKRAINIAN_LEMMA_REQUEST = "LWR_LOOKUP_UK_LEMMAS";
+const DUOLINGO_PAGE_IMPORT_REQUEST = "LWR_IMPORT_DUOLINGO_WORDS";
+const TEXT_IMPORT_REQUEST = "LWR_IMPORT_TEXT";
+const CSV_EXPORT_REQUEST = "LWR_EXPORT_CSV";
 const WORD_ALIGNMENT_REQUEST = "LWR_ALIGN_WORDS";
 const WORD_ALIGNMENT_RUN_REQUEST = "LWR_ALIGN_WORDS_RUN";
 const MAX_ALIGNMENT_CACHE_ENTRIES = 300;
@@ -18,10 +23,6 @@ const WORKING_STATUSES = new Set([
 ]);
 let ukrainianMorphologyPromise = null;
 const ukrainianLemmaCache = new Map();
-
-if (chrome.sidePanel?.setPanelBehavior) {
-  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
-}
 
 chrome.runtime.onStartup?.addListener(restoreOpenTabContentScripts);
 chrome.runtime.onInstalled?.addListener(restoreOpenTabContentScripts);
@@ -43,6 +44,48 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === DUOLINGO_PAGE_IMPORT_REQUEST) {
+    importDuolingoWordsFromPage(message)
+      .then(sendResponse)
+      .catch((error) =>
+        sendResponse({ ok: false, reason: error?.message || "Could not import Duolingo words." })
+      );
+    return true;
+  }
+
+  if (message?.type === TEXT_IMPORT_REQUEST) {
+    applyStoredStateChange((state) =>
+      globalThis.LWRImportCore.applyTextImport(state, {
+        text: message.text,
+        originOverride: message.originOverride
+      })
+    )
+      .then(sendResponse)
+      .catch((error) =>
+        sendResponse({ ok: false, reason: error?.message || "Could not import the file." })
+      );
+    return true;
+  }
+
+  if (message?.type === CSV_EXPORT_REQUEST) {
+    chrome.storage.local
+      .get(STORAGE_KEY)
+      .then((stored) => {
+        const state = stored?.[STORAGE_KEY];
+        if (!state) {
+          sendResponse({ ok: false, reason: "Open the extension once before exporting." });
+          return;
+        }
+        sendResponse(
+          globalThis.LWRImportCore.buildVocabularyCsv(state, { origin: message.origin })
+        );
+      })
+      .catch((error) =>
+        sendResponse({ ok: false, reason: error?.message || "Could not export the vocabulary." })
+      );
+    return true;
+  }
+
   if (
     !message ||
     message.type !== "LWR_STATUS" ||
@@ -58,6 +101,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   updateBadge(sender.tab.id, message.status || {});
 });
+
+// Reads stored state, applies a pure transform from import-core, persists the
+// result. The popup (if open) refreshes itself through storage.onChanged, and
+// open tabs pick changes up the same way.
+async function applyStoredStateChange(transform) {
+  const stored = await chrome.storage.local.get(STORAGE_KEY);
+  const state = stored?.[STORAGE_KEY];
+  if (!state || !Array.isArray(state.profiles)) {
+    return { ok: false, reason: "Open the extension once before importing." };
+  }
+
+  const result = transform(state);
+  if (!result.ok) {
+    return { ok: false, reason: result.reason };
+  }
+
+  await chrome.storage.local.set({ [STORAGE_KEY]: result.state });
+  const { state: _persisted, ...summary } = result;
+  return summary;
+}
+
+function importDuolingoWordsFromPage(message) {
+  return applyStoredStateChange((state) =>
+    globalThis.LWRImportCore.applyDuolingoImport(state, {
+      text: message.text,
+      languageName: message.languageName
+    })
+  );
+}
 
 async function lookupUkrainianLemmas(words) {
   const uniqueWords = Array.from(

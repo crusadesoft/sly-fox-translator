@@ -26,13 +26,6 @@
           >
             <span class="lucide-icon lucide-icon-rotate-ccw" data-lucide-icon="rotate-ccw" aria-hidden="true"></span>
           </button>
-          <button
-            id="open-tab"
-            class="icon-button secondary"
-            type="button"
-            aria-label="Open in tab"
-            title="Open in tab"
-          ></button>
         </div>
       </header>
 
@@ -86,153 +79,17 @@
       </section>
 
       <section id="vocabulary-view" class="app-view">
-      <div class="vocabulary-tabs" aria-label="Vocabulary source">
-        <button id="duolingo-section" class="vocabulary-tab duolingo-vocabulary-tab" type="button" aria-pressed="true">
+
+      <section class="duolingo-panel" aria-label="Duolingo vocabulary">
+        <button id="open-duolingo-words" class="secondary duolingo-sync" type="button"
+          title="Open Duolingo's Words page — import, browse, and manage your synced words there">
           <img class="duolingo-tab-bird" src="icons/duolingo-bird.png" alt="" aria-hidden="true">
-          <span id="duolingo-section-label">Duolingo</span>
+          <span>Manage words on Duolingo</span>
         </button>
-        <button id="manual-section" class="vocabulary-tab" type="button" aria-pressed="false">Manual</button>
-      </div>
-
-      <section id="manual-entry-panel" class="manual-entry-panel" aria-label="Manual vocabulary">
-        <form id="entry-form" class="entry-form">
-          <input id="source" type="text" autocomplete="off" placeholder="English (e.g. a cup of coffee)" required>
-          <input id="target" type="text" autocomplete="off" placeholder="Target language (e.g. word or phrase)" required>
-          <button id="suggest-replacement" class="secondary" type="button">Suggest</button>
-          <button id="submit-entry" type="submit" disabled>Add</button>
-          <button id="cancel-edit" class="secondary hidden" type="button">Cancel</button>
-        </form>
-
-        <div id="suggestions" class="suggestions hidden">
-          <div id="suggestion-title" class="suggestion-title">Suggestions</div>
-          <div id="suggestion-list" class="suggestion-list"></div>
-        </div>
-
-        <div class="manual-lines">
-          <textarea id="manual-lines" rows="3" placeholder="English,target,optional definition&#10;radio,радіо,radio receiver"></textarea>
-          <div class="manual-lines-actions">
-            <button id="add-manual-lines" type="button" disabled>Add manual lines</button>
-            <span id="manual-lines-status" class="manual-lines-status" aria-live="polite"></span>
-          </div>
-        </div>
       </section>
 
-      <section id="duolingo-panel" class="duolingo-panel hidden" aria-label="Duolingo vocabulary">
-        <button id="duolingo-sync" class="secondary duolingo-sync" type="button" disabled>
-          <span class="lucide-icon lucide-icon-import" data-lucide-icon="import" aria-hidden="true"></span>
-          <span id="duolingo-sync-label">Import words from Duolingo</span>
-        </button>
-        <p id="duolingo-sync-status" class="duolingo-sync-status hidden" aria-live="polite"></p>
-      </section>
 
-      <section class="vocabulary" aria-label="Learned replacements">
-        <div class="vocab-toolbar">
-          <input id="search" type="search" autocomplete="off" placeholder="Search entries">
-          <button
-            id="sort-alpha"
-            class="icon-button secondary"
-            type="button"
-            aria-label="Sort A to Z"
-            title="Sort A to Z"
-          ></button>
-          <button id="delete-all" class="danger" type="button">Delete all</button>
-          <label>
-            Rows
-            <select id="page-size">
-              <option value="10" selected>10</option>
-              <option value="25">25</option>
-              <option value="50">50</option>
-            </select>
-          </label>
-        </div>
 
-        <div id="empty-state" class="empty">
-          Add a word or phrase to this profile.
-        </div>
-
-        <div id="compact-vocabulary-list" class="compact-vocabulary-list hidden"></div>
-
-        <div id="table-wrap" class="table-wrap hidden">
-          <table>
-            <thead>
-              <tr>
-                <th class="flag-col">Replace on pages</th>
-                <th>English note</th>
-                <th>Learned word</th>
-                <th class="actions-col">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="entry-table"></tbody>
-          </table>
-        </div>
-
-        <div id="pager" class="pager hidden">
-          <button id="prev-page" class="secondary" type="button">Prev</button>
-          <span id="page-status">0-0 of 0</span>
-          <button id="next-page" class="secondary" type="button">Next</button>
-        </div>
-      </section>
-      </section>
-
-      <section id="settings-view" class="app-view hidden" aria-label="Settings">
-        <section class="settings" aria-label="Replacement settings">
-          <div class="setting-row">
-            <span>Enable replacements</span>
-            <label class="switch" title="Enable replacements">
-              <input id="enabled" type="checkbox">
-              <span></span>
-            </label>
-          </div>
-          <div class="setting-row">
-            <span>Highlight replacements</span>
-            <label class="switch" title="Highlight replacements">
-              <input id="show-highlights" type="checkbox">
-              <span></span>
-            </label>
-          </div>
-          <div class="setting-row">
-            <span>Target-language sentence structure</span>
-            <label class="switch" title="Rebuild sentences in the target language's word order, translating unlearned words back into English">
-              <input id="structure-mode" type="checkbox">
-              <span></span>
-            </label>
-          </div>
-          <div class="setting-row">
-            <span>Mark checked sections</span>
-            <label class="switch" title="Mark checked sections">
-              <input id="show-processed-sections" type="checkbox">
-              <span></span>
-            </label>
-          </div>
-          <div class="setting-row">
-            <span>Show original English on hover</span>
-            <label class="switch" title="Show original English on hover">
-              <input id="show-original-on-hover" type="checkbox">
-              <span></span>
-            </label>
-          </div>
-          <div class="setting-row">
-            <span>Translate English on hover</span>
-            <label class="switch" title="Translate English on hover">
-              <input id="translate-english-on-hover" type="checkbox">
-              <span></span>
-            </label>
-          </div>
-          <div class="setting-row">
-            <span>Skip Duolingo continue screens</span>
-            <label class="switch" title="On duolingo.com, press Continue for you after each answer and show the result as a brief popup instead">
-              <input id="duolingo-auto-continue" type="checkbox">
-              <span></span>
-            </label>
-          </div>
-          <div class="setting-row">
-            <span>Type Duolingo word-bank answers</span>
-            <label class="switch" title="On duolingo.com word-bank exercises, adds a text box: type a word and press space to tap it for you, backspace to undo, Enter to check">
-              <input id="duolingo-type-answers" type="checkbox">
-              <span></span>
-            </label>
-          </div>
-        </section>
 
         <section id="page-status-panel" class="page-runtime" aria-label="Current page replacement status">
           <div>
@@ -240,9 +97,7 @@
             <p id="runtime-status">Checking this tab...</p>
           </div>
         </section>
-
-      <details id="do-not-translate-panel" class="bulk do-not-translate" open>
-        <summary>Do not translate</summary>
+      <section id="do-not-translate-panel" class="bulk do-not-translate" aria-label="Do not translate">
         <div id="do-not-translate-actions" class="do-not-translate-actions hidden">
           <button id="exclude-page" class="secondary page-exclusion-button" type="button">
             <svg class="command-icon" aria-hidden="true" viewBox="0 0 24 24">
@@ -261,32 +116,11 @@
             <span id="exclude-site-label">Don't translate this site</span>
           </button>
         </div>
-        <div id="do-not-translate-list" class="do-not-translate-list"></div>
-        <button id="clear-do-not-translate" class="danger" type="button">Clear list</button>
-      </details>
-
-      <details id="bulk-panel" class="bulk" open>
-        <summary>CSV / Duolingo import / export</summary>
-        <label class="file-import">
-          Import file
-          <input id="bulk-file" type="file" accept=".csv,.txt,text/csv,text/plain">
-        </label>
-        <div id="import-status" class="import-status">Choose a CSV, TXT, or Duolingo export file.</div>
-        <div class="bulk-actions">
-          <button id="import" type="button">Import file</button>
-          <button id="export" class="secondary" type="button">Download all CSV</button>
-          <button id="clear-all" class="danger" type="button">Delete all</button>
-        </div>
-        <div class="manual-transfer">
-          <span>Manual vocabulary</span>
-          <div class="bulk-actions manual-transfer-actions">
-            <button id="import-manual" class="secondary" type="button">Import manual file</button>
-            <button id="export-manual" class="secondary" type="button">Download manual CSV</button>
-          </div>
-        </div>
-      </details>
       </section>
+      </section>
+
     </main>
+    <script src="import-core.js"></script>
     <script src="dictionaries.js"></script>
     <script src="popup.js"></script>
   </body>

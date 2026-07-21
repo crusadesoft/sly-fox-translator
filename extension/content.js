@@ -4148,6 +4148,10 @@
   let duolingoTypeInputListener = null;
   let duolingoTypeHintTimer = null;
   let duolingoBankHidden = false;
+  // Answer words on match and choice challenges start hidden: the point of
+  // typing those answers is recalling the word instead of picking it from
+  // the visible cards.
+  let duolingoAnswerWordsHidden = true;
 
   function isDuolingoTypeInputTarget(event) {
     return event.target && event.target.id === DUOLINGO_TYPE_INPUT_ID;
@@ -4171,7 +4175,12 @@
             ? event.target.closest(`[id='${DUOLINGO_BANK_TOGGLE_ID}']`)
             : null;
         if (toggle) {
-          duolingoBankHidden = !duolingoBankHidden;
+          const context = getDuolingoTypeContext();
+          if (context && context.kind !== "bank") {
+            duolingoAnswerWordsHidden = !duolingoAnswerWordsHidden;
+          } else {
+            duolingoBankHidden = !duolingoBankHidden;
+          }
           applyDuolingoBankVisibility();
           // Refocus synchronously: keystrokes right after the toggle click
           // must land in the input, not on the button.
@@ -4267,6 +4276,61 @@
     );
   }
 
+  function getVisibleDuolingoChallenge(dataTestName) {
+    return [...document.querySelectorAll(`[data-test~='${dataTestName}']`)].find(
+      (challenge) => challenge.offsetParent !== null
+    );
+  }
+
+  function getDuolingoCardGrid(challenge, cardSelector) {
+    // The card grid has no data-test of its own; it is the deepest element
+    // containing every answer card, and the input row goes right before it.
+    const cards = [...challenge.querySelectorAll(cardSelector)];
+    if (cards.length < 2) {
+      return null;
+    }
+
+    let grid = cards[0].parentElement;
+    while (grid && grid !== challenge && !cards.every((card) => grid.contains(card))) {
+      grid = grid.parentElement;
+    }
+    return grid && grid !== challenge ? grid : null;
+  }
+
+  // Per-kind DOM facts. Match: audio cards carry a number badge + waveform,
+  // word cards add a challenge-tap-token-text span; matched pairs flip
+  // aria-disabled. Choice (assist): cards are divs, the word sits in a
+  // challenge-judge-text span, clicking selects and player-next checks.
+  const DUOLINGO_TYPE_KINDS = {
+    match: {
+      challengeName: "challenge-listenMatch",
+      cardSelector: "button[data-test*='challenge-tap-token']",
+      textSelector: "[data-test='challenge-tap-token-text']"
+    },
+    choice: {
+      challengeName: "challenge-assist",
+      cardSelector: "[data-test='challenge-choice']",
+      textSelector: "[data-test='challenge-judge-text']"
+    }
+  };
+
+  function getDuolingoTypeContext() {
+    const bank = getDuolingoWordBank();
+    if (bank) {
+      return { kind: "bank", container: bank, challenge: null };
+    }
+
+    for (const [kind, spec] of Object.entries(DUOLINGO_TYPE_KINDS)) {
+      const challenge = getVisibleDuolingoChallenge(spec.challengeName);
+      const grid = challenge ? getDuolingoCardGrid(challenge, spec.cardSelector) : null;
+      if (grid) {
+        return { kind, container: grid, challenge };
+      }
+    }
+
+    return null;
+  }
+
   function removeDuolingoTypeInput() {
     document
       .querySelectorAll(`[id='${DUOLINGO_TYPE_WRAP_ID}'], [id='${DUOLINGO_TYPE_INPUT_ID}']`)
@@ -4274,45 +4338,67 @@
     document
       .querySelectorAll("[data-test='word-bank']")
       .forEach((bank) => (bank.style.visibility = ""));
+    document
+      .querySelectorAll(
+        "[data-test='challenge-tap-token-text'], [data-test='challenge-judge-text']"
+      )
+      .forEach((span) => (span.style.visibility = ""));
   }
 
   function applyDuolingoBankVisibility() {
     // Guard every write: this runs from the MutationObserver, so an
     // unconditional innerHTML/style write would re-trigger it forever.
-    const wanted = duolingoBankHidden ? "hidden" : "";
-    const bank = getDuolingoWordBank();
-    if (bank && bank.style.visibility !== wanted) {
-      bank.style.visibility = wanted;
+    const context = getDuolingoTypeContext();
+    const hidden =
+      context && context.kind !== "bank" ? duolingoAnswerWordsHidden : duolingoBankHidden;
+    const wanted = hidden ? "hidden" : "";
+
+    if (context && context.kind === "bank") {
+      if (context.container.style.visibility !== wanted) {
+        context.container.style.visibility = wanted;
+      }
+    } else if (context) {
+      // Hide only the word text; the cards, number badges and audio buttons
+      // stay visible and clickable.
+      context.challenge
+        .querySelectorAll(DUOLINGO_TYPE_KINDS[context.kind].textSelector)
+        .forEach((span) => {
+          if (span.style.visibility !== wanted) {
+            span.style.visibility = wanted;
+          }
+        });
     }
 
-    const state = duolingoBankHidden ? "hidden" : "shown";
+    const subject = context && context.kind !== "bank" ? "the answer words" : "the word bank";
+    const state = `${hidden ? "hidden" : "shown"}-${context ? context.kind : "none"}`;
     document.querySelectorAll(`[id='${DUOLINGO_BANK_TOGGLE_ID}']`).forEach((toggle) => {
       if (toggle.getAttribute("data-bank-state") === state) {
         return;
       }
       toggle.setAttribute("data-bank-state", state);
-      toggle.innerHTML = duolingoBankHidden ? DUOLINGO_EYE_CLOSED_ICON : DUOLINGO_EYE_ICON;
-      toggle.title = duolingoBankHidden ? "Show the word bank" : "Hide the word bank";
+      toggle.innerHTML = hidden ? DUOLINGO_EYE_CLOSED_ICON : DUOLINGO_EYE_ICON;
+      toggle.title = hidden ? `Show ${subject}` : `Hide ${subject}`;
       toggle.setAttribute("aria-label", toggle.title);
-      toggle.setAttribute("aria-pressed", String(duolingoBankHidden));
+      toggle.setAttribute("aria-pressed", String(hidden));
     });
   }
 
   function ensureDuolingoTypeInput() {
-    const bank = getDuolingoWordBank();
+    const context = getDuolingoTypeContext();
+    const container = context ? context.container : null;
 
-    // Keep exactly one input row: the one sitting before the visible bank.
-    // Anything else is a leftover or a transition-clone copy.
+    // Keep exactly one input row: the one sitting before the visible bank or
+    // match grid. Anything else is a leftover or a transition-clone copy.
     let keep = null;
     document.querySelectorAll(`[id='${DUOLINGO_TYPE_WRAP_ID}']`).forEach((host) => {
-      if (!keep && bank && host.nextElementSibling === bank) {
+      if (!keep && container && host.nextElementSibling === container) {
         keep = host;
       } else {
         host.remove();
       }
     });
 
-    if (!bank || keep) {
+    if (!container || keep) {
       if (keep) {
         applyDuolingoBankVisibility();
       }
@@ -4324,8 +4410,16 @@
     input.type = "text";
     input.autocomplete = "off";
     input.spellcheck = false;
-    input.placeholder = "Type a word, then space — Tab hints, Enter checks";
-    input.setAttribute("aria-label", "Type a word from the word bank");
+    if (context.kind === "match") {
+      input.placeholder = "Press a number to listen, type the word, then space";
+      input.setAttribute("aria-label", "Type the word matching the audio you hear");
+    } else if (context.kind === "choice") {
+      input.placeholder = "Type the meaning, then space — Enter checks";
+      input.setAttribute("aria-label", "Type the answer matching the prompt");
+    } else {
+      input.placeholder = "Type a word, then space — Tab hints, Enter checks";
+      input.setAttribute("aria-label", "Type a word from the word bank");
+    }
     input.style.cssText = [
       "display: block",
       "width: 100%",
@@ -4416,14 +4510,14 @@
     ].join(";");
 
     wrap.append(input, hintButton, toggle, badge);
-    bank.parentElement.insertBefore(wrap, bank);
+    container.parentElement.insertBefore(wrap, container);
     applyDuolingoBankVisibility();
     input.focus();
   }
 
   function refocusDuolingoTypeInput(event) {
-    const bank = getDuolingoWordBank();
-    const input = bank ? document.getElementById(DUOLINGO_TYPE_INPUT_ID) : null;
+    const context = getDuolingoTypeContext();
+    const input = context ? document.getElementById(DUOLINGO_TYPE_INPUT_ID) : null;
     if (!input || !input.isConnected) {
       return;
     }
@@ -4458,23 +4552,36 @@
   }
 
   function getDuolingoBankTokens() {
-    const bank = getDuolingoWordBank();
-    if (!bank) {
+    const context = getDuolingoTypeContext();
+    if (!context) {
       return [];
     }
 
-    return [...bank.querySelectorAll("button[data-test*='challenge-tap-token']")]
+    const spec = DUOLINGO_TYPE_KINDS[context.kind];
+    const cardSelector = spec ? spec.cardSelector : "button[data-test*='challenge-tap-token']";
+    return [...context.container.querySelectorAll(cardSelector)]
       .filter(
-        (button) => !button.disabled && button.getAttribute("aria-disabled") !== "true"
+        (card) => !card.disabled && card.getAttribute("aria-disabled") !== "true"
       )
-      .map((button) => ({
-        button,
-        // textContent, not innerText: the bank may be visibility:hidden via
-        // the eye toggle, and innerText reads as "" inside hidden subtrees.
-        raw: String(button.textContent || "").replace(/\s+/g, " ").trim(),
-        text: normalizeDuolingoTypedText(button.textContent)
-      }))
-      .filter((token) => token.text);
+      .map((card) => {
+        // Outside the bank only answer cards carry a text span (match audio
+        // cards hold just a number badge and a waveform); read the span so
+        // the badge number stays out of the matchable text. aria-disabled
+        // above already excludes matched pairs.
+        const source = spec ? card.querySelector(spec.textSelector) : card;
+        if (!source) {
+          return null;
+        }
+        return {
+          button: card,
+          // textContent, not innerText: the bank or the answer words may be
+          // visibility:hidden via the eye toggle, and innerText reads as ""
+          // inside hidden subtrees.
+          raw: String(source.textContent || "").replace(/\s+/g, " ").trim(),
+          text: normalizeDuolingoTypedText(source.textContent)
+        };
+      })
+      .filter((token) => token && token.text);
   }
 
   function findDuolingoBankToken(typed) {
@@ -4609,6 +4716,30 @@
     duolingoTypeHintTimer = setTimeout(() => hideDuolingoTypeHint(), 2500);
   }
 
+  function clickDuolingoMatchCardByNumber(digit) {
+    const context = getDuolingoTypeContext();
+    if (!context || context.kind !== "match") {
+      return false;
+    }
+
+    // Every card shows a number badge, and it is the first text inside the
+    // button (audio cards read "3", word cards "5word").
+    const card = [
+      ...context.container.querySelectorAll("button[data-test*='challenge-tap-token']")
+    ].find(
+      (button) =>
+        !button.disabled &&
+        button.getAttribute("aria-disabled") !== "true" &&
+        String(button.textContent || "").trim().startsWith(digit)
+    );
+    if (!card) {
+      return false;
+    }
+
+    card.click();
+    return true;
+  }
+
   function getLastPlacedDuolingoToken() {
     const bank = getDuolingoWordBank();
     if (!bank) {
@@ -4654,6 +4785,16 @@
     if (event.key === "Tab") {
       showDuolingoTypeHint(input);
       event.preventDefault();
+      return;
+    }
+
+    // Match challenges: a digit on an empty buffer taps that numbered card,
+    // so the audio can be played without reaching for the mouse. With text
+    // in the buffer digits type normally (and dead-end like any other miss).
+    if (/^[1-9]$/.test(event.key) && !input.value) {
+      if (clickDuolingoMatchCardByNumber(event.key)) {
+        event.preventDefault();
+      }
       return;
     }
 
@@ -4898,14 +5039,21 @@
     );
   }
 
-  function getDuolingoExpectedWordCount() {
+  function getDuolingoWordsCountHeading() {
     for (const heading of document.querySelectorAll("h1,h2,h3")) {
-      const match = normalizeDuolingoText(heading.textContent).match(/^(\d[\d,]*)\s+words?$/i);
-      if (match) {
-        return Number(match[1].replaceAll(",", ""));
+      if (/^\d[\d,]*\s+words?$/i.test(normalizeDuolingoText(heading.textContent))) {
+        return heading;
       }
     }
-    return 0;
+    return null;
+  }
+
+  function getDuolingoExpectedWordCount() {
+    const heading = getDuolingoWordsCountHeading();
+    const match = heading
+      ? normalizeDuolingoText(heading.textContent).match(/^(\d[\d,]*)\s+words?$/i)
+      : null;
+    return match ? Number(match[1].replaceAll(",", "")) : 0;
   }
 
   function getDuolingoLanguageName() {
@@ -5000,6 +5148,1391 @@
     };
   }
 
+  const DUOLINGO_IMPORT_BUTTON_ID = "learned-word-replacer-duolingo-import-button";
+  const DUOLINGO_WORDS_DELETE_ID = "learned-word-replacer-duolingo-words-delete";
+  const DUOLINGO_IMPORT_STATUS_ID = "learned-word-replacer-duolingo-import-status";
+  const DUOLINGO_IMPORT_WRAP_ID = "learned-word-replacer-duolingo-import-wrap";
+  let duolingoImportObserver = null;
+  let duolingoImportInProgress = false;
+
+  // Extension UI embedded in Duolingo pages (the Words-page Import button and
+  // the settings panel under duolingo.com/settings). Active on every
+  // duolingo.com page load — these are SPA routes — independent of the other
+  // settings, so the extension keeps working without the popup or side panel
+  // (mobile browsers often support neither).
+  function syncDuolingoPageUi() {
+    if (globalThis !== globalThis.top || !isDuolingoHost() || duolingoImportObserver) {
+      return;
+    }
+
+    duolingoImportObserver = new MutationObserver(() => {
+      ensureDuolingoImportButton();
+      ensureDuolingoSettingsUi();
+      ensureDuolingoWordsInfo();
+      ensureDuolingoWordsTabs();
+    });
+    duolingoImportObserver.observe(document.documentElement, {
+      childList: true,
+      subtree: true
+    });
+    document.addEventListener(
+      "click",
+      (event) => {
+        const closest = (selector) =>
+          event.target && event.target.closest ? event.target.closest(selector) : null;
+
+        if (closest(`[id='${DUOLINGO_IMPORT_BUTTON_ID}']`)) {
+          runDuolingoPageImport();
+          return;
+        }
+
+        if (closest(`[id='${DUOLINGO_WORDS_DELETE_ID}']`)) {
+          runDuolingoWordsDeleteAll();
+          return;
+        }
+
+        const wordsTab = closest("button[data-lwr-words-tab]");
+        if (wordsTab) {
+          duolingoWordsSection = wordsTab.getAttribute("data-lwr-words-tab");
+          ensureDuolingoWordsTabs();
+          return;
+        }
+
+        const manualEdit = closest("button[data-lwr-manual-edit]");
+        if (manualEdit) {
+          startDuolingoManualEdit(manualEdit.getAttribute("data-lwr-manual-edit"));
+          return;
+        }
+
+        if (closest("button[data-lwr-manual-delete-all]")) {
+          runDuolingoManualDeleteAll();
+          return;
+        }
+
+        const entryToggle = closest("input[data-lwr-entry-id]");
+        if (entryToggle) {
+          // A checkbox in the manual list; let the checkbox update itself,
+          // the storage write and re-render follow.
+          toggleDuolingoEntryEnabled(entryToggle.getAttribute("data-lwr-entry-id"));
+          return;
+        }
+
+        const wordChipRemove = closest("button[data-lwr-entry-remove]");
+        if (wordChipRemove) {
+          event.preventDefault();
+          event.stopPropagation();
+          removeDuolingoEntry(wordChipRemove.getAttribute("data-lwr-entry-remove"));
+          return;
+        }
+
+        const wordChip = closest("button[data-lwr-entry-id]");
+        if (wordChip) {
+          event.preventDefault();
+          event.stopPropagation();
+          toggleDuolingoEntryEnabled(wordChip.getAttribute("data-lwr-entry-id"));
+          return;
+        }
+
+        const settingsLink = closest(`[id='${DUOLINGO_SETTINGS_LINK_ID}']`);
+        if (settingsLink) {
+          // Keep Duolingo's router away from our synthetic settings route.
+          event.preventDefault();
+          event.stopPropagation();
+          activateDuolingoSettingsPanel(settingsLink);
+          return;
+        }
+
+        if (closest("a[href^='/settings']")) {
+          deactivateDuolingoSettingsPanel();
+        }
+      },
+      true
+    );
+    ensureDuolingoImportButton();
+    ensureDuolingoSettingsUi();
+    ensureDuolingoWordsInfo();
+    ensureDuolingoWordsTabs();
+  }
+
+  function ensureDuolingoImportButton() {
+    // Guard every write: this runs from a MutationObserver.
+    if (!isDuolingoWordsPage()) {
+      document
+        .querySelectorAll(`[id='${DUOLINGO_IMPORT_WRAP_ID}']`)
+        .forEach((wrap) => wrap.remove());
+      return;
+    }
+
+    const heading = getDuolingoWordsCountHeading();
+    let keep = null;
+    document.querySelectorAll(`[id='${DUOLINGO_IMPORT_WRAP_ID}']`).forEach((wrap) => {
+      if (!keep && heading && wrap.previousElementSibling === heading) {
+        keep = wrap;
+      } else {
+        wrap.remove();
+      }
+    });
+    if (!heading || keep) {
+      return;
+    }
+
+    const button = document.createElement("button");
+    button.id = DUOLINGO_IMPORT_BUTTON_ID;
+    button.type = "button";
+    button.textContent = "Import to Sly Fox";
+    button.title = "Sync every learned word on this page into the Sly Fox Translator vocabulary";
+    button.style.cssText = [
+      "display: inline-flex",
+      "align-items: center",
+      "padding: 8px 16px",
+      "border: 2px solid rgb(28, 176, 246)",
+      "border-radius: 12px",
+      "background: #ffffff",
+      "color: rgb(28, 176, 246)",
+      "font-family: 'duolingo-sans', -apple-system, sans-serif",
+      "font-size: 14px",
+      "font-weight: 700",
+      "letter-spacing: 0.8px",
+      "text-transform: uppercase",
+      "cursor: pointer"
+    ].join(";");
+
+    const deleteButton = document.createElement("button");
+    deleteButton.id = DUOLINGO_WORDS_DELETE_ID;
+    deleteButton.type = "button";
+    deleteButton.textContent = "Delete all";
+    deleteButton.title =
+      "Remove every synced Duolingo word from the Sly Fox Translator vocabulary";
+    deleteButton.style.cssText = button.style.cssText
+      .replaceAll("rgb(28, 176, 246)", "rgb(234, 43, 43)");
+
+    const status = document.createElement("span");
+    status.id = DUOLINGO_IMPORT_STATUS_ID;
+    status.style.cssText = [
+      "font-family: 'duolingo-sans', -apple-system, sans-serif",
+      "font-size: 14px",
+      "color: rgb(120, 120, 120)"
+    ].join(";");
+
+    const wrap = document.createElement("div");
+    wrap.id = DUOLINGO_IMPORT_WRAP_ID;
+    wrap.style.cssText =
+      "display: flex; align-items: center; gap: 12px; margin: 10px 0 4px";
+    wrap.append(button, deleteButton, status);
+    heading.insertAdjacentElement("afterend", wrap);
+
+    if (duolingoImportInProgress) {
+      button.disabled = true;
+      button.textContent = "Importing…";
+    }
+  }
+
+  function setDuolingoImportStatus(text, color) {
+    document.querySelectorAll(`[id='${DUOLINGO_IMPORT_STATUS_ID}']`).forEach((status) => {
+      if (status.textContent !== text) {
+        status.textContent = text;
+      }
+      const wanted = color || "rgb(120, 120, 120)";
+      if (status.style.color !== wanted) {
+        status.style.color = wanted;
+      }
+    });
+  }
+
+  async function runDuolingoPageImport() {
+    if (duolingoImportInProgress) {
+      return;
+    }
+
+    duolingoImportInProgress = true;
+    document.querySelectorAll(`[id='${DUOLINGO_IMPORT_BUTTON_ID}']`).forEach((button) => {
+      button.disabled = true;
+      button.textContent = "Importing…";
+    });
+    setDuolingoImportStatus("Loading every learned word from this page…");
+
+    try {
+      const scraped = await scrapeAllDuolingoWords();
+      const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage(
+          {
+            type: "LWR_IMPORT_DUOLINGO_WORDS",
+            text: scraped.text,
+            languageName: scraped.languageName
+          },
+          (reply) => {
+            if (chrome.runtime.lastError) {
+              resolve({ ok: false, reason: chrome.runtime.lastError.message });
+              return;
+            }
+            resolve(reply || { ok: false, reason: "The extension did not respond." });
+          }
+        );
+      });
+
+      if (!response.ok) {
+        throw new Error(response.reason || "Could not import Duolingo words.");
+      }
+
+      setDuolingoImportStatus(
+        `Synced ${scraped.count} word${scraped.count === 1 ? "" : "s"} to ${response.profileName} — ${response.addedCount} new`,
+        "rgb(88, 167, 0)"
+      );
+    } catch (error) {
+      setDuolingoImportStatus(
+        error && error.message ? error.message : "Could not import Duolingo words.",
+        "rgb(234, 43, 43)"
+      );
+    } finally {
+      duolingoImportInProgress = false;
+      document.querySelectorAll(`[id='${DUOLINGO_IMPORT_BUTTON_ID}']`).forEach((button) => {
+        button.disabled = false;
+        button.textContent = "Import to Sly Fox";
+      });
+    }
+  }
+
+  // The Words page also hosts the manual vocabulary manager: a small tab bar
+  // swaps Duolingo's own list for a panel with an add/edit form and the
+  // manual entries, so all vocabulary work happens on this one page.
+  const DUOLINGO_WORDS_TABS_ID = "learned-word-replacer-duolingo-words-tabs";
+  const DUOLINGO_MANUAL_PANEL_ID = "learned-word-replacer-duolingo-manual-panel";
+  let duolingoWordsSection = "duolingo";
+  let duolingoManualEditId = null;
+  let duolingoManualFilter = "";
+
+  function getDuolingoWordsLayout() {
+    const heading = getDuolingoWordsCountHeading();
+    const list = getDuolingoWordCollection().list;
+    const region = heading && heading.parentElement ? heading.parentElement.parentElement : null;
+    const host = region ? region.parentElement : null;
+    return host && list && host.contains(list) && host !== region
+      ? { host, region, list, heading }
+      : null;
+  }
+
+  function duolingoWordsTabButton(section, label) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    button.setAttribute("data-lwr-words-tab", section);
+    return button;
+  }
+
+  function ensureDuolingoWordsTabs() {
+    // Guard every write: this runs from the MutationObserver.
+    if (!isDuolingoWordsPage()) {
+      return;
+    }
+
+    const layout = getDuolingoWordsLayout();
+    if (!layout) {
+      return;
+    }
+
+    let tabs = document.getElementById(DUOLINGO_WORDS_TABS_ID);
+    if (tabs && tabs.nextElementSibling !== layout.region) {
+      tabs.remove();
+      tabs = null;
+    }
+    if (!tabs) {
+      tabs = document.createElement("div");
+      tabs.id = DUOLINGO_WORDS_TABS_ID;
+      tabs.style.cssText = "display: flex; gap: 8px; margin: 0 0 16px";
+      tabs.append(
+        duolingoWordsTabButton("duolingo", "Duolingo words"),
+        duolingoWordsTabButton("manual", "Sly Fox manual words")
+      );
+      layout.host.insertBefore(tabs, layout.region);
+    }
+
+    for (const button of tabs.querySelectorAll("[data-lwr-words-tab]")) {
+      const active = button.getAttribute("data-lwr-words-tab") === duolingoWordsSection;
+      const wanted = [
+        "padding: 8px 16px",
+        "border-radius: 12px",
+        "font-family: 'duolingo-sans', -apple-system, sans-serif",
+        "font-size: 14px",
+        "font-weight: 700",
+        "letter-spacing: 0.8px",
+        "text-transform: uppercase",
+        "cursor: pointer",
+        active
+          ? "border: 2px solid rgb(28, 176, 246); background: rgb(221, 244, 255); color: rgb(24, 153, 214)"
+          : "border: 2px solid rgb(229, 229, 229); background: #ffffff; color: rgb(175, 175, 175)"
+      ].join(";");
+      if (button.style.cssText !== wanted) {
+        button.style.cssText = wanted;
+      }
+      const pressed = String(active);
+      if (button.getAttribute("aria-pressed") !== pressed) {
+        button.setAttribute("aria-pressed", pressed);
+      }
+    }
+
+    const manualActive = duolingoWordsSection === "manual";
+    const nativeDisplay = manualActive ? "none" : "";
+    if (layout.region.style.display !== nativeDisplay) {
+      layout.region.style.display = nativeDisplay;
+    }
+    if (layout.list.style.display !== nativeDisplay) {
+      layout.list.style.display = nativeDisplay;
+    }
+
+    let panel = document.getElementById(DUOLINGO_MANUAL_PANEL_ID);
+    if (panel && panel.parentElement !== layout.host) {
+      panel.remove();
+      panel = null;
+    }
+    if (!panel) {
+      panel = buildDuolingoManualPanel(layout.heading.className);
+      layout.host.append(panel);
+    }
+    const panelDisplay = manualActive ? "" : "none";
+    if (panel.style.display !== panelDisplay) {
+      panel.style.display = panelDisplay;
+    }
+    if (manualActive) {
+      renderDuolingoManualPanel();
+    }
+  }
+
+  function duolingoManualInput(placeholder) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    input.placeholder = placeholder;
+    input.style.cssText = [
+      "flex: 1 1 180px",
+      "min-width: 140px",
+      "box-sizing: border-box",
+      "padding: 9px 12px",
+      "border: 2px solid rgb(229, 229, 229)",
+      "border-radius: 12px",
+      "background: #ffffff",
+      "color: rgb(60, 60, 60)",
+      "font-family: 'duolingo-sans', -apple-system, sans-serif",
+      "font-size: 15px",
+      "outline: none"
+    ].join(";");
+    return input;
+  }
+
+  function buildDuolingoManualPanel(headingClassName) {
+    const panel = document.createElement("div");
+    panel.id = DUOLINGO_MANUAL_PANEL_ID;
+    panel.style.display = "none";
+
+    const heading = document.createElement("h2");
+    heading.className = headingClassName;
+    heading.setAttribute("data-lwr-manual-count", "");
+    panel.append(heading);
+
+    // Mirror the Duolingo tab: the destructive action sits in a row right
+    // under the count heading.
+    const actions = document.createElement("div");
+    actions.style.cssText = "display: flex; align-items: center; gap: 12px; margin: 10px 0 4px";
+    const deleteAll = duolingoPanelButton("Delete all", { danger: true });
+    deleteAll.setAttribute("data-lwr-manual-delete-all", "");
+    deleteAll.title = "Remove every manual word from the Sly Fox Translator vocabulary";
+    actions.append(deleteAll);
+    panel.append(actions);
+
+    const form = document.createElement("form");
+    form.style.cssText = "display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0";
+    const sourceInput = duolingoManualInput("English (e.g. a cup of coffee)");
+    sourceInput.setAttribute("data-lwr-manual-source", "");
+    const targetInput = duolingoManualInput("Learned word or phrase");
+    targetInput.setAttribute("data-lwr-manual-target", "");
+    const submit = duolingoPanelButton("Add");
+    submit.type = "submit";
+    submit.setAttribute("data-lwr-manual-submit", "");
+    const cancel = duolingoPanelButton("Cancel");
+    cancel.style.display = "none";
+    cancel.setAttribute("data-lwr-manual-cancel", "");
+    form.append(sourceInput, targetInput, submit, cancel);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      submitDuolingoManualForm(panel);
+    });
+    cancel.addEventListener("click", () => {
+      stopDuolingoManualEdit(panel);
+    });
+    panel.append(form);
+
+    const filter = duolingoManualInput("Search manual words");
+    filter.setAttribute("data-lwr-manual-filter", "");
+    filter.style.margin = "0 0 12px";
+    filter.addEventListener("input", () => {
+      duolingoManualFilter = filter.value;
+      renderDuolingoManualList();
+    });
+    panel.append(filter);
+
+    const list = document.createElement("div");
+    list.setAttribute("data-lwr-manual-list", "");
+    panel.append(list);
+
+    return panel;
+  }
+
+  function getDuolingoManualEntries() {
+    return getCurrentEntries().filter((entry) => entry.origin === "manual");
+  }
+
+  function renderDuolingoManualPanel() {
+    const panel = document.getElementById(DUOLINGO_MANUAL_PANEL_ID);
+    if (!panel) {
+      return;
+    }
+
+    const count = getDuolingoManualEntries().length;
+    const label = `${count} manual word${count === 1 ? "" : "s"}`;
+    const heading = panel.querySelector("[data-lwr-manual-count]");
+    if (heading.textContent !== label) {
+      heading.textContent = label;
+    }
+    renderDuolingoManualList();
+  }
+
+  function renderDuolingoManualList() {
+    const panel = document.getElementById(DUOLINGO_MANUAL_PANEL_ID);
+    if (!panel) {
+      return;
+    }
+
+    const query = normalizeDuolingoWordKey(duolingoManualFilter);
+    const entries = getDuolingoManualEntries().filter(
+      (entry) =>
+        !query ||
+        normalizeDuolingoWordKey(entry.source).includes(query) ||
+        normalizeDuolingoWordKey(entry.target).includes(query)
+    );
+    const signature = entries
+      .map((entry) => `${entry.id}:${entry.enabled ? 1 : 0}:${entry.source}:${entry.target}`)
+      .join("|");
+
+    const list = panel.querySelector("[data-lwr-manual-list]");
+    if (list.getAttribute("data-lwr-signature") === signature) {
+      return;
+    }
+    list.setAttribute("data-lwr-signature", signature);
+    list.textContent = "";
+
+    if (!entries.length) {
+      const empty = document.createElement("div");
+      empty.textContent = query
+        ? "No manual words match this search."
+        : "No manual words yet — add one above.";
+      empty.style.cssText =
+        "padding: 12px 0; font-family: 'duolingo-sans', -apple-system, sans-serif; font-size: 14px; color: rgb(150, 150, 150)";
+      list.append(empty);
+      return;
+    }
+
+    for (const entry of entries) {
+      const row = document.createElement("div");
+      row.style.cssText = [
+        "display: flex",
+        "align-items: center",
+        "justify-content: space-between",
+        "gap: 16px",
+        "padding: 10px 0",
+        "border-bottom: 1px solid rgb(229, 229, 229)",
+        "font-family: 'duolingo-sans', -apple-system, sans-serif"
+      ].join(";");
+
+      const text = document.createElement("span");
+      const target = document.createElement("span");
+      target.textContent = entry.target;
+      target.style.cssText = `display: block; font-size: 16px; font-weight: 600; color: ${entry.enabled ? "rgb(60, 60, 60)" : "rgb(175, 175, 175)"}`;
+      const source = document.createElement("span");
+      source.textContent = entry.source;
+      source.style.cssText = "display: block; font-size: 13px; color: rgb(150, 150, 150)";
+      text.append(target, source);
+      if (entry.definition) {
+        const definition = document.createElement("span");
+        definition.textContent = entry.definition;
+        definition.style.cssText = "display: block; font-size: 12px; color: rgb(175, 175, 175)";
+        text.append(definition);
+      }
+
+      const controls = document.createElement("span");
+      controls.style.cssText = "display: inline-flex; align-items: center; gap: 4px; flex: none";
+      const toggle = document.createElement("input");
+      toggle.type = "checkbox";
+      toggle.checked = entry.enabled;
+      toggle.setAttribute("data-lwr-entry-id", entry.id);
+      toggle.title = entry.enabled ? "Pause this replacement" : "Resume this replacement";
+      toggle.style.cssText =
+        "width: 20px; height: 20px; margin-right: 6px; accent-color: rgb(28, 176, 246); cursor: pointer";
+
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.textContent = "✎";
+      edit.setAttribute("data-lwr-manual-edit", entry.id);
+      edit.title = `Edit “${entry.source}”`;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "✕";
+      remove.setAttribute("data-lwr-entry-remove", entry.id);
+      remove.title = `Delete “${entry.source}”`;
+      for (const control of [edit, remove]) {
+        control.style.cssText =
+          "width: 30px; height: 30px; border: none; border-radius: 8px; background: none; color: rgb(175, 175, 175); font-size: 15px; cursor: pointer";
+      }
+
+      controls.append(toggle, edit, remove);
+      row.append(text, controls);
+      list.append(row);
+    }
+  }
+
+  function submitDuolingoManualForm(panel) {
+    const sourceInput = panel.querySelector("[data-lwr-manual-source]");
+    const targetInput = panel.querySelector("[data-lwr-manual-target]");
+    const source = sourceInput.value.trim();
+    const target = targetInput.value.trim();
+    if (!source || !target) {
+      return;
+    }
+
+    const profile = getCurrentProfile();
+    if (!profile) {
+      return;
+    }
+
+    const editId = duolingoManualEditId;
+    updateDuolingoProfileEntries((entries) => {
+      if (editId) {
+        return entries.map((entry) =>
+          entry.id === editId ? { ...entry, source, target } : entry
+        );
+      }
+
+      // Adding an already-known manual source updates it instead of
+      // creating a duplicate row, mirroring the popup's import merge.
+      const existing = entries.find(
+        (entry) =>
+          entry.origin === "manual" &&
+          entry.source.toLocaleLowerCase() === source.toLocaleLowerCase()
+      );
+      if (existing) {
+        return entries.map((entry) =>
+          entry === existing ? { ...entry, source, target, enabled: true } : entry
+        );
+      }
+
+      return [
+        ...entries,
+        {
+          id: createId(),
+          source,
+          target,
+          languageCode: profile.languageCode,
+          definition: "",
+          origin: "manual",
+          learned: true,
+          enabled: true,
+          createdAt: Date.now()
+        }
+      ];
+    });
+    stopDuolingoManualEdit(panel);
+    renderDuolingoManualPanel();
+  }
+
+  function startDuolingoManualEdit(entryId) {
+    const panel = document.getElementById(DUOLINGO_MANUAL_PANEL_ID);
+    const entry = getDuolingoManualEntries().find((candidate) => candidate.id === entryId);
+    if (!panel || !entry) {
+      return;
+    }
+
+    duolingoManualEditId = entryId;
+    panel.querySelector("[data-lwr-manual-source]").value = entry.source;
+    panel.querySelector("[data-lwr-manual-target]").value = entry.target;
+    panel.querySelector("[data-lwr-manual-submit]").textContent = "Save";
+    panel.querySelector("[data-lwr-manual-cancel]").style.display = "";
+    panel.querySelector("[data-lwr-manual-source]").focus();
+  }
+
+  function stopDuolingoManualEdit(panel) {
+    duolingoManualEditId = null;
+    panel.querySelector("[data-lwr-manual-source]").value = "";
+    panel.querySelector("[data-lwr-manual-target]").value = "";
+    panel.querySelector("[data-lwr-manual-submit]").textContent = "Add";
+    panel.querySelector("[data-lwr-manual-cancel]").style.display = "none";
+  }
+
+  function runDuolingoManualDeleteAll() {
+    const profile = getCurrentProfile();
+    const count = getDuolingoManualEntries().length;
+    if (!profile || !count) {
+      return;
+    }
+
+    const confirmed = globalThis.confirm(
+      `Delete all ${count} manual word${count === 1 ? "" : "s"} from ${profile.name}? Manual words cannot be restored by Import.`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    updateDuolingoProfileEntries((entries) =>
+      entries.filter((entry) => entry.origin !== "manual")
+    );
+    renderDuolingoManualPanel();
+  }
+
+  // Per-word vocabulary info embedded in the Words page list: each row grows
+  // chips for the extension entries replacing that word (click = pause/resume
+  // that replacement), replacing the popup's Duolingo vocabulary browser.
+  function normalizeDuolingoWordKey(value) {
+    return String(value || "")
+      .normalize("NFC")
+      .toLocaleLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function buildDuolingoEntriesByWord() {
+    const map = new Map();
+    for (const entry of getCurrentEntries()) {
+      if (entry.origin !== "duolingo") {
+        continue;
+      }
+      for (const alternate of String(entry.target || "").split(" / ")) {
+        const key = normalizeDuolingoWordKey(alternate);
+        if (!key) {
+          continue;
+        }
+        if (!map.has(key)) {
+          map.set(key, []);
+        }
+        map.get(key).push(entry);
+      }
+    }
+    return map;
+  }
+
+  function updateDuolingoProfileEntries(mapEntries) {
+    const profile = getCurrentProfile();
+    if (!profile) {
+      return;
+    }
+
+    const profiles = state.profiles.map((candidate) =>
+      candidate === profile
+        ? { ...candidate, entries: mapEntries(candidate.entries) }
+        : candidate
+    );
+    state = { ...state, profiles };
+    chrome.storage.local.set({ [STORAGE_KEY]: state });
+    // Re-render immediately; the storage event follows for everything else.
+    ensureDuolingoWordsInfo();
+    renderDuolingoManualPanel();
+  }
+
+  function toggleDuolingoEntryEnabled(entryId) {
+    updateDuolingoProfileEntries((entries) =>
+      entries.map((entry) =>
+        entry.id === entryId ? { ...entry, enabled: !entry.enabled } : entry
+      )
+    );
+  }
+
+  function runDuolingoWordsDeleteAll() {
+    const profile = getCurrentProfile();
+    const count = getCurrentEntries().filter((entry) => entry.origin === "duolingo").length;
+    if (!profile || !count) {
+      setDuolingoImportStatus("There are no synced Duolingo words to delete.", "rgb(234, 43, 43)");
+      return;
+    }
+
+    const confirmed = globalThis.confirm(
+      `Delete all ${count} synced Duolingo word${count === 1 ? "" : "s"} from ${profile.name}? Import restores them any time.`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    updateDuolingoProfileEntries((entries) =>
+      entries.filter((entry) => entry.origin !== "duolingo")
+    );
+    setDuolingoImportStatus(
+      `Deleted ${count} Duolingo word${count === 1 ? "" : "s"} from ${profile.name}.`,
+      "rgb(88, 167, 0)"
+    );
+  }
+
+  function removeDuolingoEntry(entryId) {
+    // No confirmation, matching the popup's per-row delete: a removed
+    // Duolingo entry comes back with the next Import anyway.
+    updateDuolingoProfileEntries((entries) =>
+      entries.filter((entry) => entry.id !== entryId)
+    );
+  }
+
+  function ensureDuolingoWordsInfo() {
+    // Guard every write: this runs from the MutationObserver.
+    if (!isDuolingoWordsPage()) {
+      return;
+    }
+
+    const collection = getDuolingoWordCollection();
+    if (!collection.list) {
+      return;
+    }
+
+    const entriesByWord = buildDuolingoEntriesByWord();
+    for (const item of collection.list.children) {
+      const record = readDuolingoWordRow(item);
+      if (!record) {
+        continue;
+      }
+
+      const heading = item.querySelector("h2,h3,h4");
+      const host = heading ? heading.parentElement : null;
+      if (!host) {
+        continue;
+      }
+
+      const entries = entriesByWord.get(normalizeDuolingoWordKey(record.word)) || [];
+      const signature = entries.length
+        ? entries.map((entry) => `${entry.id}:${entry.enabled ? 1 : 0}`).join(",")
+        : "none";
+
+      let strip = host.querySelector("[data-lwr-word-info]");
+      if (strip && strip.getAttribute("data-lwr-signature") === signature) {
+        continue;
+      }
+      if (!strip) {
+        strip = document.createElement("div");
+        strip.setAttribute("data-lwr-word-info", "");
+        strip.style.cssText =
+          "display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px";
+        host.append(strip);
+      }
+      strip.setAttribute("data-lwr-signature", signature);
+      strip.textContent = "";
+
+      if (!entries.length) {
+        const note = document.createElement("span");
+        note.textContent = "Not synced to Sly Fox";
+        note.style.cssText =
+          "font-family: 'duolingo-sans', -apple-system, sans-serif; font-size: 12px; color: rgb(175, 175, 175)";
+        strip.append(note);
+        continue;
+      }
+
+      for (const entry of entries) {
+        const pill = document.createElement("span");
+        pill.style.cssText = [
+          "display: inline-flex",
+          "align-items: center",
+          "border-radius: 999px",
+          "font-family: 'duolingo-sans', -apple-system, sans-serif",
+          "font-size: 13px",
+          "font-weight: 600",
+          entry.enabled
+            ? "border: 2px solid rgb(28, 176, 246); background: rgb(221, 244, 255); color: rgb(24, 153, 214)"
+            : "border: 2px solid rgb(229, 229, 229); background: #ffffff; color: rgb(175, 175, 175)"
+        ].join(";");
+
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.textContent = entry.source;
+        chip.setAttribute("data-lwr-entry-id", entry.id);
+        chip.title = entry.enabled
+          ? `Replacing “${entry.source}” on pages — click to pause`
+          : `Not replacing “${entry.source}” — click to resume`;
+        chip.style.cssText =
+          "padding: 3px 2px 3px 10px; border: none; background: none; color: inherit; font: inherit; cursor: pointer";
+
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "✕";
+        remove.setAttribute("data-lwr-entry-remove", entry.id);
+        remove.title = `Remove “${entry.source}” from Sly Fox`;
+        remove.setAttribute("aria-label", remove.title);
+        remove.style.cssText =
+          "padding: 3px 8px 3px 4px; border: none; background: none; color: inherit; opacity: 0.55; font: inherit; font-size: 11px; cursor: pointer";
+
+        pill.append(chip, remove);
+        strip.append(pill);
+      }
+    }
+  }
+
+  const DUOLINGO_SETTINGS_LINK_ID = "learned-word-replacer-duolingo-settings-link";
+  const DUOLINGO_SETTINGS_ITEM_ID = "learned-word-replacer-duolingo-settings-item";
+  const DUOLINGO_SETTINGS_PANEL_ID = "learned-word-replacer-duolingo-settings-panel";
+  const DUOLINGO_SETTINGS_ROWS = [
+    { key: "enabled", label: "Enable replacements", description: "Replace the words you have learned on every website" },
+    { key: "showHighlights", label: "Highlight replacements", description: "Underline replaced words on pages" },
+    { key: "structureMode", label: "Target-language sentence structure", description: "Rebuild sentences in the target language's word order" },
+    { key: "showProcessedSections", label: "Mark checked sections", description: "Mark page sections that were checked for learned words" },
+    { key: "showOriginalOnHover", label: "Show original English on hover", description: "Show the original English when hovering a replaced word" },
+    { key: "translateEnglishOnHover", label: "Translate English on hover", description: "Translate English words when hovering them" },
+    { key: "duolingoAutoContinue", label: "Skip Duolingo continue screens", description: "Press Continue for you and show the result as a brief popup" },
+    { key: "duolingoTypeAnswers", label: "Type Duolingo answers", description: "Type answers with hints on word-bank, audio-match and meaning exercises" }
+  ];
+  let duolingoSettingsActive = false;
+  let duolingoHiddenSettingsPane = null;
+
+  function isDuolingoSettingsPage() {
+    return isDuolingoHost() && globalThis.location.pathname.startsWith("/settings");
+  }
+
+  function getDuolingoSettingsNav() {
+    // The settings nav is the visible list of /settings links. No stable
+    // data-test hooks exist here, so navigate by shape, and style our own
+    // item by copying Duolingo's own class names at runtime.
+    const link = [...document.querySelectorAll("a[href^='/settings']")].find(
+      (candidate) =>
+        candidate.offsetParent !== null &&
+        candidate.parentElement?.tagName === "LI" &&
+        candidate.id !== DUOLINGO_SETTINGS_LINK_ID
+    );
+    const item = link ? link.parentElement : null;
+    return item ? { list: item.parentElement, item, link } : null;
+  }
+
+  function getDuolingoSettingsContentPane() {
+    // The pane sits next to the nav in a shared container; find the nav's
+    // ancestor whose parent also holds an h1 outside the nav subtree, then
+    // take the sibling containing that h1.
+    const nav = getDuolingoSettingsNav();
+    if (!nav) {
+      return null;
+    }
+
+    let navSide = nav.list;
+    while (navSide.parentElement && navSide.parentElement !== document.body) {
+      const heading = [...navSide.parentElement.querySelectorAll("h1")].find(
+        (candidate) => !navSide.contains(candidate)
+      );
+      if (heading) {
+        return [...navSide.parentElement.children].find(
+          (child) =>
+            child !== navSide &&
+            child.id !== DUOLINGO_SETTINGS_PANEL_ID &&
+            child.contains(heading)
+        );
+      }
+      navSide = navSide.parentElement;
+    }
+    return null;
+  }
+
+  function ensureDuolingoSettingsUi() {
+    // Guard every write: this runs from the MutationObserver.
+    if (!isDuolingoSettingsPage()) {
+      deactivateDuolingoSettingsPanel();
+      document
+        .querySelectorAll(`[id='${DUOLINGO_SETTINGS_ITEM_ID}']`)
+        .forEach((item) => item.remove());
+      return;
+    }
+
+    const nav = getDuolingoSettingsNav();
+    if (!nav) {
+      return;
+    }
+
+    let ourItem = document.getElementById(DUOLINGO_SETTINGS_ITEM_ID);
+    if (ourItem && ourItem.parentElement !== nav.list) {
+      ourItem.remove();
+      ourItem = null;
+    }
+    if (!ourItem) {
+      // Deep-clone one of Duolingo's own items so the inner structure comes
+      // along too: the mobile menu nests the label in a div and appends a
+      // chevron image, and a bare <a> loses that card styling.
+      const item = nav.item.cloneNode(true);
+      item.id = DUOLINGO_SETTINGS_ITEM_ID;
+      const link = item.querySelector("a") || item;
+      link.id = DUOLINGO_SETTINGS_LINK_ID;
+      // The hash href keeps middle-click/new-tab working: any settings URL
+      // with #sly-fox auto-opens the panel below, and Duolingo's router
+      // ignores hashes (a real /settings/sly-fox path would 404).
+      link.setAttribute("href", "#sly-fox");
+      link.removeAttribute("aria-current");
+      setDuolingoNavItemLabel(link, "Sly Fox Translator");
+      const logo = document.createElement("img");
+      logo.alt = "";
+      logo.src = chrome.runtime.getURL("icons/icon-48.png");
+      logo.style.cssText =
+        "width: 20px; height: 20px; margin-right: 8px; border-radius: 4px; vertical-align: -4px; flex: none";
+      (link.querySelector("div") || link).prepend(logo);
+      nav.list.append(item);
+    }
+
+    const activationLink = document.getElementById(DUOLINGO_SETTINGS_LINK_ID);
+    if (globalThis.location.hash === "#sly-fox" && !duolingoSettingsActive && activationLink) {
+      history.replaceState(
+        null,
+        "",
+        globalThis.location.pathname + globalThis.location.search
+      );
+      activateDuolingoSettingsPanel(activationLink);
+    }
+
+    if (duolingoSettingsActive) {
+      ensureDuolingoSettingsPanel();
+    }
+  }
+
+  function setDuolingoNavItemLabel(link, label) {
+    // Swap the text while keeping the cloned structure (label divs, chevron
+    // images) intact: the first non-empty text node becomes the label, any
+    // other text is cleared.
+    const walker = document.createTreeWalker(link, NodeFilter.SHOW_TEXT);
+    let replaced = false;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (!node.nodeValue.trim()) {
+        continue;
+      }
+      node.nodeValue = replaced ? "" : label;
+      replaced = true;
+    }
+    if (!replaced) {
+      link.textContent = label;
+    }
+  }
+
+  function activateDuolingoSettingsPanel(link) {
+    duolingoSettingsActive = true;
+    link.setAttribute("aria-current", "page");
+    document.querySelectorAll("a[href^='/settings'][aria-current]").forEach((other) => {
+      if (other !== link) {
+        other.removeAttribute("aria-current");
+      }
+    });
+    ensureDuolingoSettingsPanel();
+  }
+
+  function deactivateDuolingoSettingsPanel() {
+    if (!duolingoSettingsActive && !duolingoHiddenSettingsPane) {
+      return;
+    }
+
+    duolingoSettingsActive = false;
+    if (duolingoHiddenSettingsPane) {
+      duolingoHiddenSettingsPane.style.display = "";
+      duolingoHiddenSettingsPane = null;
+    }
+    document
+      .querySelectorAll(`[id='${DUOLINGO_SETTINGS_PANEL_ID}']`)
+      .forEach((panel) => panel.remove());
+    const link = document.getElementById(DUOLINGO_SETTINGS_LINK_ID);
+    if (link) {
+      link.removeAttribute("aria-current");
+    }
+  }
+
+  function getDuolingoSettingsSwapTarget() {
+    // Desktop: nav and content pane sit side by side — swap the pane. The
+    // narrow-viewport /settings route is a full-page menu with no pane (and
+    // no h1): swap the menu's nav element instead.
+    const pane = getDuolingoSettingsContentPane();
+    if (pane) {
+      return { node: pane, mode: "pane" };
+    }
+
+    const nav = getDuolingoSettingsNav();
+    const menu = nav ? nav.list.closest("nav") : null;
+    return menu ? { node: menu, mode: "menu" } : null;
+  }
+
+  function ensureDuolingoSettingsPanel() {
+    const target = getDuolingoSettingsSwapTarget();
+    if (target && target.node !== duolingoHiddenSettingsPane) {
+      // Duolingo re-rendered its pane (or we just activated); hide the fresh
+      // copy and restore any stale pointer.
+      if (duolingoHiddenSettingsPane) {
+        duolingoHiddenSettingsPane.style.display = "";
+      }
+      duolingoHiddenSettingsPane = target.node;
+    }
+    if (duolingoHiddenSettingsPane && duolingoHiddenSettingsPane.style.display !== "none") {
+      duolingoHiddenSettingsPane.style.display = "none";
+    }
+
+    const host = duolingoHiddenSettingsPane ? duolingoHiddenSettingsPane.parentElement : null;
+    if (!host) {
+      return;
+    }
+
+    let panel = document.getElementById(DUOLINGO_SETTINGS_PANEL_ID);
+    if (panel && panel.parentElement !== host) {
+      panel.remove();
+      panel = null;
+    }
+    if (!panel) {
+      panel = buildDuolingoSettingsPanel(target ? target.mode : "pane");
+      if (target && target.mode === "pane") {
+        // Copying the hidden pane's classes keeps Duolingo's own column layout.
+        panel.className = duolingoHiddenSettingsPane.className;
+      }
+      host.append(panel);
+    }
+    syncDuolingoSettingsPanelValues();
+  }
+
+  function buildDuolingoSettingsPanel(mode) {
+    const panel = document.createElement("div");
+    panel.id = DUOLINGO_SETTINGS_PANEL_ID;
+
+    if (mode === "menu") {
+      panel.style.padding = "0 24px";
+      // Full-page mobile mode has no visible way back to the menu once the
+      // nav is hidden, so the panel carries its own.
+      const back = document.createElement("button");
+      back.type = "button";
+      back.textContent = "‹ Settings";
+      back.style.cssText = [
+        "display: block",
+        "margin: 4px 0 12px",
+        "padding: 4px 0",
+        "border: none",
+        "background: none",
+        "color: rgb(28, 176, 246)",
+        "font-family: 'duolingo-sans', -apple-system, sans-serif",
+        "font-size: 16px",
+        "font-weight: 700",
+        "cursor: pointer"
+      ].join(";");
+      back.addEventListener("click", () => {
+        deactivateDuolingoSettingsPanel();
+      });
+      panel.append(back);
+    }
+
+    const heading = document.createElement("h1");
+    const paneHeading = duolingoHiddenSettingsPane
+      ? duolingoHiddenSettingsPane.querySelector("h1")
+      : null;
+    if (paneHeading) {
+      heading.className = paneHeading.className;
+    } else {
+      heading.style.cssText =
+        "font-family: 'duolingo-sans', -apple-system, sans-serif; font-size: 22px; font-weight: 700; color: rgb(60, 60, 60)";
+    }
+    heading.textContent = "Sly Fox Translator";
+    heading.style.marginBottom = "24px";
+    panel.append(heading);
+
+    for (const row of DUOLINGO_SETTINGS_ROWS) {
+      const label = document.createElement("label");
+      label.style.cssText = [
+        "display: flex",
+        "align-items: center",
+        "justify-content: space-between",
+        "gap: 24px",
+        "padding: 12px 0",
+        "border-bottom: 1px solid rgb(229, 229, 229)",
+        "cursor: pointer",
+        "font-family: 'duolingo-sans', -apple-system, sans-serif"
+      ].join(";");
+
+      const text = document.createElement("span");
+      const title = document.createElement("span");
+      title.textContent = row.label;
+      title.style.cssText =
+        "display: block; font-size: 17px; font-weight: 600; color: rgb(60, 60, 60)";
+      const description = document.createElement("span");
+      description.textContent = row.description;
+      description.style.cssText =
+        "display: block; margin-top: 2px; font-size: 14px; color: rgb(150, 150, 150)";
+      text.append(title, description);
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.setAttribute("data-lwr-setting", row.key);
+      checkbox.style.cssText =
+        "width: 22px; height: 22px; flex: none; accent-color: rgb(28, 176, 246); cursor: pointer";
+      checkbox.addEventListener("change", () => {
+        state = { ...state, [row.key]: checkbox.checked };
+        chrome.storage.local.set({ [STORAGE_KEY]: state });
+      });
+
+      label.append(text, checkbox);
+      panel.append(label);
+    }
+
+    panel.append(buildDuolingoExclusionSection(), buildDuolingoFileSection());
+    return panel;
+  }
+
+  function duolingoPanelSectionHeading(text) {
+    const heading = document.createElement("h2");
+    heading.textContent = text;
+    heading.style.cssText =
+      "margin: 32px 0 4px; font-family: 'duolingo-sans', -apple-system, sans-serif; font-size: 19px; font-weight: 700; color: rgb(60, 60, 60)";
+    return heading;
+  }
+
+  function duolingoPanelButton(label, { danger } = {}) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    const color = danger ? "rgb(234, 43, 43)" : "rgb(28, 176, 246)";
+    button.style.cssText = [
+      "padding: 8px 14px",
+      `border: 2px solid ${color}`,
+      "border-radius: 12px",
+      "background: #ffffff",
+      `color: ${color}`,
+      "font-family: 'duolingo-sans', -apple-system, sans-serif",
+      "font-size: 13px",
+      "font-weight: 700",
+      "letter-spacing: 0.6px",
+      "text-transform: uppercase",
+      "cursor: pointer"
+    ].join(";");
+    return button;
+  }
+
+  function buildDuolingoExclusionSection() {
+    const section = document.createElement("div");
+    section.append(duolingoPanelSectionHeading("Do not translate"));
+
+    const list = document.createElement("div");
+    list.setAttribute("data-lwr-exclusion-list", "");
+    section.append(list);
+    return section;
+  }
+
+  function buildDuolingoFileSection() {
+    const section = document.createElement("div");
+    section.append(duolingoPanelSectionHeading("Vocabulary files"));
+
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = ".csv,.txt,text/csv,text/plain";
+    fileInput.style.display = "none";
+    let pendingImportOrigin = "";
+    fileInput.addEventListener("change", async () => {
+      const file = fileInput.files && fileInput.files[0];
+      fileInput.value = "";
+      if (!file) {
+        return;
+      }
+      try {
+        const text = await file.text();
+        const response = await sendDuolingoRuntimeMessage({
+          type: "LWR_IMPORT_TEXT",
+          text,
+          originOverride: pendingImportOrigin
+        });
+        if (!response.ok) {
+          throw new Error(response.reason || "Could not import the file.");
+        }
+        setDuolingoFileStatus(
+          `Imported ${response.addedCount} new row${response.addedCount === 1 ? "" : "s"} from ${file.name} — ${response.totalCount} total in ${response.profileName}.`,
+          false
+        );
+      } catch (error) {
+        setDuolingoFileStatus(
+          error && error.message ? error.message : `Could not read ${file.name}.`,
+          true
+        );
+      }
+    });
+
+    const buttons = document.createElement("div");
+    buttons.style.cssText = "display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0";
+
+    const importAll = duolingoPanelButton("Import file");
+    importAll.addEventListener("click", () => {
+      pendingImportOrigin = "";
+      fileInput.click();
+    });
+    const importManual = duolingoPanelButton("Import manual file");
+    importManual.addEventListener("click", () => {
+      pendingImportOrigin = "manual";
+      fileInput.click();
+    });
+    const exportAll = duolingoPanelButton("Download all CSV");
+    exportAll.addEventListener("click", () => runDuolingoPanelExport(""));
+    const exportManual = duolingoPanelButton("Download manual CSV");
+    exportManual.addEventListener("click", () => runDuolingoPanelExport("manual"));
+    const deleteAll = duolingoPanelButton("Delete all", { danger: true });
+    deleteAll.setAttribute("data-lwr-delete-all", "");
+    deleteAll.addEventListener("click", () => runDuolingoPanelDeleteAll());
+
+    buttons.append(importAll, importManual, exportAll, exportManual, deleteAll);
+
+    const status = document.createElement("div");
+    status.setAttribute("data-lwr-file-status", "");
+    status.textContent = "Import a CSV, TXT, or Duolingo export file, or download your vocabulary.";
+    status.style.cssText =
+      "font-family: 'duolingo-sans', -apple-system, sans-serif; font-size: 14px; color: rgb(150, 150, 150)";
+
+    section.append(fileInput, buttons, status);
+    return section;
+  }
+
+  function sendDuolingoRuntimeMessage(message) {
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage(message, (reply) => {
+        if (chrome.runtime.lastError) {
+          resolve({ ok: false, reason: chrome.runtime.lastError.message });
+          return;
+        }
+        resolve(reply || { ok: false, reason: "The extension did not respond." });
+      });
+    });
+  }
+
+  function setDuolingoFileStatus(text, isError) {
+    document.querySelectorAll("[data-lwr-file-status]").forEach((status) => {
+      status.textContent = text;
+      status.style.color = isError ? "rgb(234, 43, 43)" : "rgb(88, 167, 0)";
+    });
+  }
+
+  async function runDuolingoPanelExport(origin) {
+    const response = await sendDuolingoRuntimeMessage({ type: "LWR_EXPORT_CSV", origin });
+    if (!response.ok) {
+      setDuolingoFileStatus(response.reason || "Could not export the vocabulary.", true);
+      return;
+    }
+
+    const blob = new Blob([response.csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = response.filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setDuolingoFileStatus(
+      `Downloaded ${response.count} ${origin === "manual" ? "manual" : "vocabulary"} entr${response.count === 1 ? "y" : "ies"}.`,
+      false
+    );
+  }
+
+  function runDuolingoPanelDeleteAll() {
+    const profile = getCurrentProfile();
+    const count = getCurrentEntries().length;
+    if (!profile || !count) {
+      setDuolingoFileStatus("There are no saved words to delete.", true);
+      return;
+    }
+
+    const confirmed = globalThis.confirm(
+      `Delete all ${count} saved word${count === 1 ? "" : "s"} from ${profile.name}? This cannot be undone.`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    const profiles = state.profiles.map((candidate) =>
+      candidate === profile ? { ...candidate, entries: [] } : candidate
+    );
+    state = { ...state, profiles };
+    chrome.storage.local.set({ [STORAGE_KEY]: state });
+    setDuolingoFileStatus(`Deleted ${count} word${count === 1 ? "" : "s"} from ${profile.name}.`, false);
+  }
+
+  function removeDuolingoExclusion(kind, value) {
+    const exclusions = state.doNotTranslate || { sites: [], pages: [] };
+    state = {
+      ...state,
+      doNotTranslate: {
+        sites: (exclusions.sites || []).filter(
+          (site) => !(kind === "sites" && site === value)
+        ),
+        pages: (exclusions.pages || []).filter(
+          (excludedPage) => !(kind === "pages" && excludedPage === value)
+        )
+      }
+    };
+    chrome.storage.local.set({ [STORAGE_KEY]: state });
+  }
+
+  function renderDuolingoExclusionList() {
+    const exclusions = state.doNotTranslate || { sites: [], pages: [] };
+    const rows = [
+      ...(exclusions.sites || []).map((value) => ({ kind: "sites", value, label: "Whole site" })),
+      ...(exclusions.pages || []).map((value) => ({ kind: "pages", value, label: "Specific page" }))
+    ];
+
+    document.querySelectorAll("[data-lwr-exclusion-list]").forEach((list) => {
+      const signature = JSON.stringify(rows);
+      if (list.getAttribute("data-lwr-signature") === signature) {
+        return;
+      }
+      list.setAttribute("data-lwr-signature", signature);
+      list.textContent = "";
+
+      if (!rows.length) {
+        const empty = document.createElement("div");
+        empty.textContent =
+          "No excluded sites or pages. Use the extension popup on a page to exclude it.";
+        empty.style.cssText =
+          "padding: 10px 0; font-family: 'duolingo-sans', -apple-system, sans-serif; font-size: 14px; color: rgb(150, 150, 150)";
+        list.append(empty);
+        return;
+      }
+
+      for (const row of rows) {
+        const entry = document.createElement("div");
+        entry.style.cssText = [
+          "display: flex",
+          "align-items: center",
+          "justify-content: space-between",
+          "gap: 16px",
+          "padding: 10px 0",
+          "border-bottom: 1px solid rgb(229, 229, 229)",
+          "font-family: 'duolingo-sans', -apple-system, sans-serif"
+        ].join(";");
+
+        const text = document.createElement("span");
+        const value = document.createElement("span");
+        value.textContent = row.value;
+        value.style.cssText =
+          "display: block; font-size: 15px; color: rgb(60, 60, 60); word-break: break-all";
+        const label = document.createElement("span");
+        label.textContent = row.label;
+        label.style.cssText = "display: block; font-size: 13px; color: rgb(150, 150, 150)";
+        text.append(value, label);
+
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "✕";
+        remove.title = `Translate ${row.value} again`;
+        remove.setAttribute("aria-label", remove.title);
+        remove.style.cssText =
+          "flex: none; width: 28px; height: 28px; border: none; border-radius: 8px; background: none; color: rgb(175, 175, 175); font-size: 15px; cursor: pointer";
+        remove.addEventListener("click", () => removeDuolingoExclusion(row.kind, row.value));
+
+        entry.append(text, remove);
+        list.append(entry);
+      }
+    });
+  }
+
+  function syncDuolingoSettingsPanelValues() {
+    const panel = document.getElementById(DUOLINGO_SETTINGS_PANEL_ID);
+    if (!panel) {
+      return;
+    }
+
+    panel.querySelectorAll("input[data-lwr-setting]").forEach((checkbox) => {
+      const wanted = Boolean(state[checkbox.getAttribute("data-lwr-setting")]);
+      if (checkbox.checked !== wanted) {
+        checkbox.checked = wanted;
+      }
+    });
+    renderDuolingoExclusionList();
+  }
+
   function warmContextTranslator() {
     // Only the top frame warms up eagerly: ad iframes would otherwise each
     // spin up a translator that their (usually empty) page pass never needs.
@@ -5028,6 +6561,7 @@
       warmContextTranslator();
       syncDuolingoAutoContinue();
       syncDuolingoTypeAnswers();
+      syncDuolingoPageUi();
       applyToPage();
     });
   }
@@ -5042,6 +6576,9 @@
     state = normalizeState(changes[STORAGE_KEY].newValue);
     syncDuolingoAutoContinue();
     syncDuolingoTypeAnswers();
+    syncDuolingoSettingsPanelValues();
+    ensureDuolingoWordsInfo();
+    ensureDuolingoWordsTabs();
     applyToPage();
   });
 

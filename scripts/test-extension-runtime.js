@@ -5,7 +5,6 @@ const vm = require("vm");
 
 const CONTENT_SCRIPT = path.resolve(__dirname, "../extension/content.js");
 const POPUP_PAGE = `file://${path.resolve(__dirname, "../extension/popup.html")}`;
-const SIDE_PANEL_PAGE = `${POPUP_PAGE}?view=sidepanel`;
 const BACKGROUND_SCRIPT = path.resolve(__dirname, "../extension/background.js");
 const TRANSLATOR_BRIDGE_SCRIPT = path.resolve(__dirname, "../extension/page-translator-bridge.js");
 const TRANSLATOR_BRIDGE_CONTENT = fs.readFileSync(TRANSLATOR_BRIDGE_SCRIPT, "utf8");
@@ -18,6 +17,7 @@ const UKRAINIAN_MORPHOLOGY_DICTIONARY = path.resolve(
   "../extension/vendor/ukrainian-morphology/ukrainian.dict"
 );
 const POPUP_SCRIPT = path.resolve(__dirname, "../extension/popup.js");
+const IMPORT_CORE_SCRIPT = path.resolve(__dirname, "../extension/import-core.js");
 const POPUP_STYLES = path.resolve(__dirname, "../extension/popup.css");
 const LUCIDE_ICON_DIR = path.resolve(__dirname, "../extension/icons/lucide");
 
@@ -70,6 +70,99 @@ function testVendoredLucideIcons() {
   }
 }
 
+function testImportCoreAppliesDuolingoImport() {
+  const context = { console };
+  context.globalThis = context;
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(IMPORT_CORE_SCRIPT, "utf8"), context);
+  const core = context.LWRImportCore;
+
+  const state = {
+    version: 2,
+    currentProfileId: "es-test",
+    profiles: [
+      { id: "es-test", name: "Spanish", languageCode: "es", entries: [] },
+      {
+        id: "uk-test",
+        name: "Ukrainian",
+        languageCode: "uk",
+        entries: [
+          {
+            id: "existing",
+            source: "cafe",
+            target: "кафе",
+            languageCode: "uk",
+            definition: "Duolingo meanings: a cafe",
+            origin: "duolingo",
+            learned: true,
+            enabled: true
+          }
+        ]
+      }
+    ]
+  };
+
+  const result = core.applyDuolingoImport(state, {
+    text: "кафе - a cafe, a café, the cafe\nсестри - sisters, a sister, 's",
+    languageName: "Ukrainian"
+  });
+  assert(result.ok, `import-core rejected a valid import: ${result.reason}`);
+  assert(result.profileName === "Ukrainian", "import-core matched the wrong profile");
+  assert(
+    result.state.currentProfileId === "uk-test",
+    "import-core did not switch to the imported profile"
+  );
+  assert(state.profiles[1].entries.length === 1, "import-core mutated the input state");
+
+  const entries = result.state.profiles[1].entries;
+  const sources = entries.map((entry) => entry.source).sort();
+  // "'s" is an invalid standalone source and must be dropped; "cafe" merges
+  // into the existing entry instead of duplicating it.
+  assert(
+    sources.join(",") === "cafe,café,sister,sisters",
+    `wrong imported sources: ${sources.join(",")}`
+  );
+  const cafeEntry = entries.find((entry) => entry.id === "existing");
+  assert(cafeEntry, "existing entry lost its identity during merge");
+  assert(cafeEntry.target === "кафе", "existing target was not preserved");
+
+  const unsupported = core.applyDuolingoImport(state, {
+    text: "кафе - a cafe",
+    languageName: "Klingon"
+  });
+  assert(
+    !unsupported.ok && /not supported/.test(unsupported.reason),
+    "import-core accepted an unsupported language"
+  );
+
+  const empty = core.applyDuolingoImport(state, { text: "", languageName: "Ukrainian" });
+  assert(!empty.ok, "import-core accepted empty text");
+
+  const manualImport = core.applyTextImport(
+    { ...state, currentProfileId: "uk-test" },
+    { text: "radio,радіо,radio receiver", originOverride: "manual" }
+  );
+  assert(manualImport.ok, `text import failed: ${manualImport.reason}`);
+  const manualEntry = manualImport.state.profiles[1].entries.find(
+    (entry) => entry.source === "radio"
+  );
+  assert(
+    manualEntry && manualEntry.origin === "manual" && manualEntry.target === "радіо",
+    "text import did not add the manual row to the current profile"
+  );
+
+  const csv = core.buildVocabularyCsv(manualImport.state, { origin: "manual" });
+  assert(csv.ok && csv.count === 1, `manual CSV export failed: ${JSON.stringify(csv)}`);
+  assert(
+    csv.csv === "radio,радіо,radio receiver\n",
+    `wrong manual CSV content: ${JSON.stringify(csv.csv)}`
+  );
+  assert(
+    csv.filename === "ukrainian-manual.csv",
+    `wrong manual CSV filename: ${csv.filename}`
+  );
+}
+
 function testUkrainianMorphologyDictionary() {
   const context = { TextDecoder, TextEncoder, Uint8Array };
   context.globalThis = context;
@@ -87,13 +180,17 @@ function testUkrainianMorphologyDictionary() {
 }
 
 function testFullExportDoesNotUseClickEventAsFilter() {
-  const popupScript = fs.readFileSync(POPUP_SCRIPT, "utf8");
+  // Export now lives in the Duolingo settings panel (content.js) on top of
+  // the shared import-core; the origin filter must still never receive a
+  // click event or arbitrary values.
+  const contentScript = fs.readFileSync(CONTENT_SCRIPT, "utf8");
+  const coreScript = fs.readFileSync(IMPORT_CORE_SCRIPT, "utf8");
   assert(
-    popupScript.includes('elements.exportButton.addEventListener("click", () => exportEntries());'),
+    contentScript.includes(`exportAll.addEventListener("click", () => runDuolingoPanelExport(""));`),
     "all-vocabulary export passes its click event to the export filter"
   );
   assert(
-    popupScript.includes('const exportOrigin = origin === "manual" ? "manual" : "";'),
+    coreScript.includes('const exportOrigin = origin === "manual" ? "manual" : "";'),
     "export filter accepts arbitrary values instead of only the manual scope"
   );
 }
@@ -113,20 +210,32 @@ async function installHarness(page, { state, translator, config = {}, wordAligne
       window.chrome = {
         runtime: {
           lastError: null,
+          getURL: (path) => `chrome-extension://test-extension/${path}`,
           onMessage: {
             addListener(listener) {
               window.__runtimeMessageListener = listener;
             }
           },
-          sendMessage(message) {
+          sendMessage(message, callback) {
             window.__runtimeMessages = window.__runtimeMessages || [];
             window.__runtimeMessages.push(message);
+            if (typeof callback === "function") {
+              const responder = window.__runtimeSendMessageResponder;
+              Promise.resolve(responder ? responder(message) : { ok: true }).then(callback);
+            }
           }
         },
         storage: {
           local: {
             get(defaults, callback) {
               callback({ learnedWordReplacerState: savedState });
+            },
+            set(items, callback) {
+              window.__storageWrites = window.__storageWrites || [];
+              window.__storageWrites.push(items);
+              if (typeof callback === "function") {
+                callback();
+              }
             }
           },
           onChanged: {
@@ -2569,6 +2678,909 @@ async function testDuolingoTypeHintShowsNextLettersAndDeadEnds(browser) {
   await page.close();
 }
 
+async function testDuolingoListenMatchHidesWordsAndTypesPairs(browser) {
+  const page = await browser.newPage();
+  // Mirrors the live listen-match DOM (2026-07-17): audio cards hold a number
+  // badge and a waveform, word cards add a challenge-tap-token-text span, and
+  // matched pairs flip aria-disabled to "true".
+  await page.route("https://www.duolingo.com/lesson", (route) =>
+    route.fulfill({
+      contentType: "text/html; charset=utf-8",
+      body: `
+        <div data-test="challenge challenge-listenMatch">
+          <div><div><div id="grid">
+            <span><button data-test="but-challenge-tap-token" aria-disabled="false"><span>1</span><svg></svg></button></span>
+            <span><button data-test="bread-challenge-tap-token" aria-disabled="false"><span>2</span><svg></svg></button></span>
+            <span><button data-test="but-challenge-tap-token" aria-disabled="false"><span>3</span><span data-test="challenge-tap-token-text">but</span></button></span>
+            <span><button data-test="bread-challenge-tap-token" aria-disabled="false"><span>4</span><span data-test="challenge-tap-token-text">bread</span></button></span>
+          </div></div></div>
+        </div>
+        <script>
+          window.__cardClicks = [];
+          let selected = null;
+          document.querySelectorAll("button").forEach((card) => {
+            card.addEventListener("click", () => {
+              window.__cardClicks.push(card.textContent.trim());
+              if (selected && selected !== card &&
+                  selected.getAttribute("data-test") === card.getAttribute("data-test")) {
+                selected.setAttribute("aria-disabled", "true");
+                card.setAttribute("aria-disabled", "true");
+                selected = null;
+              } else {
+                selected = card;
+              }
+            });
+          });
+        </script>
+      `
+    })
+  );
+  await page.goto("https://www.duolingo.com/lesson");
+  await installHarness(page, {
+    state: { ...createState([]), duolingoTypeAnswers: true },
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => text
+    }
+  });
+
+  await page.waitForSelector("#learned-word-replacer-duolingo-type-input");
+
+  const setup = await page.evaluate(() => {
+    const input = document.getElementById("learned-word-replacer-duolingo-type-input");
+    const wrap = document.getElementById("learned-word-replacer-duolingo-type-wrap");
+    return {
+      placeholder: input.placeholder,
+      insertedBeforeGrid: wrap.nextElementSibling === document.getElementById("grid"),
+      wordVisibility: [...document.querySelectorAll("[data-test='challenge-tap-token-text']")]
+        .map((span) => span.style.visibility)
+    };
+  });
+  assert(
+    setup.placeholder === "Press a number to listen, type the word, then space",
+    `wrong match-mode placeholder: ${setup.placeholder}`
+  );
+  assert(setup.insertedBeforeGrid, "input row was not inserted before the match grid");
+  assert(
+    setup.wordVisibility.length === 2 && setup.wordVisibility.every((v) => v === "hidden"),
+    `match words are not hidden by default: ${JSON.stringify(setup.wordVisibility)}`
+  );
+
+  const paired = await page.evaluate(() => {
+    const input = document.getElementById("learned-word-replacer-duolingo-type-input");
+    // Digit on an empty buffer taps the numbered audio card.
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "1", bubbles: true }));
+    const clicksAfterDigit = [...window.__cardClicks];
+    // Typing the recalled word and space clicks the matching word card.
+    input.value = "but";
+    input.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
+    return {
+      clicksAfterDigit,
+      clicks: [...window.__cardClicks],
+      inputValue: input.value,
+      pairDisabled: [...document.querySelectorAll("[data-test='but-challenge-tap-token']")]
+        .map((card) => card.getAttribute("aria-disabled"))
+    };
+  });
+  assert(
+    paired.clicksAfterDigit.length === 1 && paired.clicksAfterDigit[0] === "1",
+    `digit key did not tap the numbered audio card: ${JSON.stringify(paired.clicksAfterDigit)}`
+  );
+  assert(
+    paired.clicks.length === 2 && paired.clicks[1] === "3but",
+    `typed word did not tap the matching word card: ${JSON.stringify(paired.clicks)}`
+  );
+  assert(paired.inputValue === "", "buffer was not cleared after pairing");
+  assert(
+    paired.pairDisabled.every((value) => value === "true"),
+    "fixture did not mark the pair matched"
+  );
+
+  const afterPair = await page.evaluate(() => {
+    const input = document.getElementById("learned-word-replacer-duolingo-type-input");
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+    const badge = document.getElementById("learned-word-replacer-duolingo-hint-badge");
+    return { badgeText: badge.textContent };
+  });
+  assert(
+    afterPair.badgeText === "next: b",
+    `matched pair still hinted; expected only bread to remain: ${afterPair.badgeText}`
+  );
+
+  const revealed = await page.evaluate(() => {
+    document.getElementById("learned-word-replacer-duolingo-bank-toggle").click();
+    return [...document.querySelectorAll("[data-test='challenge-tap-token-text']")]
+      .map((span) => span.style.visibility);
+  });
+  assert(
+    revealed.every((value) => value === ""),
+    `eye toggle did not reveal the match words: ${JSON.stringify(revealed)}`
+  );
+
+  await page.close();
+}
+
+async function testDuolingoAssistHidesChoicesAndTypesAnswer(browser) {
+  const page = await browser.newPage();
+  // Mirrors the live challenge-assist DOM (2026-07-17): an English prompt with
+  // numbered choice divs, each word inside a challenge-judge-text span.
+  await page.route("https://www.duolingo.com/lesson", (route) =>
+    route.fulfill({
+      contentType: "text/html; charset=utf-8",
+      body: `
+        <div data-test="challenge challenge-assist">
+          <h1>Select the correct meaning</h1>
+          <div>eight</div>
+          <div><div id="choices">
+            <div data-test="challenge-choice" aria-checked="false"><span>1</span><span data-test="challenge-judge-text">пити</span></div>
+            <div data-test="challenge-choice" aria-checked="false"><span>2</span><span data-test="challenge-judge-text">вісім</span></div>
+            <div data-test="challenge-choice" aria-checked="false"><span>3</span><span data-test="challenge-judge-text">чиє</span></div>
+          </div></div>
+        </div>
+        <script>
+          window.__choiceClicks = [];
+          document.querySelectorAll("[data-test='challenge-choice']").forEach((choice) => {
+            choice.addEventListener("click", () => {
+              window.__choiceClicks.push(choice.textContent.trim());
+              choice.setAttribute("aria-checked", "true");
+            });
+          });
+        </script>
+      `
+    })
+  );
+  await page.goto("https://www.duolingo.com/lesson");
+  await installHarness(page, {
+    state: { ...createState([]), duolingoTypeAnswers: true },
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => text
+    }
+  });
+
+  await page.waitForSelector("#learned-word-replacer-duolingo-type-input");
+
+  const result = await page.evaluate(() => {
+    const input = document.getElementById("learned-word-replacer-duolingo-type-input");
+    const wrap = document.getElementById("learned-word-replacer-duolingo-type-wrap");
+    const setup = {
+      placeholder: input.placeholder,
+      insertedBeforeChoices: wrap.nextElementSibling === document.getElementById("choices"),
+      wordVisibility: [...document.querySelectorAll("[data-test='challenge-judge-text']")]
+        .map((span) => span.style.visibility)
+    };
+    input.value = "вісім";
+    input.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
+    return {
+      ...setup,
+      clicks: [...window.__choiceClicks],
+      inputValue: input.value,
+      checked: [...document.querySelectorAll("[data-test='challenge-choice']")]
+        .map((choice) => choice.getAttribute("aria-checked"))
+    };
+  });
+  assert(
+    result.placeholder === "Type the meaning, then space — Enter checks",
+    `wrong choice-mode placeholder: ${result.placeholder}`
+  );
+  assert(result.insertedBeforeChoices, "input row was not inserted before the choice grid");
+  assert(
+    result.wordVisibility.length === 3 && result.wordVisibility.every((v) => v === "hidden"),
+    `choice words are not hidden by default: ${JSON.stringify(result.wordVisibility)}`
+  );
+  assert(
+    result.clicks.length === 1 && result.clicks[0] === "2вісім",
+    `typed answer did not click the matching choice: ${JSON.stringify(result.clicks)}`
+  );
+  assert(result.inputValue === "", "buffer was not cleared after selecting the choice");
+  assert(
+    result.checked.join(",") === "false,true,false",
+    `wrong choice ended up selected: ${result.checked}`
+  );
+
+  await page.close();
+}
+
+async function testDuolingoWordsPageImportButton(browser) {
+  const page = await browser.newPage();
+  await page.route("https://www.duolingo.com/practice-hub/words", (route) =>
+    route.fulfill({
+      contentType: "text/html; charset=utf-8",
+      body: `
+        <h1>Practice your Ukrainian words</h1>
+        <div><h2>3 words</h2></div>
+        <ul id="words">
+          <li><div><h3>кафе</h3><p>a cafe, a café, the cafe</p></div></li>
+          <li><div><h3>сестри</h3><p>sisters, a sister, 's</p></div></li>
+          <li id="load-more" role="button">Load more</li>
+        </ul>
+        <script>
+          document.getElementById("load-more").addEventListener("click", () => {
+            setTimeout(() => {
+              const row = document.createElement("li");
+              row.innerHTML = '<div><h3>та</h3><p>and, that</p></div>';
+              document.getElementById("load-more").replaceWith(row);
+            }, 20);
+          });
+        </script>
+      `
+    })
+  );
+  await page.goto("https://www.duolingo.com/practice-hub/words");
+  await installHarness(page, {
+    state: createState([]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => text
+    }
+  });
+
+  await page.waitForSelector("#learned-word-replacer-duolingo-import-button");
+  const placement = await page.evaluate(() => {
+    const wrap = document.getElementById("learned-word-replacer-duolingo-import-wrap");
+    window.__runtimeSendMessageResponder = (message) =>
+      message.type === "LWR_IMPORT_DUOLINGO_WORDS"
+        ? { ok: true, profileName: "Ukrainian", addedCount: 3, totalCount: 3 }
+        : { ok: true };
+    return {
+      afterHeading: wrap.previousElementSibling?.textContent === "3 words"
+    };
+  });
+  assert(placement.afterHeading, "import button was not placed after the words-count heading");
+
+  await page.click("#learned-word-replacer-duolingo-import-button");
+  await page.waitForFunction(() =>
+    document
+      .getElementById("learned-word-replacer-duolingo-import-status")
+      ?.textContent.includes("Synced 3 words to Ukrainian")
+  );
+
+  const outcome = await page.evaluate(() => ({
+    importMessages: (window.__runtimeMessages || []).filter(
+      (message) => message.type === "LWR_IMPORT_DUOLINGO_WORDS"
+    ),
+    status: document.getElementById("learned-word-replacer-duolingo-import-status").textContent,
+    buttonLabel: document.getElementById("learned-word-replacer-duolingo-import-button").textContent
+  }));
+  assert(outcome.importMessages.length === 1, "import did not send exactly one message");
+  assert(
+    outcome.importMessages[0].languageName === "Ukrainian",
+    "import message lost the course language"
+  );
+  assert(
+    outcome.importMessages[0].text ===
+      "кафе - a cafe, a café, the cafe\nсестри - sisters, a sister, 's\nта - and, that",
+    "import message did not carry every scraped word in export format"
+  );
+  assert(
+    outcome.status.includes("3 new"),
+    `status did not report the background stats: ${outcome.status}`
+  );
+  assert(outcome.buttonLabel === "Import to Sly Fox", "button label was not restored");
+
+  await page.close();
+}
+
+async function testDuolingoWordsPageShowsPerWordEntryChips(browser) {
+  const page = await browser.newPage();
+  await page.route("https://www.duolingo.com/practice-hub/words", (route) =>
+    route.fulfill({
+      contentType: "text/html; charset=utf-8",
+      body: `
+        <h1>Practice your Ukrainian words</h1>
+        <div><h2>2 words</h2></div>
+        <ul id="words">
+          <li><div><div><h3>кафе</h3><p>a cafe, the cafe</p></div></div></li>
+          <li><div><div><h3>невідоме</h3><p>unknown</p></div></div></li>
+        </ul>
+      `
+    })
+  );
+  await page.goto("https://www.duolingo.com/practice-hub/words");
+  await installHarness(page, {
+    state: createState([
+      {
+        id: "e1",
+        source: "cafe",
+        target: "кафе",
+        definition: "Duolingo meanings: a cafe",
+        origin: "duolingo",
+        enabled: true,
+        createdAt: 1
+      },
+      {
+        id: "e2",
+        source: "coffee house",
+        target: "кафе / кафетерій",
+        definition: "Duolingo meanings: coffee house",
+        origin: "duolingo",
+        enabled: false,
+        createdAt: 2
+      },
+      {
+        id: "e3",
+        source: "manual word",
+        target: "кафе",
+        origin: "manual",
+        enabled: true,
+        createdAt: 3
+      }
+    ]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => text
+    }
+  });
+
+  await page.waitForSelector("[data-lwr-word-info]");
+  const rows = await page.evaluate(() => {
+    const strips = [...document.querySelectorAll("[data-lwr-word-info]")];
+    return strips.map((strip) => ({
+      chips: [...strip.querySelectorAll("button[data-lwr-entry-id]")].map((chip) => ({
+        id: chip.getAttribute("data-lwr-entry-id"),
+        label: chip.textContent
+      })),
+      note: strip.textContent
+    }));
+  });
+  assert(rows.length === 2, `expected 2 info strips, got ${rows.length}`);
+  assert(
+    rows[0].chips.map((chip) => chip.id).join(",") === "e1,e2",
+    `кафе row shows the wrong entries (manual must be excluded): ${JSON.stringify(rows[0].chips)}`
+  );
+  assert(
+    rows[0].chips[1].label === "coffee house",
+    "chips do not show the English source words"
+  );
+  assert(
+    rows[1].note.includes("Not synced"),
+    `unsynced word is missing its marker: ${rows[1].note}`
+  );
+
+  await page.click("button[data-lwr-entry-id='e2']");
+  const written = await page.evaluate(() => (window.__storageWrites || []).at(-1));
+  const toggled = written.learnedWordReplacerState.profiles[0].entries.find(
+    (entry) => entry.id === "e2"
+  );
+  assert(toggled.enabled === true, "clicking a chip did not toggle the entry's enabled flag");
+  await page.waitForFunction(() => {
+    const chip = document.querySelector("button[data-lwr-entry-id='e2']");
+    return chip && chip.parentElement.style.borderColor.includes("28, 176, 246");
+  });
+
+  await page.click("button[data-lwr-entry-remove='e1']");
+  const afterRemove = await page.evaluate(() => (window.__storageWrites || []).at(-1));
+  const remaining = afterRemove.learnedWordReplacerState.profiles[0].entries.map(
+    (entry) => entry.id
+  );
+  assert(
+    !remaining.includes("e1") && remaining.includes("e2") && remaining.includes("e3"),
+    `chip ✕ did not remove exactly the one entry: ${remaining.join(",")}`
+  );
+  await page.waitForFunction(
+    () => !document.querySelector("button[data-lwr-entry-id='e1']")
+  );
+
+  const deleteAll = await page.evaluate(() => {
+    window.__confirmMessages = [];
+    window.confirm = (message) => {
+      window.__confirmMessages.push(message);
+      return true;
+    };
+    document.getElementById("learned-word-replacer-duolingo-words-delete").click();
+    return {
+      confirmMessage: window.__confirmMessages[0] || "",
+      remaining: (window.__storageWrites || [])
+        .at(-1)
+        .learnedWordReplacerState.profiles[0].entries.map((entry) => entry.id),
+      status: document.getElementById("learned-word-replacer-duolingo-import-status")
+        .textContent
+    };
+  });
+  assert(
+    deleteAll.confirmMessage.includes("1 synced Duolingo word"),
+    `delete-all confirmation is wrong: ${deleteAll.confirmMessage}`
+  );
+  assert(
+    deleteAll.remaining.join(",") === "e3",
+    `delete-all should keep manual entries only: ${deleteAll.remaining.join(",")}`
+  );
+  assert(
+    deleteAll.status.includes("Deleted 1 Duolingo word"),
+    `delete-all status is wrong: ${deleteAll.status}`
+  );
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll("[data-lwr-word-info]")].every((strip) =>
+      strip.textContent.includes("Not synced")
+    )
+  );
+
+  await page.close();
+}
+
+async function testDuolingoWordsPageManualTabManagesManualWords(browser) {
+  const page = await browser.newPage();
+  await page.route("https://www.duolingo.com/practice-hub/words", (route) =>
+    route.fulfill({
+      contentType: "text/html; charset=utf-8",
+      body: `
+        <h1>Practice your Ukrainian words</h1>
+        <section id="native-section">
+          <div id="region"><div><h2>1 words</h2></div><div>Recently learned</div></div>
+          <ul id="words">
+            <li><div><div><h3>кафе</h3><p>a cafe</p></div></div></li>
+          </ul>
+        </section>
+      `
+    })
+  );
+  await page.goto("https://www.duolingo.com/practice-hub/words");
+  await installHarness(page, {
+    state: createState([
+      {
+        id: "d1",
+        source: "cafe",
+        target: "кафе",
+        definition: "Duolingo meanings: a cafe",
+        origin: "duolingo",
+        enabled: true,
+        createdAt: 1
+      },
+      {
+        id: "m1",
+        source: "tea",
+        target: "чай",
+        origin: "manual",
+        enabled: true,
+        createdAt: 2
+      }
+    ]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => text
+    }
+  });
+
+  await page.waitForSelector("#learned-word-replacer-duolingo-words-tabs");
+  const initial = await page.evaluate(() => ({
+    tabsBeforeRegion:
+      document.getElementById("learned-word-replacer-duolingo-words-tabs")
+        .nextElementSibling === document.getElementById("region"),
+    tabLabels: [...document.querySelectorAll("[data-lwr-words-tab]")].map((tab) =>
+      tab.textContent
+    ),
+    listVisible: document.getElementById("words").style.display !== "none",
+    panelHidden:
+      document.getElementById("learned-word-replacer-duolingo-manual-panel").style.display ===
+      "none"
+  }));
+  assert(initial.tabsBeforeRegion, "tab bar was not inserted before the words header row");
+  assert(
+    initial.tabLabels.join(",") === "Duolingo words,Sly Fox manual words",
+    `wrong tab labels: ${initial.tabLabels.join(",")}`
+  );
+  assert(initial.listVisible && initial.panelHidden, "Duolingo list should show by default");
+
+  await page.click("button[data-lwr-words-tab='manual']");
+  const manualView = await page.evaluate(() => {
+    const panel = document.getElementById("learned-word-replacer-duolingo-manual-panel");
+    return {
+      regionHidden: document.getElementById("region").style.display === "none",
+      listHidden: document.getElementById("words").style.display === "none",
+      panelVisible: panel.style.display !== "none",
+      count: panel.querySelector("[data-lwr-manual-count]").textContent,
+      rowTexts: [...panel.querySelectorAll("[data-lwr-manual-list] > div")].map((row) =>
+        row.textContent.slice(0, 30)
+      )
+    };
+  });
+  assert(
+    manualView.regionHidden && manualView.listHidden && manualView.panelVisible,
+    "manual tab did not swap the native list for the panel"
+  );
+  assert(manualView.count === "1 manual word", `wrong manual count: ${manualView.count}`);
+  const deleteAllAtTop = await page.evaluate(() => {
+    const heading = document.querySelector("[data-lwr-manual-count]");
+    const actionsRow = heading.nextElementSibling;
+    return (
+      Boolean(actionsRow.querySelector("button[data-lwr-manual-delete-all]")) &&
+      actionsRow.querySelector("button[data-lwr-manual-delete-all]").textContent === "Delete all"
+    );
+  });
+  assert(deleteAllAtTop, "manual delete-all is not in a row right under the count heading");
+  assert(
+    manualView.rowTexts.length === 1 && manualView.rowTexts[0].includes("чай"),
+    `manual list should show only manual entries: ${JSON.stringify(manualView.rowTexts)}`
+  );
+
+  // Add a word through the form.
+  await page.fill("[data-lwr-manual-source]", "bread");
+  await page.fill("[data-lwr-manual-target]", "хліб");
+  await page.click("[data-lwr-manual-submit]");
+  const added = await page.evaluate(() => {
+    const entries = (window.__storageWrites || []).at(-1).learnedWordReplacerState.profiles[0]
+      .entries;
+    return {
+      entry: entries.find((candidate) => candidate.source === "bread"),
+      sourceCleared: document.querySelector("[data-lwr-manual-source]").value === "",
+      count: document.querySelector("[data-lwr-manual-count]").textContent
+    };
+  });
+  assert(
+    added.entry &&
+      added.entry.origin === "manual" &&
+      added.entry.target === "хліб" &&
+      added.entry.languageCode === "uk" &&
+      added.entry.enabled === true,
+    `add form did not store a manual entry: ${JSON.stringify(added.entry)}`
+  );
+  assert(added.sourceCleared, "form did not clear after adding");
+  assert(added.count === "2 manual words", `count did not update: ${added.count}`);
+
+  // Edit the entry we just added.
+  const newId = added.entry.id;
+  await page.click(`button[data-lwr-manual-edit='${newId}']`);
+  const editState = await page.evaluate(() => ({
+    source: document.querySelector("[data-lwr-manual-source]").value,
+    target: document.querySelector("[data-lwr-manual-target]").value,
+    submitLabel: document.querySelector("[data-lwr-manual-submit]").textContent,
+    cancelVisible:
+      document.querySelector("[data-lwr-manual-cancel]").style.display !== "none"
+  }));
+  assert(
+    editState.source === "bread" && editState.target === "хліб",
+    "edit did not prefill the form"
+  );
+  assert(editState.submitLabel === "Save" && editState.cancelVisible, "edit mode UI missing");
+  await page.fill("[data-lwr-manual-target]", "хлібчик");
+  await page.click("[data-lwr-manual-submit]");
+  const edited = await page.evaluate(
+    (id) =>
+      (window.__storageWrites || [])
+        .at(-1)
+        .learnedWordReplacerState.profiles[0].entries.find((entry) => entry.id === id),
+    newId
+  );
+  assert(edited.target === "хлібчик", "edit did not save the new target");
+
+  // Toggle and delete from the list.
+  await page.click(`input[data-lwr-entry-id='${newId}']`);
+  const toggledOff = await page.evaluate(
+    (id) =>
+      (window.__storageWrites || [])
+        .at(-1)
+        .learnedWordReplacerState.profiles[0].entries.find((entry) => entry.id === id).enabled,
+    newId
+  );
+  assert(toggledOff === false, "checkbox did not pause the manual entry");
+  await page.click(`button[data-lwr-entry-remove='${newId}']`);
+  await page.waitForFunction(
+    () => document.querySelector("[data-lwr-manual-count]").textContent === "1 manual word"
+  );
+
+  // Filter narrows the list.
+  await page.fill("[data-lwr-manual-filter]", "zzz");
+  await page.waitForFunction(() =>
+    document
+      .querySelector("[data-lwr-manual-list]")
+      .textContent.includes("No manual words match")
+  );
+  await page.fill("[data-lwr-manual-filter]", "");
+
+  // Delete all manual words spares Duolingo entries.
+  await page.evaluate(() => {
+    window.confirm = () => true;
+  });
+  await page.click("button[data-lwr-manual-delete-all]");
+  const afterDeleteAll = await page.evaluate(() =>
+    (window.__storageWrites || [])
+      .at(-1)
+      .learnedWordReplacerState.profiles[0].entries.map((entry) => entry.id)
+  );
+  assert(
+    afterDeleteAll.join(",") === "d1",
+    `delete-all-manual should keep Duolingo entries: ${afterDeleteAll.join(",")}`
+  );
+
+  await page.click("button[data-lwr-words-tab='duolingo']");
+  const restored = await page.evaluate(() => ({
+    listVisible: document.getElementById("words").style.display !== "none",
+    regionVisible: document.getElementById("region").style.display !== "none",
+    panelHidden:
+      document.getElementById("learned-word-replacer-duolingo-manual-panel").style.display ===
+      "none"
+  }));
+  assert(
+    restored.listVisible && restored.regionVisible && restored.panelHidden,
+    "switching back did not restore Duolingo's list"
+  );
+
+  await page.close();
+}
+
+async function testDuolingoSettingsPageShowsExtensionPanel(browser) {
+  const page = await browser.newPage();
+  await page.route("https://www.duolingo.com/settings/account", (route) =>
+    route.fulfill({
+      contentType: "text/html; charset=utf-8",
+      body: `
+        <div id="shared">
+          <div id="navside"><ul>
+            <li class="navitem"><a class="navlink" aria-current="page" href="/settings/account">Preferences</a></li>
+            <li class="navitem"><a class="navlink" href="/settings/profile">Profile</a></li>
+          </ul></div>
+          <div id="pane" class="content-pane"><h1 class="pane-title">Preferences</h1><p>Duolingo preferences</p></div>
+        </div>
+      `
+    })
+  );
+  await page.goto("https://www.duolingo.com/settings/account");
+  await installHarness(page, {
+    state: { ...createState([]), duolingoAutoContinue: true },
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => text
+    }
+  });
+
+  await page.waitForSelector("#learned-word-replacer-duolingo-settings-link");
+  const navState = await page.evaluate(() => {
+    const link = document.getElementById("learned-word-replacer-duolingo-settings-link");
+    return {
+      label: link.textContent,
+      copiedLinkClass: link.className,
+      copiedItemClass: link.parentElement.className.replace(/\s*$/, ""),
+      inNav: link.closest("ul") === document.querySelector("#navside ul")
+    };
+  });
+  assert(navState.label === "Sly Fox Translator", "settings nav item has the wrong label");
+  assert(
+    navState.copiedLinkClass === "navlink" && navState.copiedItemClass.includes("navitem"),
+    "settings nav item did not copy Duolingo's class names"
+  );
+  assert(navState.inNav, "settings nav item was not appended to Duolingo's settings nav");
+
+  await page.click("#learned-word-replacer-duolingo-settings-link");
+  await page.waitForSelector("#learned-word-replacer-duolingo-settings-panel");
+  const panelState = await page.evaluate(() => {
+    const panel = document.getElementById("learned-word-replacer-duolingo-settings-panel");
+    const checkboxes = {};
+    panel.querySelectorAll("input[data-lwr-setting]").forEach((checkbox) => {
+      checkboxes[checkbox.getAttribute("data-lwr-setting")] = checkbox.checked;
+    });
+    return {
+      copiedPaneClass: panel.className,
+      paneHidden: document.getElementById("pane").style.display === "none",
+      heading: panel.querySelector("h1").textContent,
+      headingClass: panel.querySelector("h1").className,
+      ariaCurrent: document
+        .getElementById("learned-word-replacer-duolingo-settings-link")
+        .getAttribute("aria-current"),
+      duolingoAriaCurrent: document
+        .querySelector("a[href='/settings/account']")
+        .getAttribute("aria-current"),
+      rowCount: panel.querySelectorAll("input[data-lwr-setting]").length,
+      checkboxes
+    };
+  });
+  assert(panelState.copiedPaneClass === "content-pane", "panel did not copy the pane class");
+  assert(panelState.paneHidden, "Duolingo's own settings pane was not hidden");
+  assert(panelState.heading === "Sly Fox Translator", "panel heading is wrong");
+  assert(panelState.headingClass === "pane-title", "panel heading did not copy Duolingo's class");
+  assert(panelState.ariaCurrent === "page", "our nav item was not marked current");
+  assert(!panelState.duolingoAriaCurrent, "Duolingo's nav item kept aria-current");
+  assert(panelState.rowCount === 8, `expected 8 setting rows, got ${panelState.rowCount}`);
+  assert(
+    panelState.checkboxes.enabled === true &&
+      panelState.checkboxes.duolingoAutoContinue === true &&
+      panelState.checkboxes.structureMode === false,
+    `checkboxes do not reflect stored state: ${JSON.stringify(panelState.checkboxes)}`
+  );
+
+  await page.click(
+    "#learned-word-replacer-duolingo-settings-panel input[data-lwr-setting='structureMode']"
+  );
+  const written = await page.evaluate(() => (window.__storageWrites || []).at(-1));
+  assert(
+    written && written.learnedWordReplacerState.structureMode === true,
+    "toggling a setting did not write the new state to storage"
+  );
+  assert(
+    written.learnedWordReplacerState.duolingoAutoContinue === true &&
+      written.learnedWordReplacerState.profiles.length === 1,
+    "settings write dropped other stored state"
+  );
+
+  const extraSections = await page.evaluate(() => {
+    const panel = document.getElementById("learned-word-replacer-duolingo-settings-panel");
+    const link = document.getElementById("learned-word-replacer-duolingo-settings-link");
+    const buttonLabels = [...panel.querySelectorAll("button")].map((button) =>
+      button.textContent.trim()
+    );
+    return {
+      logoSrc: link.querySelector("img")?.getAttribute("src"),
+      headings: [...panel.querySelectorAll("h2")].map((heading) => heading.textContent),
+      buttonLabels,
+      exclusionRows: panel.querySelector("[data-lwr-exclusion-list]").textContent
+    };
+  });
+  assert(
+    extraSections.logoSrc === "chrome-extension://test-extension/icons/icon-48.png",
+    `nav item is missing the extension logo: ${extraSections.logoSrc}`
+  );
+  assert(
+    extraSections.headings.join(",") === "Do not translate,Vocabulary files",
+    `panel is missing its sections: ${extraSections.headings.join(",")}`
+  );
+  for (const label of [
+    "Import file",
+    "Import manual file",
+    "Download all CSV",
+    "Download manual CSV",
+    "Delete all"
+  ]) {
+    assert(
+      extraSections.buttonLabels.includes(label),
+      `vocabulary files section is missing "${label}"`
+    );
+  }
+  assert(
+    extraSections.exclusionRows.includes("No excluded sites or pages"),
+    "empty exclusion list is missing its empty state"
+  );
+
+  // Exclusions render from state and are removable from the panel.
+  await page.evaluate(() => {
+    window.__storageChangeListener(
+      {
+        learnedWordReplacerState: {
+          newValue: {
+            version: 2,
+            enabled: true,
+            currentProfileId: "uk-test",
+            profiles: [
+              { id: "uk-test", name: "Ukrainian Test", languageCode: "uk", entries: [] }
+            ],
+            doNotTranslate: { sites: ["www.example.com"], pages: [] }
+          }
+        }
+      },
+      "local"
+    );
+  });
+  await page.waitForFunction(() =>
+    document
+      .querySelector("[data-lwr-exclusion-list]")
+      ?.textContent.includes("www.example.com")
+  );
+  await page.click("[data-lwr-exclusion-list] button");
+  const exclusionWrite = await page.evaluate(() => (window.__storageWrites || []).at(-1));
+  assert(
+    exclusionWrite.learnedWordReplacerState.doNotTranslate.sites.length === 0,
+    "removing an exclusion did not write the pruned list"
+  );
+
+  const restored = await page.evaluate(() => {
+    const profile = document.querySelector("a[href='/settings/profile']");
+    profile.addEventListener("click", (event) => event.preventDefault());
+    profile.click();
+    return {
+      panelGone: !document.getElementById("learned-word-replacer-duolingo-settings-panel"),
+      paneVisible: document.getElementById("pane").style.display !== "none"
+    };
+  });
+  assert(restored.panelGone, "panel was not removed when leaving our settings section");
+  assert(restored.paneVisible, "Duolingo's settings pane was not restored");
+
+  await page.close();
+}
+
+async function testDuolingoSettingsHashOpensPanelDirectly(browser) {
+  const page = await browser.newPage();
+  await page.route("https://www.duolingo.com/settings/account", (route) =>
+    route.fulfill({
+      contentType: "text/html; charset=utf-8",
+      body: `
+        <div id="shared">
+          <div id="navside"><ul>
+            <li class="navitem"><a class="navlink" href="/settings/account">Preferences</a></li>
+          </ul></div>
+          <div id="pane" class="content-pane"><h1>Preferences</h1></div>
+        </div>
+      `
+    })
+  );
+  await page.goto("https://www.duolingo.com/settings/account#sly-fox");
+  await installHarness(page, {
+    state: createState([]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => text
+    }
+  });
+
+  await page.waitForSelector("#learned-word-replacer-duolingo-settings-panel");
+  const opened = await page.evaluate(() => ({
+    paneHidden: document.getElementById("pane").style.display === "none",
+    hashCleared: !location.hash
+  }));
+  assert(opened.paneHidden, "#sly-fox hash did not open the panel directly");
+  assert(opened.hashCleared, "the #sly-fox hash was not consumed after activation");
+
+  await page.close();
+}
+
+async function testDuolingoMobileSettingsMenuGetsCardItemAndFullPagePanel(browser) {
+  const page = await browser.newPage();
+  // Mirrors the narrow-viewport /settings menu (2026-07-20): no h1, items are
+  // card rows whose <a> nests the label in a div plus a chevron image.
+  await page.route("https://www.duolingo.com/settings", (route) =>
+    route.fulfill({
+      contentType: "text/html; charset=utf-8",
+      body: `
+        <div id="content"><h2>Settings</h2>
+        <nav id="menu"><section><h2>Account</h2><ul>
+          <li class="navitem"><a class="navlink" href="/settings/account"><div>Preferences</div><img class="chevron" src="data:image/svg+xml,"></a></li>
+        </ul></section></nav></div>
+      `
+    })
+  );
+  await page.goto("https://www.duolingo.com/settings");
+  await installHarness(page, {
+    state: createState([]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => text
+    }
+  });
+
+  await page.waitForSelector("#learned-word-replacer-duolingo-settings-link");
+  const item = await page.evaluate(() => {
+    const link = document.getElementById("learned-word-replacer-duolingo-settings-link");
+    return {
+      labelDiv: link.querySelector("div")?.textContent,
+      keptChevron: Boolean(link.querySelector("img.chevron")),
+      linkClass: link.className
+    };
+  });
+  assert(
+    item.labelDiv === "Sly Fox Translator",
+    `cloned item did not carry the label div: ${JSON.stringify(item)}`
+  );
+  assert(item.keptChevron, "cloned item lost the chevron image");
+  assert(item.linkClass === "navlink", "cloned item lost Duolingo's link class");
+
+  await page.click("#learned-word-replacer-duolingo-settings-link");
+  await page.waitForSelector("#learned-word-replacer-duolingo-settings-panel");
+  const swapped = await page.evaluate(() => ({
+    menuHidden: document.getElementById("menu").style.display === "none",
+    panelInContent:
+      document.getElementById("learned-word-replacer-duolingo-settings-panel").parentElement ===
+      document.getElementById("content"),
+    backButton: [...document.querySelectorAll("#learned-word-replacer-duolingo-settings-panel button")]
+      .some((button) => button.textContent.includes("Settings"))
+  }));
+  assert(swapped.menuHidden, "mobile menu nav was not hidden for the panel");
+  assert(swapped.panelInContent, "panel was not inserted beside the hidden menu");
+  assert(swapped.backButton, "mobile panel is missing its back control");
+
+  const restored = await page.evaluate(() => {
+    [...document.querySelectorAll("#learned-word-replacer-duolingo-settings-panel button")]
+      .find((button) => button.textContent.includes("Settings"))
+      .click();
+    return {
+      panelGone: !document.getElementById("learned-word-replacer-duolingo-settings-panel"),
+      menuVisible: document.getElementById("menu").style.display !== "none"
+    };
+  });
+  assert(restored.panelGone, "back control did not remove the panel");
+  assert(restored.menuVisible, "back control did not restore the menu");
+
+  await page.close();
+}
+
 async function testTranslatorBridgeCreatesInsideTrustedPageActivation(browser) {
   const page = await browser.newPage();
   await page.setContent('<button id="activate">Activate</button>');
@@ -2721,525 +3733,6 @@ async function testCorruptedEntryPartsAreHealedOnLoad(browser) {
   await page.close();
 }
 
-async function testDuolingoSyncKeepsManualEntriesSeparate(browser) {
-  const page = await browser.newPage();
-  await page.addInitScript(() => {
-    const state = {
-      version: 2,
-      enabled: true,
-      showHighlights: true,
-      currentProfileId: "uk",
-      builtInProfilesVersion: 4,
-      deletedBuiltInProfileIds: [],
-      profiles: [
-        {
-          id: "uk",
-          name: "Ukrainian",
-          languageCode: "uk",
-          entries: [
-            {
-              id: "manual",
-              source: "custom",
-              target: "ручний",
-              definition: "Personal note",
-              origin: "manual",
-              enabled: true,
-              createdAt: 1
-            },
-            {
-              id: "duolingo",
-              source: "custom",
-              target: "старий",
-              definition: "Duolingo meanings: custom",
-              enabled: true,
-              createdAt: 2
-            }
-          ]
-        }
-      ]
-    };
-    window.chrome = {
-      runtime: {
-        lastError: null,
-        getURL: (url) => url,
-        onMessage: { addListener() {} }
-      },
-      storage: {
-        local: {
-          get(defaults, callback) {
-            callback({ learnedWordReplacerState: state });
-          },
-          set(values, callback) {
-            window.__savedSeparatedState = JSON.parse(JSON.stringify(values.learnedWordReplacerState));
-            if (callback) {
-              callback();
-            }
-          }
-        },
-        onChanged: { addListener() {} }
-      },
-      tabs: {
-        query(query, callback) {
-          callback([{ id: 99, url: "https://www.duolingo.com/practice-hub/words" }]);
-        },
-        sendMessage(tabId, message, options, callback) {
-          if (typeof options === "function") {
-            callback = options;
-          }
-          if (message.type === "LWR_SYNC_DUOLINGO") {
-            callback({
-              ok: true,
-              count: 1,
-              languageName: "Ukrainian",
-              text: "нове - custom"
-            });
-            return;
-          }
-          callback({
-            ok: true,
-            status: {
-              status: "complete",
-              targetLanguage: "uk",
-              translatorAvailability: "available",
-              replacementCount: 0,
-              enabled: true
-            }
-          });
-        }
-      }
-    };
-  });
-
-  await page.goto(POPUP_PAGE);
-  await page.waitForFunction(() => document.getElementById("duolingo-section")?.textContent.includes("Duolingo (1)"));
-  assert(await page.isVisible("#duolingo-panel"), "Duolingo was not the default vocabulary section");
-  assert(await page.isHidden("#manual-entry-panel"), "manual entry panel was visible before selecting Manual");
-  assert(
-    (await page.locator("#entry-table").innerText()).includes("старий"),
-    "default Duolingo section did not show the synced entry"
-  );
-  await page.click("#manual-section");
-  await page.waitForFunction(() => document.getElementById("manual-section")?.textContent.includes("Manual (1)"));
-  const manualTableText = await page.locator("#entry-table").innerText();
-  assert(
-    manualTableText.includes("custom") &&
-      manualTableText.includes("ручний") &&
-      !manualTableText.includes("старий"),
-    "manual section did not isolate the manual entry"
-  );
-  await page.click("#duolingo-section");
-  await page.waitForFunction(() => document.getElementById("duolingo-section")?.textContent.includes("Duolingo (1)"));
-  assert(
-    await page.locator("#duolingo-sync [data-lucide-icon='import']").count() === 1,
-    "Duolingo import action is not using the Lucide import icon"
-  );
-  assert(
-    (await page.locator("#entry-table").innerText()).includes("старий"),
-    "Duolingo section did not show the synced entry"
-  );
-  await page.click("#duolingo-sync");
-  await page.waitForFunction(() =>
-    document.getElementById("duolingo-sync-status")?.textContent.includes("Synced 1 Duolingo word")
-  );
-  const saved = await page.evaluate(() => window.__savedSeparatedState);
-  const entries = saved.profiles.find((profile) => profile.id === "uk").entries;
-  const manual = entries.find((entry) => entry.id === "manual");
-  const duolingo = entries.find((entry) => entry.id === "duolingo");
-
-  assert(manual.origin === "manual", "manual entry lost its source classification");
-  assert(manual.target === "ручний", "Duolingo sync changed the manual entry");
-  assert(duolingo.origin === "duolingo", "Duolingo entry lost its source classification");
-  assert(duolingo.target === "старий / нове", "Duolingo sync did not update its own entry");
-  await page.close();
-}
-
-async function testDuolingoSyncRequiresActivePageAndExplainsRefresh(browser) {
-  const page = await browser.newPage();
-  await page.addInitScript(() => {
-    const state = {
-      version: 2,
-      enabled: true,
-      showHighlights: true,
-      currentProfileId: "builtin-uk",
-      builtInProfilesVersion: 4,
-      deletedBuiltInProfileIds: [],
-      profiles: [
-        {
-          id: "builtin-uk",
-          name: "Ukrainian",
-          languageCode: "uk",
-          entries: []
-        }
-      ]
-    };
-    const googleTab = { id: 1, url: "https://www.google.com/search?q=steam" };
-    const duolingoTab = { id: 2, url: "https://www.duolingo.com/practice-hub/words" };
-    let viewingDuolingo = false;
-
-    window.__syncAttempts = 0;
-    window.__sidePanelTabs = [];
-    window.__setViewingDuolingo = (value) => {
-      viewingDuolingo = value;
-    };
-    window.chrome = {
-      runtime: {
-        lastError: null,
-        getURL: (url) => url,
-        onMessage: { addListener() {} }
-      },
-      storage: {
-        local: {
-          get(defaults, callback) {
-            callback({ learnedWordReplacerState: state });
-          },
-          set(values, callback) {
-            if (callback) {
-              callback();
-            }
-          }
-        },
-        onChanged: { addListener() {} }
-      },
-      tabs: {
-        query(query, callback) {
-          callback(query.active ? [viewingDuolingo ? duolingoTab : googleTab] : [googleTab, duolingoTab]);
-        },
-        update(tabId, options) {
-          if (tabId === duolingoTab.id && options.active) {
-            viewingDuolingo = true;
-          }
-          return Promise.resolve(duolingoTab);
-        },
-        sendMessage(tabId, message, options, callback) {
-          if (typeof options === "function") {
-            callback = options;
-          }
-
-          if (message.type === "LWR_SYNC_DUOLINGO") {
-            window.__syncAttempts += 1;
-            window.chrome.runtime.lastError = {
-              message: "Could not establish connection. Receiving end does not exist."
-            };
-            callback();
-            window.chrome.runtime.lastError = null;
-            return;
-          }
-
-          callback({
-            ok: true,
-            status: {
-              status: "complete",
-              targetLanguage: "uk",
-              replacementCount: 0,
-              enabled: true
-            }
-          });
-        },
-        onActivated: {
-          addListener(listener) {
-            window.__tabActivatedListener = listener;
-          }
-        },
-        onUpdated: {
-          addListener(listener) {
-            window.__tabUpdatedListener = listener;
-          }
-        }
-      },
-      sidePanel: {
-        open(options) {
-          window.__sidePanelTabs.push(options.tabId);
-          return Promise.resolve();
-        }
-      }
-    };
-  });
-
-  await page.goto(POPUP_PAGE);
-  await page.click("#duolingo-section");
-  await page.waitForFunction(
-    () => document.getElementById("duolingo-sync-label")?.textContent === "View Duolingo to sync"
-  );
-  await page.evaluate(() => {
-    window.__setViewingDuolingo(true);
-    window.__tabActivatedListener({ tabId: 2 });
-  });
-  await page.waitForFunction(
-    () => document.getElementById("duolingo-sync-label")?.textContent === "Import words from Duolingo"
-  );
-  await page.evaluate(() => {
-    window.__setViewingDuolingo(false);
-    window.__tabActivatedListener({ tabId: 1 });
-  });
-  await page.waitForFunction(
-    () => document.getElementById("duolingo-sync-label")?.textContent === "View Duolingo to sync"
-  );
-  await page.click("#duolingo-sync");
-  await page.waitForFunction(
-    () => document.getElementById("duolingo-sync-label")?.textContent === "Import words from Duolingo"
-  );
-  assert(
-    await page.locator("#duolingo-sync").evaluate((button) => button.classList.contains("needs-sync")),
-    "sync button was not highlighted after the Duolingo handoff"
-  );
-  assert(
-    await page.evaluate(() => window.__syncAttempts) === 0,
-    "sync ran while the Duolingo Words tab was not active"
-  );
-  assert(
-    (await page.evaluate(() => window.__sidePanelTabs)).includes(2),
-    "View Duolingo did not open the persistent side panel"
-  );
-  await page.click("#duolingo-sync");
-  await page.waitForFunction(() =>
-    document.getElementById("duolingo-sync-status")?.textContent.includes("Refresh the Duolingo Words page")
-  );
-  assert(
-    await page.evaluate(() => window.__syncAttempts) === 1,
-    "sync did not run after the Duolingo Words tab became active"
-  );
-  await page.close();
-}
-
-async function testDuolingoLoginRedirectShowsInstructions(browser) {
-  const page = await browser.newPage();
-  await page.addInitScript(() => {
-    const state = {
-      version: 2,
-      enabled: true,
-      showHighlights: true,
-      currentProfileId: "builtin-uk",
-      builtInProfilesVersion: 4,
-      deletedBuiltInProfileIds: [],
-      profiles: [{ id: "builtin-uk", name: "Ukrainian", languageCode: "uk", entries: [] }]
-    };
-    const loginTab = {
-      id: 3,
-      url: "https://www.duolingo.com/practice-hub/words?isLoggingIn=true"
-    };
-    const wordsTab = { id: 3, url: "https://www.duolingo.com/practice-hub/words" };
-    let activeTab = loginTab;
-
-    window.__duolingoSyncAttempts = 0;
-    window.__setDuolingoLoginTab = (isLoginRedirect) => {
-      activeTab = isLoginRedirect ? loginTab : wordsTab;
-    };
-    window.chrome = {
-      runtime: {
-        lastError: null,
-        getURL: (url) => url,
-        onMessage: { addListener() {} }
-      },
-      storage: {
-        local: {
-          get(defaults, callback) {
-            callback({ learnedWordReplacerState: state });
-          },
-          set(values, callback) {
-            if (callback) {
-              callback();
-            }
-          }
-        },
-        onChanged: { addListener() {} }
-      },
-      tabs: {
-        query(query, callback) {
-          callback(query.active ? [activeTab] : [activeTab]);
-        },
-        sendMessage(tabId, message, options, callback) {
-          if (typeof options === "function") {
-            callback = options;
-          }
-          if (message.type === "LWR_SYNC_DUOLINGO") {
-            window.__duolingoSyncAttempts += 1;
-          }
-          callback({
-            ok: true,
-            status: {
-              status: "complete",
-              targetLanguage: "uk",
-              replacementCount: 0,
-              enabled: true
-            }
-          });
-        },
-        onActivated: {
-          addListener(listener) {
-            window.__duolingoTabActivated = listener;
-          }
-        },
-        onUpdated: { addListener() {} }
-      }
-    };
-  });
-
-  await page.goto(POPUP_PAGE);
-  await page.click("#duolingo-section");
-  await page.waitForFunction(
-    () => document.getElementById("duolingo-sync-label")?.textContent === "Sign in to Duolingo first"
-  );
-  const loginState = await page.evaluate(() => ({
-    disabled: document.getElementById("duolingo-sync").disabled,
-    warning: document.getElementById("duolingo-sync-status").textContent,
-    warningVisible: !document.getElementById("duolingo-sync-status").classList.contains("hidden"),
-    warningStyled: document.getElementById("duolingo-sync-status").classList.contains("warning")
-  }));
-  assert(loginState.disabled, "Duolingo import stayed enabled on the sign-in redirect");
-  assert(loginState.warningVisible && loginState.warningStyled, "Duolingo sign-in instructions were not highlighted");
-  assert(
-    loginState.warning.includes("Sign in on this page"),
-    "Duolingo sign-in instructions did not explain what to do"
-  );
-  assert(
-    await page.evaluate(() => window.__duolingoSyncAttempts) === 0,
-    "Duolingo sync ran while the page was asking the user to sign in"
-  );
-
-  await page.evaluate(() => {
-    window.__setDuolingoLoginTab(false);
-    window.__duolingoTabActivated({ tabId: 3 });
-  });
-  await page.waitForFunction(
-    () => document.getElementById("duolingo-sync-label")?.textContent === "Import words from Duolingo"
-  );
-  assert(await page.isEnabled("#duolingo-sync"), "Duolingo import did not re-enable after sign-in");
-  await page.waitForSelector("#duolingo-sync-status.language-hint:not(.hidden)");
-  assert(
-    (await page.textContent("#duolingo-sync-status")).includes("Ukrainian"),
-    "Duolingo Words page did not replace the sign-in instruction with the language reminder"
-  );
-  await page.close();
-}
-
-async function testSidePanelUsesCompactVocabularyList(browser) {
-  const page = await browser.newPage();
-  await page.addInitScript(() => {
-    const state = {
-      version: 2,
-      enabled: true,
-      showHighlights: true,
-      currentProfileId: "builtin-uk",
-      builtInProfilesVersion: 4,
-      deletedBuiltInProfileIds: [],
-      profiles: [
-        {
-          id: "builtin-uk",
-          name: "Ukrainian",
-          languageCode: "uk",
-          entries: [
-            {
-              id: "manual-tea",
-              source: "tea",
-              target: "чай",
-              definition: "a hot drink",
-              origin: "manual",
-              enabled: true,
-              createdAt: 1
-            },
-            {
-              id: "duolingo-cafe",
-              source: "cafe",
-              target: "кафе",
-              definition: "Duolingo meanings: a cafe, a café, the cafe",
-              origin: "duolingo",
-              enabled: true,
-              createdAt: 2
-            }
-          ]
-        }
-      ]
-    };
-    window.chrome = {
-      runtime: {
-        lastError: null,
-        getURL: (url) => url,
-        onMessage: { addListener() {} }
-      },
-      storage: {
-        local: {
-          get(defaults, callback) {
-            callback({ learnedWordReplacerState: state });
-          },
-          set(values, callback) {
-            if (callback) {
-              callback();
-            }
-          }
-        },
-        onChanged: { addListener() {} }
-      },
-      tabs: {
-        query(query, callback) {
-          callback([{ id: 12, url: "https://www.duolingo.com/practice-hub/words" }]);
-        },
-        sendMessage(tabId, message, options, callback) {
-          if (typeof options === "function") {
-            callback = options;
-          }
-          callback({
-            ok: true,
-            status: { status: "complete", targetLanguage: "uk", replacementCount: 0, enabled: true }
-          });
-        }
-      }
-    };
-  });
-
-  await page.goto(SIDE_PANEL_PAGE);
-  await page.waitForSelector("#compact-vocabulary-list:not(.hidden)");
-  await page.waitForSelector("#duolingo-sync-status.language-hint:not(.hidden)");
-  const duolingoResult = await page.evaluate(() => ({
-    tableHidden: document.getElementById("table-wrap").classList.contains("hidden"),
-    compactText: document.getElementById("compact-vocabulary-list").textContent,
-    rowCount: document.querySelectorAll(".compact-vocabulary-row").length,
-    hasToggle: Boolean(document.querySelector(".compact-vocabulary-row input[type='checkbox']")),
-    hasDelete: Boolean(document.querySelector(".compact-vocabulary-row button[aria-label='Delete Duolingo entry']")),
-    sourceOrder: Array.from(document.querySelectorAll(".vocabulary-tabs > button")).map((button) => button.id),
-    duolingoSelected: document.getElementById("duolingo-section").getAttribute("aria-pressed") === "true",
-    languageHint: {
-      text: document.getElementById("duolingo-sync-status").textContent,
-      color: getComputedStyle(document.getElementById("duolingo-sync-status")).color
-    },
-    sortButton: {
-      label: document.getElementById("sort-alpha").getAttribute("aria-label"),
-      text: document.getElementById("sort-alpha").textContent.trim(),
-      hasIcon: Boolean(document.querySelector("#sort-alpha [data-lucide-icon='arrow-up-a-z']"))
-    }
-  }));
-
-  assert(duolingoResult.sourceOrder[0] === "duolingo-section", "Duolingo tab is not first");
-  assert(duolingoResult.duolingoSelected, "Duolingo tab is not selected by default");
-  assert(
-    duolingoResult.languageHint.text.includes("Ukrainian"),
-    "Duolingo Words page did not name the selected language"
-  );
-  assert(duolingoResult.languageHint.color === "rgb(180, 35, 24)", "Duolingo language hint is not red");
-  assert(duolingoResult.tableHidden, "side panel still rendered the compressed table for Duolingo vocabulary");
-  assert(duolingoResult.rowCount === 1, "side panel did not render the compact Duolingo row");
-  assert(duolingoResult.compactText.includes("кафе") && duolingoResult.compactText.includes("cafe"), "compact Duolingo row lost vocabulary text");
-  assert(!duolingoResult.compactText.includes("Duolingo meanings:"), "compact row kept the redundant definition prefix");
-  assert(duolingoResult.hasToggle && duolingoResult.hasDelete, "compact Duolingo row lost replacement controls");
-  assert(duolingoResult.sortButton.label === "Sort A to Z", "sort button is missing its accessible label");
-  assert(!duolingoResult.sortButton.text && duolingoResult.sortButton.hasIcon, "sort button is not icon-only");
-
-  await page.click("#manual-section");
-  await page.waitForSelector("#compact-vocabulary-list:not(.hidden)");
-  const manualResult = await page.evaluate(() => ({
-    tableHidden: document.getElementById("table-wrap").classList.contains("hidden"),
-    compactText: document.getElementById("compact-vocabulary-list").textContent,
-    rowCount: document.querySelectorAll(".compact-vocabulary-row").length,
-    hasToggle: Boolean(document.querySelector(".compact-vocabulary-row input[type='checkbox']")),
-    hasDelete: Boolean(document.querySelector(".compact-vocabulary-row button[aria-label='Delete manual entry']"))
-  }));
-
-  assert(manualResult.tableHidden, "side panel still rendered the compressed table for manual vocabulary");
-  assert(manualResult.rowCount === 1, "side panel did not render the compact manual row");
-  assert(manualResult.compactText.includes("чай") && manualResult.compactText.includes("tea"), "compact manual row lost vocabulary text");
-  assert(manualResult.hasToggle && manualResult.hasDelete, "compact manual row lost replacement controls");
-  await page.close();
-}
-
 async function testPanicButtonTogglesEnabledSetting(browser) {
   const page = await browser.newPage();
   await page.addInitScript(() => {
@@ -3301,33 +3794,30 @@ async function testPanicButtonTogglesEnabledSetting(browser) {
   await page.waitForSelector("#panic-toggle");
 
   const before = await page.evaluate(() => ({
-    pressed: document.getElementById("panic-toggle").getAttribute("aria-pressed"),
-    checkbox: document.getElementById("enabled").checked
+    pressed: document.getElementById("panic-toggle").getAttribute("aria-pressed")
   }));
   assert(
-    before.pressed === "false" && before.checkbox === true,
+    before.pressed === "false",
     `panic button did not reflect the enabled state: ${JSON.stringify(before)}`
   );
 
   await page.click("#panic-toggle");
   const afterOff = await page.evaluate(() => ({
     pressed: document.getElementById("panic-toggle").getAttribute("aria-pressed"),
-    checkbox: document.getElementById("enabled").checked,
     saved: window.__lastSavedPopupState?.enabled
   }));
   assert(
-    afterOff.pressed === "true" && afterOff.checkbox === false && afterOff.saved === false,
+    afterOff.pressed === "true" && afterOff.saved === false,
     `panic button did not turn replacements off everywhere: ${JSON.stringify(afterOff)}`
   );
 
   await page.click("#panic-toggle");
   const afterOn = await page.evaluate(() => ({
     pressed: document.getElementById("panic-toggle").getAttribute("aria-pressed"),
-    checkbox: document.getElementById("enabled").checked,
     saved: window.__lastSavedPopupState?.enabled
   }));
   assert(
-    afterOn.pressed === "false" && afterOn.checkbox === true && afterOn.saved === true,
+    afterOn.pressed === "false" && afterOn.saved === true,
     `panic button did not turn replacements back on: ${JSON.stringify(afterOn)}`
   );
   await page.close();
@@ -3488,6 +3978,11 @@ async function testPopupStatusPanel(browser) {
     };
   });
 
+  await page.addInitScript(() => {
+    window.close = () => {
+      window.__popupClosed = true;
+    };
+  });
   await page.goto(POPUP_PAGE);
   await page.waitForFunction(() =>
     document.getElementById("runtime-status")?.textContent.includes("page activation")
@@ -3509,15 +4004,6 @@ async function testPopupStatusPanel(browser) {
     ),
     triggerLanguage: document.getElementById("language-trigger-label").textContent,
     triggerIcon: document.getElementById("language-trigger-icon").getAttribute("src"),
-    manualPlaceholders: {
-      source: document.getElementById("source").getAttribute("placeholder"),
-      target: document.getElementById("target").getAttribute("placeholder")
-    },
-    openTab: {
-      label: document.getElementById("open-tab").getAttribute("aria-label"),
-      text: document.getElementById("open-tab").textContent.trim(),
-      hasIcon: Boolean(document.querySelector("#open-tab [data-lucide-icon='square-arrow-out-up-right']"))
-    },
     settingsIcon: Boolean(document.querySelector("#settings-view-tab [data-lucide-icon='settings']")),
     languageOptions: Array.from(document.querySelectorAll(".language-option")).map(
       (option) => ({
@@ -3555,16 +4041,9 @@ async function testPopupStatusPanel(browser) {
     assert(before.languageNames.includes(language), `${language} course was not added as a built-in profile`);
   }
   assert(!before.languageNames.includes("Latin"), "empty retired Latin profile was not removed");
-  assert(await page.isVisible("#duolingo-panel"), "Duolingo panel was not the default section");
-  assert(await page.isHidden("#manual-entry-panel"), "manual entry panel was visible by default");
-  assert(await page.isHidden("#settings-view"), "settings view should not be open initially");
   assert(
-    before.manualPlaceholders.source === "English (e.g. a cup of coffee)",
-    "manual English field did not show the phrase example"
-  );
-  assert(
-    before.manualPlaceholders.target === "Ukrainian (e.g. чашка кави)",
-    "manual target field did not use the selected language and example"
+    await page.isVisible("#open-duolingo-words"),
+    "the Manage-words-on-Duolingo button should be visible"
   );
   assert(before.retry.label === "Retry current page", "retry button is missing its accessible label");
   await page.evaluate(() =>
@@ -3594,49 +4073,26 @@ async function testPopupStatusPanel(browser) {
   assert(before.retry.hasIcon && before.retry.inHeader, "retry button was not moved to the header");
   assert(!before.retry.nestedInStatus, "retry button is still nested in the page status panel");
   assert(before.retry.tone === "attention", "retry did not highlight the page activation state");
-  assert(before.openTab.label === "Open in tab", "open-in-tab button is missing its accessible label");
-  assert(!before.openTab.text && before.openTab.hasIcon, "open-in-tab button is not icon-only");
   assert(before.settingsIcon, "settings button is not using the Lucide settings asset");
   assert(!await page.locator("#vocabulary-view-tab").count(), "vocabulary still has a dedicated view button");
   assert(
     await page.locator(".language-controls #settings-view-tab").count() === 1,
     "settings button was not moved next to language"
   );
-  await page.click("#settings-view-tab");
-  assert(await page.isVisible("#settings-view"), "settings view did not open");
-  assert(await page.isVisible("#show-highlights"), "highlight setting was not moved into settings");
-  assert(await page.locator("#import-manual").count() === 1, "manual import control is missing");
-  assert(await page.locator("#export-manual").count() === 1, "manual export control is missing");
   assert(
-    await page.textContent("#import-manual") === "Import manual file",
-    "manual import control has the wrong label"
+    (await page.evaluate(() => ({
+      isSection: document.getElementById("do-not-translate-panel").tagName === "SECTION",
+      noSummary: !document.querySelector("#do-not-translate-panel summary")
+    }))).isSection,
+    "Do not translate should be a plain always-visible section, not a disclosure"
   );
   assert(
-    await page.textContent("#export-manual") === "Download manual CSV",
-    "manual export control has the wrong label"
+    !(await page.locator("#do-not-translate-list").count()),
+    "exclusion list should live on the Duolingo settings page now"
   );
-  const hoverSettings = await page.evaluate(() => ({
-    processedSections: document.getElementById("show-processed-sections").checked,
-    originalEnglish: document.getElementById("show-original-on-hover").checked,
-    englishTranslation: document.getElementById("translate-english-on-hover").checked
-  }));
-  assert(hoverSettings.processedSections, "checked-section marker should start enabled");
-  assert(hoverSettings.originalEnglish, "original-English hover should start enabled");
-  assert(hoverSettings.englishTranslation, "English hover translation should start enabled");
-  await page.click('label[title="Mark checked sections"]');
-  await page.waitForFunction(() => window.__lastSavedPopupState?.showProcessedSections === false);
-  await page.click('label[title="Show original English on hover"]');
-  await page.waitForFunction(() => window.__lastSavedPopupState?.showOriginalOnHover === false);
-  await page.click('label[title="Translate English on hover"]');
-  await page.waitForFunction(() => window.__lastSavedPopupState?.translateEnglishOnHover === false);
-  const settingsDisclosureOrder = await page.evaluate(() =>
-    Array.from(document.querySelectorAll("#settings-view details")).map((element) => element.id)
-  );
-  assert(await page.locator("#do-not-translate-panel").evaluate((element) => element.open), "Do not translate should start expanded");
-  assert(await page.locator("#bulk-panel").evaluate((element) => element.open), "import/export should start expanded");
   assert(
-    settingsDisclosureOrder.indexOf("do-not-translate-panel") < settingsDisclosureOrder.indexOf("bulk-panel"),
-    "import/export should appear below Do not translate"
+    !(await page.locator("#bulk-panel").count()),
+    "import/export should live on the Duolingo settings page now"
   );
   await page.waitForSelector("#do-not-translate-actions:not(.hidden)");
   await page.click("#exclude-page");
@@ -3649,13 +4105,9 @@ async function testPopupStatusPanel(browser) {
       pageExclusion.pages[0] === "https://www.google.com/search?q=steam",
     "page exclusion did not save the normalized current URL"
   );
-  assert(
-    (await page.locator("#do-not-translate-list").textContent()).includes("Specific page"),
-    "page exclusion was not listed separately"
-  );
-  await page.click('button[aria-label="Remove page exclusion"]');
+  await page.click("#exclude-page");
   await page.waitForFunction(
-    () => document.getElementById("clear-do-not-translate")?.disabled === true
+    () => window.__lastSavedPopupState.doNotTranslate.pages.length === 0
   );
   await page.evaluate(() => window.__setPopupStatusMode("excluded"));
   await page.click("#exclude-site");
@@ -3677,42 +4129,38 @@ async function testPopupStatusPanel(browser) {
     (await page.textContent("#runtime-status")).includes("Translation is off for this site"),
     "excluded page did not explain why replacement is off"
   );
-  await page.click("#clear-do-not-translate");
+  await page.click("#exclude-site");
   await page.waitForFunction(
-    () => document.getElementById("clear-do-not-translate")?.disabled === true
-  );
-  const clearedExclusions = await page.evaluate(() => window.__lastSavedPopupState.doNotTranslate);
-  assert(
-    clearedExclusions.sites.length === 0 && clearedExclusions.pages.length === 0,
-    "clear list did not remove page and site exclusions"
+    () => window.__lastSavedPopupState.doNotTranslate.sites.length === 0
   );
   await page.evaluate(() => window.__setPopupStatusMode("not-ready"));
   await page.click("#exclude-page");
   await page.waitForFunction(() => document.getElementById("runtime-retry")?.disabled === false);
   await page.click("#exclude-page");
   await page.waitForFunction(
-    () => document.getElementById("clear-do-not-translate")?.disabled === true
+    () => window.__lastSavedPopupState.doNotTranslate.pages.length === 0
   );
   await page.click("#settings-view-tab");
-  assert(await page.isVisible("#vocabulary-view"), "vocabulary view did not restore");
-  await page.click("#duolingo-section");
-  assert(await page.isVisible("#duolingo-panel"), "Duolingo section did not open");
-  assert(await page.isHidden("#manual-entry-panel"), "manual entry panel stayed visible in Duolingo section");
-  assert(await page.isEnabled("#duolingo-sync"), "Duolingo sync should open a Words page when none is open");
   assert(
-    await page.textContent("#duolingo-sync-label") === "Open Duolingo Words",
-    "Duolingo sync did not switch to the open-page action"
-  );
-  await page.click("#duolingo-sync");
-  await page.waitForFunction(() =>
-    document.getElementById("duolingo-sync-status")?.textContent.includes("Opened Duolingo's Words page")
+    (await page.evaluate(() => window.__openedDuolingoUrl())) ===
+      "https://www.duolingo.com/settings/account#sly-fox",
+    "settings button did not open the Duolingo settings page"
   );
   assert(
-    await page.evaluate(() => window.__openedDuolingoUrl()) === "https://www.duolingo.com/practice-hub/words",
-    "Duolingo sync did not open the correct Words route"
+    await page.evaluate(() => window.__popupClosed === true),
+    "settings button did not close the popup after opening the settings page"
   );
-  await page.click("#manual-section");
-  assert(await page.isVisible("#manual-entry-panel"), "manual section did not restore the entry form");
+  assert(await page.isVisible("#vocabulary-view"), "vocabulary view should stay visible");
+  assert(
+    Boolean(await page.evaluate(() => document.querySelector("#open-duolingo-words img[src='icons/duolingo-bird.png']"))),
+    "Duolingo words button is missing the bird icon"
+  );
+  await page.click("#open-duolingo-words");
+  assert(
+    (await page.evaluate(() => window.__openedDuolingoUrl())) ===
+      "https://www.duolingo.com/practice-hub/words",
+    "words button did not open Duolingo's Words page"
+  );
   assert(before.triggerLanguage === "Ukrainian", "language trigger did not show the selected language");
   assert(before.triggerIcon.endsWith("/flags/ua.svg"), "selected Ukrainian language did not show its SVG flag");
   assert(
@@ -3744,52 +4192,6 @@ async function testPopupStatusPanel(browser) {
     await page.textContent("#language-trigger-label") === "Spanish",
     "keyboard selection did not update the selected language"
   );
-  assert(
-    (await page.locator("#target").getAttribute("placeholder")) === "Spanish (e.g. una taza de café)",
-    "manual target field did not update after changing languages"
-  );
-  assert(await page.isDisabled("#submit-entry"), "Add should be disabled when both fields are blank");
-  await page.fill("#source", "house");
-  assert(await page.isDisabled("#submit-entry"), "Add should stay disabled when target is blank");
-  await page.fill("#target", "будинок");
-  assert(await page.isEnabled("#submit-entry"), "Add should be enabled when both fields have values");
-  await page.fill("#source", "   ");
-  assert(await page.isDisabled("#submit-entry"), "Add should be disabled for whitespace-only input");
-  await page.fill("#source", "");
-  await page.fill("#target", "");
-  await page.fill(
-    "#manual-lines",
-    "radio,радіо,radio receiver\ninternet,інтернет,global computer network"
-  );
-  assert(await page.isEnabled("#add-manual-lines"), "manual line import should enable for non-empty input");
-  await page.click("#add-manual-lines");
-  await page.waitForFunction(() => {
-    const profile = window.__lastSavedPopupState?.profiles?.find(
-      (candidate) => candidate.id === "builtin-es"
-    );
-    return profile?.entries?.some(
-      (entry) => entry.source === "radio" && entry.target === "радіо" && entry.origin === "manual"
-    );
-  });
-  const manualLineEntries = await page.evaluate(() => {
-    const profile = window.__lastSavedPopupState.profiles.find(
-      (candidate) => candidate.id === "builtin-es"
-    );
-    return profile.entries.filter((entry) => entry.origin === "manual");
-  });
-  assert(
-    manualLineEntries.some(
-      (entry) => entry.source === "radio" && entry.definition === "radio receiver"
-    ),
-    "manual line import did not preserve the optional third-column definition"
-  );
-  assert(
-    manualLineEntries.some(
-      (entry) => entry.source === "internet" && entry.definition === "global computer network"
-    ),
-    "manual line import did not add every CSV line"
-  );
-  await page.click("#settings-view-tab");
   await page.click("#runtime-retry");
   await page.evaluate(() =>
     window.__pushRuntimeStatus({
@@ -4052,42 +4454,24 @@ function testBackgroundBadgeIgnoresMissingTabs() {
   assert(catchCount === actionCallCount, "badge action promise rejections were not handled");
 }
 
-function testToolbarOpensSidePanel() {
-  const code = readBackgroundScriptForVm();
-  let behavior = null;
-  const manifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../extension/manifest.json"), "utf8"));
-  const context = {
-    chrome: {
-      sidePanel: {
-        setPanelBehavior(options) {
-          behavior = options;
-          return { catch() {} };
-        }
-      },
-      runtime: {
-        onMessage: { addListener() {} }
-      },
-      tabs: {
-        onUpdated: { addListener() {} },
-        onRemoved: { addListener() {} }
-      },
-      action: {
-        setBadgeText() {},
-        setBadgeBackgroundColor() {},
-        setTitle() {}
-      }
-    }
-  };
-
-  vm.createContext(context);
-  vm.runInContext(code, context);
-
-  assert(
-    behavior?.openPanelOnActionClick === true,
-    "toolbar action was not configured to open the side panel"
+function testToolbarOpensPopup() {
+  const manifest = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, "../extension/manifest.json"), "utf8")
   );
-  assert(!manifest.action.default_popup, "toolbar action still has a popup configured");
-  assert(manifest.side_panel?.default_path === "sidepanel.html", "side panel path is not configured");
+  assert(
+    manifest.action?.default_popup === "popup.html",
+    "toolbar action does not open the popup"
+  );
+  assert(!manifest.side_panel, "side panel is still configured");
+  assert(
+    !manifest.permissions.includes("sidePanel"),
+    "sidePanel permission is no longer needed"
+  );
+  const backgroundScript = fs.readFileSync(BACKGROUND_SCRIPT, "utf8");
+  assert(
+    !backgroundScript.includes("sidePanel"),
+    "background still references the side panel"
+  );
 }
 
 (async () => {
@@ -4141,21 +4525,26 @@ function testToolbarOpensSidePanel() {
     await testDuolingoSyncScrapesEveryLoadedPageInExportFormat(browser);
     await testDuolingoSyncLoadsMoreThanTwentyPages(browser);
     await testDuolingoTypeHintShowsNextLettersAndDeadEnds(browser);
+    await testDuolingoListenMatchHidesWordsAndTypesPairs(browser);
+    await testDuolingoAssistHidesChoicesAndTypesAnswer(browser);
+    await testDuolingoWordsPageImportButton(browser);
+    await testDuolingoWordsPageShowsPerWordEntryChips(browser);
+    await testDuolingoWordsPageManualTabManagesManualWords(browser);
+    await testDuolingoSettingsPageShowsExtensionPanel(browser);
+    await testDuolingoMobileSettingsMenuGetsCardItemAndFullPagePanel(browser);
+    await testDuolingoSettingsHashOpensPanelDirectly(browser);
     await testTranslatorBridgeCreatesInsideTrustedPageActivation(browser);
     await testCorruptedEntryPartsAreHealedOnLoad(browser);
-    await testDuolingoSyncKeepsManualEntriesSeparate(browser);
-    await testDuolingoSyncRequiresActivePageAndExplainsRefresh(browser);
-    await testDuolingoLoginRedirectShowsInstructions(browser);
-    await testSidePanelUsesCompactVocabularyList(browser);
     await testPanicButtonTogglesEnabledSetting(browser);
     await testPopupStatusPanel(browser);
     testVendoredLucideIcons();
     testUkrainianMorphologyDictionary();
+    testImportCoreAppliesDuolingoImport();
     testFullExportDoesNotUseClickEventAsFilter();
     testBackgroundBadge();
     await testBackgroundRestoresOpenTabContentScripts();
     testBackgroundBadgeIgnoresMissingTabs();
-    testToolbarOpensSidePanel();
+    testToolbarOpensPopup();
     console.log("extension runtime tests passed");
   } finally {
     await browser.close();
