@@ -54,15 +54,15 @@ const BUILT_IN_PROFILES = BUILT_IN_LANGUAGES.map(({ code, name }) => ({
 const BUILT_IN_PROFILE_BY_ID = new Map(BUILT_IN_PROFILES.map((profile) => [profile.id, profile]));
 
 const DEFAULT_STATE = {
-  version: 2,
+  version: 3,
   enabled: true,
   showHighlights: true,
-  structureMode: false,
+  structureMode: true,
   showProcessedSections: true,
   showOriginalOnHover: true,
   translateEnglishOnHover: true,
-  duolingoAutoContinue: false,
-  duolingoTypeAnswers: false,
+  duolingoAutoContinue: true,
+  duolingoTypeAnswers: true,
   wholeWords: true,
   caseSensitive: false,
   preserveCase: true,
@@ -70,7 +70,7 @@ const DEFAULT_STATE = {
   builtInProfilesVersion: 0,
   deletedBuiltInProfileIds: [],
   doNotTranslate: {
-    sites: [],
+    sites: ["www.duolingo.com"],
     pages: []
   },
   profiles: []
@@ -291,12 +291,23 @@ function normalizeState(rawState) {
   const next = {
     ...DEFAULT_STATE,
     ...source,
-    version: 2
+    version: 3
   };
 
   delete next.replacementMode;
   delete next.showObviousCognates;
   next.doNotTranslate = normalizeDoNotTranslate(source.doNotTranslate);
+
+  // Version 3 turned every settings toggle on by default and stopped
+  // translating Duolingo's own pages; older stored states migrate once.
+  if (Number(source.version || 0) < 3) {
+    next.structureMode = true;
+    next.duolingoAutoContinue = true;
+    next.duolingoTypeAnswers = true;
+    if (!next.doNotTranslate.sites.includes("www.duolingo.com")) {
+      next.doNotTranslate.sites.push("www.duolingo.com");
+    }
+  }
 
   if (Array.isArray(source.profiles)) {
     next.profiles = source.profiles.map(normalizeProfile).filter((profile) => profile.name);

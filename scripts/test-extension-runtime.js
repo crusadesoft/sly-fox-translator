@@ -23,9 +23,14 @@ const LUCIDE_ICON_DIR = path.resolve(__dirname, "../extension/icons/lucide");
 
 function createState(entries) {
   return {
-    version: 2,
+    version: 3,
     enabled: true,
     showHighlights: true,
+    // The real version-3 defaults turn these on and exclude www.duolingo.com;
+    // the harness baseline keeps them off so each test opts in explicitly.
+    structureMode: false,
+    duolingoAutoContinue: false,
+    duolingoTypeAnswers: false,
     currentProfileId: "uk-test",
     profiles: [
       {
@@ -818,7 +823,7 @@ async function testStructureModeRebuildsSentencesInTargetOrder(browser) {
   });
 
   assert(
-    result.text === "Радіо - is technology communicating.",
+    result.text === "Радіо — is technology communicating.",
     `structure mode did not rebuild the sentence in target order: ${JSON.stringify(result)}`
   );
   assert(
@@ -828,6 +833,55 @@ async function testStructureModeRebuildsSentencesInTargetOrder(browser) {
   assert(
     result.scaffold.join(",") === "це→is,технологія→technology,зв'язку→communicating",
     `unlearned words were not back-translated in place: ${JSON.stringify(result.scaffold)}`
+  );
+  await page.close();
+}
+
+async function testStructureModeSurvivesWhitespaceOnlyTextNodes(browser) {
+  const page = await browser.newPage();
+  // Wikipedia-style markup keeps inter-word spaces in their own text nodes
+  // ("<b>Radio</b> <a>is</a>"). Dropping them fed the translator "Radiois"
+  // and made the structure gate's rendered-text comparison fail, silently
+  // falling back to per-word replacement.
+  const source = "Radio is the technology of communicating.";
+  const translatorInputs = [];
+  await page.setContent(
+    '<p><b>Radio</b> <a href="#">is</a> the technology of communicating.</p>'
+  );
+  await installHarness(page, {
+    state: {
+      ...createState([{ id: "e1", source: "radio", target: "радіо", enabled: true, createdAt: 1 }]),
+      structureMode: true
+    },
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => {
+        translatorInputs.push(text);
+        return text === source ? "Радіо - це технологія зв'язку." : "";
+      }
+    },
+    config: {
+      ukrainianLemmas: { "радіо": ["радіо"] }
+    },
+    wordAligner: createStructureModeAligner()
+  });
+
+  await page.waitForFunction(
+    () => document.querySelector(".learned-word-replacer-structured") !== null
+  );
+  const result = await page.evaluate(() => ({
+    text: document.body.innerText
+  }));
+
+  assert(
+    result.text === "Радіо — is technology communicating.",
+    `a whitespace-only text node kept structure mode from rebuilding the block: ${JSON.stringify(
+      { ...result, translatorInputs }
+    )}`
+  );
+  assert(
+    translatorInputs.some((text) => text.includes("Radio is the technology")),
+    `the translator saw text with the inter-node spaces dropped: ${JSON.stringify(translatorInputs)}`
   );
   await page.close();
 }
@@ -1360,15 +1414,18 @@ async function testHoverTranslatesEnglishWord(browser) {
   });
   await page.waitForSelector('.learned-word-replacer-hover-tooltip[data-visible="true"]');
   const firstHover = await page.evaluate(() => ({
-    text: document.querySelector(".learned-word-replacer-hover-tooltip")?.textContent,
+    rows: Array.from(
+      document.querySelectorAll(".learned-word-replacer-hover-tooltip-row"),
+      (row) => row.textContent
+    ),
     color: getComputedStyle(document.querySelector(".learned-word-replacer-hover-tooltip")).color
   }));
 
   assert(
-    firstHover.text === "Ukrainian Test: будинок",
-    "English hover did not show the active profile's Ukrainian translation"
+    firstHover.rows.join(",") === "будинок",
+    `English hover did not show the Ukrainian translation as a hint row: ${JSON.stringify(firstHover.rows)}`
   );
-  assert(firstHover.color === "rgb(255, 255, 255)", "English hover tooltip lost its readable text color");
+  assert(firstHover.color === "rgb(60, 60, 60)", "English hover tooltip lost Duolingo's hint text color");
   assert(houseTranslationCalls === 2, "English word was not translated for the hover tooltip");
 
   await page.evaluate(() => {
@@ -1378,6 +1435,131 @@ async function testHoverTranslatesEnglishWord(browser) {
   });
   await page.waitForTimeout(30);
   assert(houseTranslationCalls === 2, "hovering the same word did not use the translation cache");
+  await page.close();
+}
+
+async function testReplacementHoverShowsThreeDuolingoMeanings(browser) {
+  const page = await browser.newPage();
+  const source = "The sweater is warm.";
+  await page.setContent(`<p>${source}</p>`);
+  await installHarness(page, {
+    state: createState([
+      {
+        id: "e1",
+        source: "sweater",
+        target: "светр",
+        definition: "Duolingo meanings: sweater, jumper, pullover",
+        enabled: true,
+        createdAt: 1
+      }
+    ]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === source ? "Светр теплий." : "")
+    },
+    config: {
+      ukrainianLemmas: { светр: ["светр"] }
+    }
+  });
+
+  await page.waitForFunction(
+    () => document.querySelectorAll(".learned-word-replacer-token").length === 1
+  );
+  await page.evaluate(() => {
+    document.querySelector(".learned-word-replacer-token").dispatchEvent(
+      new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" })
+    );
+  });
+  await page.waitForSelector('.learned-word-replacer-hover-tooltip[data-visible="true"]');
+  const result = await page.evaluate(() => {
+    const box = document.querySelector(".learned-word-replacer-hover-tooltip-box");
+    const boxStyle = getComputedStyle(box);
+    return {
+      rows: Array.from(
+        document.querySelectorAll(".learned-word-replacer-hover-tooltip-row"),
+        (row) => row.textContent
+      ),
+      background: boxStyle.backgroundColor,
+      borderRadius: boxStyle.borderRadius,
+      border: boxStyle.border,
+      rowPadding: getComputedStyle(
+        document.querySelector(".learned-word-replacer-hover-tooltip-row")
+      ).padding
+    };
+  });
+
+  assert(
+    result.rows.join(",") === "sweater,jumper,pullover",
+    `hovering a replaced word did not show Duolingo's three best meanings: ${JSON.stringify(result.rows)}`
+  );
+  assert(
+    result.background === "rgb(247, 247, 247)" &&
+      result.borderRadius === "15px" &&
+      result.border === "2px solid rgb(229, 229, 229)" &&
+      result.rowPadding === "15px 10px",
+    `the hint popover lost Duolingo's styling: ${JSON.stringify(result)}`
+  );
+  await page.close();
+}
+
+async function testEnglishHoverShowsVocabularyAlternates(browser) {
+  const page = await browser.newPage();
+  let catTranslationCalls = 0;
+  await page.setContent('<p id="hover-copy">cat food</p>');
+  await page.evaluate(() => {
+    const textNode = document.getElementById("hover-copy").firstChild;
+    Object.defineProperty(document, "caretPositionFromPoint", {
+      configurable: true,
+      value: undefined
+    });
+    document.caretRangeFromPoint = () => {
+      const range = document.createRange();
+      range.setStart(textNode, 1);
+      range.collapse(true);
+      return range;
+    };
+  });
+
+  await installHarness(page, {
+    state: createState([
+      { id: "e1", source: "cat", target: "кіт / кішка / киця", enabled: true, createdAt: 1 }
+    ]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => {
+        if (text === "cat") {
+          catTranslationCalls += 1;
+        }
+        return "щось інше.";
+      }
+    },
+    config: { reverseHoverDelayMs: 10 }
+  });
+
+  await page.waitForFunction(
+    () => window.__learnedWordReplacerDebug.getSnapshot().status === "complete"
+  );
+  await page.evaluate(() => {
+    document.dispatchEvent(
+      new PointerEvent("pointermove", { bubbles: true, clientX: 80, clientY: 40, pointerType: "mouse" })
+    );
+  });
+  await page.waitForSelector('.learned-word-replacer-hover-tooltip[data-visible="true"]');
+  const result = await page.evaluate(() => ({
+    rows: Array.from(
+      document.querySelectorAll(".learned-word-replacer-hover-tooltip-row"),
+      (row) => row.textContent
+    )
+  }));
+
+  assert(
+    result.rows.join(",") === "кіт,кішка,киця",
+    `hovering a learned English word did not list its vocabulary alternates: ${JSON.stringify(result.rows)}`
+  );
+  assert(
+    catTranslationCalls === 0,
+    "the hover translator ran even though the vocabulary already had translations"
+  );
   await page.close();
 }
 
@@ -1449,9 +1631,10 @@ async function testProfileLanguageIsInferredFromImportedTargets(browser) {
   await page.setContent("<p>It is in the house.</p>");
   await installHarness(page, {
     state: {
-      version: 2,
+      version: 3,
       enabled: true,
       showHighlights: true,
+      structureMode: false,
       currentProfileId: "default",
       profiles: [
         {
@@ -3300,6 +3483,111 @@ async function testDuolingoWordsPageManualTabManagesManualWords(browser) {
   await page.close();
 }
 
+async function testDuolingoLogoBadgeShowsExtensionIsActive(browser) {
+  const page = await browser.newPage();
+  await page.route("https://www.duolingo.com/learn", (route) =>
+    route.fulfill({
+      contentType: "text/html; charset=utf-8",
+      body: `
+        <div id="sidebar">
+          <div id="logo-wrap">
+            <a href="/learn" style="display: block; width: 128px; height: 30px;"><img alt="duolingo" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" style="width: 128px; height: 30px;"></a>
+          </div>
+          <nav><a data-test="home-nav" href="/learn">Home</a></nav>
+        </div>
+        <main><p>go with me.</p></main>
+      `
+    })
+  );
+  await page.goto("https://www.duolingo.com/learn");
+  const initialState = createState([
+    { id: "e1", source: "with", target: "з", enabled: true, createdAt: 1 }
+  ]);
+  await installHarness(page, {
+    state: initialState,
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === "go with me." ? "йди з мною." : "")
+    },
+    config: { ukrainianLemmas: { з: ["з"] } }
+  });
+
+  await page.waitForFunction(
+    () => document.querySelectorAll(".learned-word-replacer-token").length === 1
+  );
+  await page.waitForSelector("#learned-word-replacer-duolingo-logo-badge");
+  const result = await page.evaluate(() => {
+    const badge = document.getElementById("learned-word-replacer-duolingo-logo-badge");
+    return {
+      afterWordmark: badge.previousElementSibling === document.querySelector("#logo-wrap a"),
+      text: badge.textContent,
+      icon: badge.querySelector("img")?.src || "",
+      mainText: document.querySelector("main").innerText
+    };
+  });
+
+  assert(result.afterWordmark, "the badge was not placed directly after the Duolingo wordmark");
+  assert(
+    result.text === "withSly Fox",
+    `the badge text was altered — likely replaced by the extension's own pass: ${JSON.stringify(result.text)}`
+  );
+  assert(result.icon.includes("icons/icon-48.png"), "the badge is missing the Sly Fox logo image");
+  assert(result.mainText.includes("з me"), "page replacement stopped working around the badge");
+
+  await page.evaluate((nextState) => {
+    window.__storageChangeListener(
+      { learnedWordReplacerState: { newValue: nextState } },
+      "local"
+    );
+  }, { ...initialState, enabled: false });
+  await page.waitForFunction(
+    () => document.getElementById("learned-word-replacer-duolingo-logo-badge") === null
+  );
+  await page.close();
+}
+
+async function testVersionTwoStateMigratesToVersionThreeDefaults(browser) {
+  const page = await browser.newPage();
+  await page.route("https://www.duolingo.com/learn", (route) =>
+    route.fulfill({
+      contentType: "text/html; charset=utf-8",
+      body: `
+        <div id="logo-wrap">
+          <a href="/learn" style="display: block; width: 128px; height: 30px;"><img alt="duolingo" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" style="width: 128px; height: 30px;"></a>
+        </div>
+        <main><p>go with me.</p></main>
+      `
+    })
+  );
+  await page.goto("https://www.duolingo.com/learn");
+  await installHarness(page, {
+    state: {
+      ...createState([{ id: "e1", source: "with", target: "з", enabled: true, createdAt: 1 }]),
+      version: 2
+    },
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === "go with me." ? "йди з мною." : "")
+    },
+    config: { ukrainianLemmas: { з: ["з"] } }
+  });
+
+  await page.waitForFunction(
+    () => window.__learnedWordReplacerDebug.getSnapshot().status === "excluded"
+  );
+  await page.waitForSelector("#learned-word-replacer-duolingo-logo-badge");
+  const result = await page.evaluate(() => ({
+    replacements: document.querySelectorAll(".learned-word-replacer-token").length,
+    mainText: document.querySelector("main").innerText
+  }));
+
+  assert(
+    result.replacements === 0 && result.mainText === "go with me.",
+    `a migrated version-2 state still translated Duolingo's own page: ${JSON.stringify(result)}`
+  );
+  await page.close();
+}
+
 async function testDuolingoSettingsPageShowsExtensionPanel(browser) {
   const page = await browser.newPage();
   await page.route("https://www.duolingo.com/settings/account", (route) =>
@@ -3437,7 +3725,7 @@ async function testDuolingoSettingsPageShowsExtensionPanel(browser) {
       {
         learnedWordReplacerState: {
           newValue: {
-            version: 2,
+            version: 3,
             enabled: true,
             currentProfileId: "uk-test",
             profiles: [
@@ -3662,7 +3950,7 @@ async function testCorruptedEntryPartsAreHealedOnLoad(browser) {
     // A corrupted import once stored every target/definition alternate five
     // times over; loading the popup must dedupe and persist the repair.
     const state = {
-      version: 2,
+      version: 3,
       enabled: true,
       showHighlights: true,
       currentProfileId: "uk",
@@ -3737,7 +4025,7 @@ async function testPanicButtonTogglesEnabledSetting(browser) {
   const page = await browser.newPage();
   await page.addInitScript(() => {
     const state = {
-      version: 2,
+      version: 3,
       enabled: true,
       showHighlights: true,
       currentProfileId: "uk",
@@ -3827,7 +4115,7 @@ async function testPopupStatusPanel(browser) {
   const page = await browser.newPage();
   await page.addInitScript(() => {
     const state = {
-      version: 2,
+      version: 3,
       enabled: true,
       showHighlights: true,
       currentProfileId: "default",
@@ -4486,6 +4774,7 @@ function testToolbarOpensPopup() {
     await testNeuralAlignerNeverReplacesNumericSpans(browser);
     await testNeuralAlignerIsSkippedWhenEnglishHintsResolve(browser);
     await testStructureModeRebuildsSentencesInTargetOrder(browser);
+    await testStructureModeSurvivesWhitespaceOnlyTextNodes(browser);
     await testStructureModeRestoresOriginalMarkupWhenDisabled(browser);
     await testStructureModeKeepsUnalignedSentencesInEnglish(browser);
     await testStructureModeLeavesUiBlocksToNormalReplacement(browser);
@@ -4498,6 +4787,8 @@ function testToolbarOpensPopup() {
     await testRuntimeStatusCountsLiveReplacementSpans(browser);
     await testProcessedBlocksAreMarkedOnPage(browser);
     await testHoverTranslatesEnglishWord(browser);
+    await testReplacementHoverShowsThreeDuolingoMeanings(browser);
+    await testEnglishHoverShowsVocabularyAlternates(browser);
     await testHoverSettingsCanBeDisabled(browser);
     await testProfileLanguageIsInferredFromImportedTargets(browser);
     await testEnglishHintAlignmentAvoidsDeletionProbe(browser);
@@ -4532,6 +4823,8 @@ function testToolbarOpensPopup() {
     await testDuolingoWordsPageManualTabManagesManualWords(browser);
     await testDuolingoSettingsPageShowsExtensionPanel(browser);
     await testDuolingoMobileSettingsMenuGetsCardItemAndFullPagePanel(browser);
+    await testDuolingoLogoBadgeShowsExtensionIsActive(browser);
+    await testVersionTwoStateMigratesToVersionThreeDefaults(browser);
     await testDuolingoSettingsHashOpensPanelDirectly(browser);
     await testTranslatorBridgeCreatesInsideTrustedPageActivation(browser);
     await testCorruptedEntryPartsAreHealedOnLoad(browser);

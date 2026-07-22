@@ -48,6 +48,7 @@
   const APPLY_DEBOUNCE_MS = 700;
   const REVERSE_HOVER_DELAY_MS = 260;
   const MAX_REVERSE_HOVER_CACHE_ENTRIES = 200;
+  const MAX_HOVER_HINT_ROWS = 3;
   const VIEWPORT_MARGIN_PX = 900;
   const TEST_CONFIG_KEY = "__learnedWordReplacerTestConfig";
   const DEBUG_KEY = "__learnedWordReplacerDebug";
@@ -161,26 +162,27 @@
     "[role='complementary']",
     "[role='contentinfo']",
     "[contenteditable]",
+    "[data-lwr-ui]",
     `[class~='${REPLACEMENT_CLASS}']`,
     `[class~='${REVERSE_HOVER_TOOLTIP_CLASS}']`
   ].join(",");
 
   const DEFAULT_STATE = {
-    version: 2,
+    version: 3,
     enabled: true,
     showHighlights: true,
-    structureMode: false,
+    structureMode: true,
     showProcessedSections: true,
     showOriginalOnHover: true,
     translateEnglishOnHover: true,
-    duolingoAutoContinue: false,
-    duolingoTypeAnswers: false,
+    duolingoAutoContinue: true,
+    duolingoTypeAnswers: true,
     wholeWords: true,
     caseSensitive: false,
     preserveCase: true,
     currentProfileId: "",
     doNotTranslate: {
-      sites: [],
+      sites: ["www.duolingo.com"],
       pages: []
     },
     profiles: []
@@ -501,12 +503,23 @@
     const next = {
       ...DEFAULT_STATE,
       ...source,
-      version: 2
+      version: 3
     };
 
     delete next.replacementMode;
     delete next.showObviousCognates;
     next.doNotTranslate = normalizeDoNotTranslate(source.doNotTranslate);
+
+    // Version 3 turned every settings toggle on by default and stopped
+    // translating Duolingo's own pages; older stored states migrate once.
+    if (Number(source.version || 0) < 3) {
+      next.structureMode = true;
+      next.duolingoAutoContinue = true;
+      next.duolingoTypeAnswers = true;
+      if (!next.doNotTranslate.sites.includes("www.duolingo.com")) {
+        next.doNotTranslate.sites.push("www.duolingo.com");
+      }
+    }
 
     if (Array.isArray(source.profiles)) {
       next.profiles = source.profiles
@@ -886,25 +899,22 @@
       document.documentElement.appendChild(style);
     }
 
+    // Styled after Duolingo's own hint popover (captured live 2026-07-21):
+    // #f7f7f7 box, 2px #e5e5e5 border, 15px radius, centered 17px/22px rows
+    // padded 15px 10px with 2px separators, and a rotated-square caret
+    // clipped inside a 20x10 window that overlaps the box border by 2px.
     const reverseHoverTooltipStyle = `
       .${REVERSE_HOVER_TOOLTIP_CLASS} {
-        background: #101828;
-        border-radius: 0.3em;
-        box-shadow: 0 4px 12px rgba(16, 24, 40, 0.22);
-        color: #ffffff;
-        font: 600 12px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #3c3c3c;
+        font: 500 17px/22px duolingo-sans, "din-round", system-ui, -apple-system, sans-serif;
         left: 0;
-        max-width: min(320px, calc(100vw - 16px));
         opacity: 0;
-        overflow-wrap: anywhere;
-        padding: 0.35em 0.5em;
         pointer-events: none;
         position: fixed;
         text-align: center;
         top: 0;
-        transform: translate(-50%, calc(-100% - 12px));
+        transform: translate(-50%, calc(-100% - 13px));
         visibility: hidden;
-        white-space: normal;
         z-index: 2147483647;
       }
 
@@ -914,7 +924,59 @@
       }
 
       .${REVERSE_HOVER_TOOLTIP_CLASS}[data-placement="below"] {
-        transform: translate(-50%, 12px);
+        transform: translate(-50%, 13px);
+      }
+
+      .${REVERSE_HOVER_TOOLTIP_CLASS}-box {
+        background: #f7f7f7;
+        border: 2px solid #e5e5e5;
+        border-radius: 15px;
+        overflow: hidden;
+      }
+
+      .${REVERSE_HOVER_TOOLTIP_CLASS}-row {
+        max-width: min(320px, calc(100vw - 16px));
+        overflow: hidden;
+        padding: 15px 10px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .${REVERSE_HOVER_TOOLTIP_CLASS}-row + .${REVERSE_HOVER_TOOLTIP_CLASS}-row {
+        border-top: 2px solid #e5e5e5;
+      }
+
+      .${REVERSE_HOVER_TOOLTIP_CLASS}-caret {
+        bottom: -8px;
+        height: 10px;
+        left: 50%;
+        margin-left: -10px;
+        overflow: hidden;
+        position: absolute;
+        width: 20px;
+      }
+
+      .${REVERSE_HOVER_TOOLTIP_CLASS}[data-placement="below"] .${REVERSE_HOVER_TOOLTIP_CLASS}-caret {
+        bottom: auto;
+        top: -8px;
+      }
+
+      .${REVERSE_HOVER_TOOLTIP_CLASS}-caret::before {
+        background: #f7f7f7;
+        border: 2px solid #e5e5e5;
+        border-radius: 2px;
+        box-sizing: border-box;
+        content: "";
+        height: 14px;
+        left: 3px;
+        position: absolute;
+        top: -7px;
+        transform: rotate(45deg);
+        width: 14px;
+      }
+
+      .${REVERSE_HOVER_TOOLTIP_CLASS}[data-placement="below"] .${REVERSE_HOVER_TOOLTIP_CLASS}-caret::before {
+        top: 3px;
       }
     `;
 
@@ -974,8 +1036,12 @@
     }
   }
 
-  function shouldIgnoreTextNode(node) {
-    if (!node.nodeValue || !node.nodeValue.trim()) {
+  // Whitespace-only text nodes hold no replaceable words, but they still
+  // separate words in the rendered text ("3<b> </b><a>hertz</a>"), so unit
+  // text assembly must keep them or the translator sees "3hertz" and the
+  // structure-mode rendered-text check can never match.
+  function isTextNodeInIgnoredSubtree(node) {
+    if (!node.nodeValue) {
       return true;
     }
 
@@ -985,6 +1051,14 @@
     }
 
     return Boolean(parent.closest(IGNORED_SELECTOR));
+  }
+
+  function shouldIgnoreTextNode(node) {
+    if (!node.nodeValue || !node.nodeValue.trim()) {
+      return true;
+    }
+
+    return isTextNodeInIgnoredSubtree(node);
   }
 
   function isWordCharacter(char) {
@@ -1051,11 +1125,20 @@
 
     clearReverseHover();
     reverseHoverKey = key;
+
+    // Learned vocabulary answers the hover directly — and with up to three
+    // alternates, like Duolingo's own hints — without a translator call.
+    const vocabularyRows = dedupeHintRows(getHintTargetsForSourceWord(word));
+    if (vocabularyRows.length) {
+      showReverseHoverTooltip(vocabularyRows);
+      return;
+    }
+
     const requestId = ++reverseHoverRequestId;
     const cached = reverseHoverTranslationCache.get(key);
 
     if (cached) {
-      showReverseHoverTooltip(targetLanguage, cached);
+      showReverseHoverTooltip(dedupeHintRows([cached]));
       return;
     }
 
@@ -1078,7 +1161,7 @@
       }
 
       cacheReverseHoverTranslation(key, translated);
-      showReverseHoverTooltip(targetLanguage, translated);
+      showReverseHoverTooltip(dedupeHintRows([translated]));
     } catch (error) {
       // Hover translation should never interrupt page replacement.
     }
@@ -1153,18 +1236,100 @@
       return reverseHoverTooltip;
     }
 
-    reverseHoverTooltip = document.createElement("span");
+    reverseHoverTooltip = document.createElement("div");
     reverseHoverTooltip.className = REVERSE_HOVER_TOOLTIP_CLASS;
     reverseHoverTooltip.setAttribute("role", "tooltip");
     reverseHoverTooltip.dataset.visible = "false";
+
+    const box = document.createElement("div");
+    box.className = `${REVERSE_HOVER_TOOLTIP_CLASS}-box`;
+    const caret = document.createElement("div");
+    caret.className = `${REVERSE_HOVER_TOOLTIP_CLASS}-caret`;
+    reverseHoverTooltip.append(box, caret);
     document.documentElement.appendChild(reverseHoverTooltip);
     return reverseHoverTooltip;
   }
 
-  function showReverseHoverTooltip(targetLanguage, translatedWord) {
+  // Duolingo's hint popover shows at most the three best translations, one
+  // per row.
+  function dedupeHintRows(values) {
+    const rows = [];
+    const seen = new Set();
+
+    for (const value of values) {
+      const cleaned = String(value || "").replace(/\s+/gu, " ").trim();
+      const key = cleaned.toLocaleLowerCase();
+      if (!cleaned || seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      rows.push(cleaned);
+      if (rows.length === MAX_HOVER_HINT_ROWS) {
+        break;
+      }
+    }
+
+    return rows;
+  }
+
+  function splitHintMeanings(definition) {
+    return cleanEnglishAlignmentText(definition)
+      .replace(/^suggested meanings:\s*/iu, "")
+      .split(/\s*(?:,|;|\n|\s\/\s)\s*/u)
+      .map((part) => part.trim())
+      .filter((part) => part && part.length <= 40);
+  }
+
+  function getHintMeaningsForTargetWord(targetWord) {
+    const key = String(targetWord || "").toLocaleLowerCase();
+    if (!key) {
+      return [];
+    }
+
+    const meanings = [];
+    for (const entry of compiledEntries) {
+      if (!entry.targetCandidates.some((candidate) => candidate.toLocaleLowerCase() === key)) {
+        continue;
+      }
+
+      meanings.push(String(entry.source || ""), ...splitHintMeanings(entry.definition));
+    }
+
+    return meanings;
+  }
+
+  function getHintTargetsForSourceWord(word) {
+    const key = String(word || "").toLocaleLowerCase();
+    if (!key) {
+      return [];
+    }
+
+    const targets = [];
+    for (const entry of compiledEntries) {
+      if (String(entry.source || "").toLocaleLowerCase() === key) {
+        targets.push(...entry.targetCandidates);
+      }
+    }
+
+    return targets;
+  }
+
+  function setReverseHoverTooltipRows(rows) {
     const tooltip = ensureReverseHoverTooltip();
-    const languageName = getCurrentProfile()?.name || LANGUAGE_NAMES[targetLanguage] || targetLanguage;
-    tooltip.textContent = `${languageName}: ${translatedWord}`;
+    tooltip.firstElementChild.replaceChildren(
+      ...rows.map((value) => {
+        const row = document.createElement("div");
+        row.className = `${REVERSE_HOVER_TOOLTIP_CLASS}-row`;
+        row.textContent = value;
+        return row;
+      })
+    );
+    return tooltip;
+  }
+
+  function showReverseHoverTooltip(rows) {
+    const tooltip = setReverseHoverTooltipRows(rows);
     positionReverseHoverTooltip();
     tooltip.dataset.visible = "true";
   }
@@ -1190,8 +1355,11 @@
 
     clearReverseHover();
     reverseHoverKey = key;
-    const tooltip = ensureReverseHoverTooltip();
-    tooltip.textContent = original;
+    const rows = dedupeHintRows([
+      original,
+      ...getHintMeaningsForTargetWord(span.dataset.learnedWordTarget)
+    ]);
+    const tooltip = setReverseHoverTooltipRows(rows);
     positionTooltipOverSpan(span);
     tooltip.dataset.visible = "true";
   }
@@ -1503,14 +1671,18 @@
       return STRUCTURED_UNIT_APPLIED;
     }
 
-    const translatedSentences = splitTranslatedSentences(translatedText);
+    const normalizedTranslation = normalizeStructuredTranslationPunctuation(
+      translatedText,
+      targetLanguage
+    );
+    const translatedSentences = splitTranslatedSentences(normalizedTranslation);
     const sentencePairs =
       translatedSentences.length === unit.sentenceRanges.length
         ? unit.sentenceRanges.map((range, index) => ({
             source: unit.text.slice(range.start, range.end),
             translated: translatedSentences[index]
           }))
-        : [{ source: unit.text, translated: translatedText }];
+        : [{ source: unit.text, translated: normalizedTranslation }];
 
     const parts = [];
     for (const pair of sentencePairs) {
@@ -1576,6 +1748,18 @@
         replacementParts.filter((part) => part.kind === WORD_FAMILY_MATCH_KIND).length
     });
     return STRUCTURED_UNIT_APPLIED;
+  }
+
+  // Ukrainian sets the clause dash as a spaced em dash ("Радіо — це ..."),
+  // but the on-device model emits an ASCII hyphen or en dash instead. Only
+  // structure mode paints the translated frame into the page, so the fix
+  // belongs here rather than in the shared translation path.
+  function normalizeStructuredTranslationPunctuation(text, targetLanguage) {
+    if (targetLanguage !== "uk") {
+      return String(text);
+    }
+
+    return String(text).replace(/(?<=^|\s)[-\u2013](?=\s|$)/gu, "\u2014");
   }
 
   // Structure mode trusts the machine translation as the sentence frame, but
@@ -2337,12 +2521,14 @@
 
   function collectTextNodes(root) {
     if (root.nodeType === Node.TEXT_NODE) {
-      return shouldIgnoreTextNode(root) ? [] : [root];
+      return isTextNodeInIgnoredSubtree(root) ? [] : [root];
     }
 
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
-        return shouldIgnoreTextNode(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+        return isTextNodeInIgnoredSubtree(node)
+          ? NodeFilter.FILTER_REJECT
+          : NodeFilter.FILTER_ACCEPT;
       }
     });
     const nodes = [];
@@ -2428,7 +2614,7 @@
 
     function visit(node) {
       if (node.nodeType === Node.TEXT_NODE) {
-        if (!shouldIgnoreTextNode(node)) {
+        if (!isTextNodeInIgnoredSubtree(node)) {
           text += node.nodeValue;
         }
         return;
@@ -5152,8 +5338,70 @@
   const DUOLINGO_WORDS_DELETE_ID = "learned-word-replacer-duolingo-words-delete";
   const DUOLINGO_IMPORT_STATUS_ID = "learned-word-replacer-duolingo-import-status";
   const DUOLINGO_IMPORT_WRAP_ID = "learned-word-replacer-duolingo-import-wrap";
+  const DUOLINGO_LOGO_BADGE_ID = "learned-word-replacer-duolingo-logo-badge";
   let duolingoImportObserver = null;
   let duolingoImportInProgress = false;
+
+  // The wordmark link at the top of the desktop sidebar: an /learn anchor
+  // holding only the logo images. Duolingo's own Home nav item also links to
+  // /learn but carries data-test="home-nav".
+  function findDuolingoWordmarkLink() {
+    for (const link of document.querySelectorAll("a[href='/learn']:not([data-test])")) {
+      if (link.querySelector("img") && link.getClientRects().length) {
+        return link;
+      }
+    }
+
+    return null;
+  }
+
+  // "with [fox] Sly Fox" under the Duolingo wordmark, so it is visible at a
+  // glance that the extension is active. data-lwr-ui keeps the replacer's own
+  // pass off the badge text ("with" is learned vocabulary).
+  function ensureDuolingoLogoBadge() {
+    if (globalThis !== globalThis.top || !isDuolingoHost()) {
+      return;
+    }
+
+    const existing = document.getElementById(DUOLINGO_LOGO_BADGE_ID);
+    const link = state.enabled ? findDuolingoWordmarkLink() : null;
+
+    if (!link) {
+      existing?.remove();
+      return;
+    }
+
+    let badge = existing;
+    if (badge && badge.previousElementSibling !== link) {
+      badge.remove();
+      badge = null;
+    }
+
+    if (!badge) {
+      badge = document.createElement("div");
+      badge.id = DUOLINGO_LOGO_BADGE_ID;
+      badge.dataset.lwrUi = "true";
+      badge.style.cssText =
+        "display: flex; align-items: center; gap: 5px; margin: 7px 0 0 2px; font-size: 14px; font-weight: 700; line-height: 1;";
+
+      const withText = document.createElement("span");
+      withText.textContent = "with";
+      withText.style.cssText = "color: #afafaf; font-weight: 500;";
+      const logo = document.createElement("img");
+      logo.alt = "";
+      logo.src = chrome.runtime.getURL("icons/icon-48.png");
+      logo.style.cssText = "width: 18px; height: 18px; border-radius: 4px; flex: none;";
+      const name = document.createElement("span");
+      name.textContent = "Sly Fox";
+      name.style.cssText = "color: #1cb0f6;";
+      badge.append(withText, logo, name);
+      link.insertAdjacentElement("afterend", badge);
+    }
+
+    // The collapsed narrow-viewport sidebar swaps the wordmark for a small
+    // glyph; the badge would overflow it.
+    badge.style.display = link.getBoundingClientRect().width >= 100 ? "flex" : "none";
+  }
 
   // Extension UI embedded in Duolingo pages (the Words-page Import button and
   // the settings panel under duolingo.com/settings). Active on every
@@ -5170,11 +5418,21 @@
       ensureDuolingoSettingsUi();
       ensureDuolingoWordsInfo();
       ensureDuolingoWordsTabs();
+      ensureDuolingoLogoBadge();
     });
     duolingoImportObserver.observe(document.documentElement, {
       childList: true,
       subtree: true
     });
+    // Sidebar collapse is viewport-driven and mutates nothing.
+    globalThis.addEventListener("resize", () => ensureDuolingoLogoBadge(), { passive: true });
+    // A page that never mutates again (e.g. translation excluded) would
+    // otherwise never trigger the observer.
+    ensureDuolingoImportButton();
+    ensureDuolingoSettingsUi();
+    ensureDuolingoWordsInfo();
+    ensureDuolingoWordsTabs();
+    ensureDuolingoLogoBadge();
     document.addEventListener(
       "click",
       (event) => {
@@ -6579,6 +6837,7 @@
     syncDuolingoSettingsPanelValues();
     ensureDuolingoWordsInfo();
     ensureDuolingoWordsTabs();
+    ensureDuolingoLogoBadge();
     applyToPage();
   });
 
