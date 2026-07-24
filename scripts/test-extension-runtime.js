@@ -209,9 +209,12 @@ function readBackgroundScriptForVm() {
     .replace(/^import\s+"[^"]*";$/gm, "");
 }
 
-async function installHarness(page, { state, translator, config = {}, wordAligner = null }) {
+async function installHarness(
+  page,
+  { state, translator, config = {}, wordAligner = null, flashcards = null }
+) {
   await page.evaluate(
-    ({ savedState, testConfig }) => {
+    ({ savedState, savedFlashcards, testConfig }) => {
       window.chrome = {
         runtime: {
           lastError: null,
@@ -233,7 +236,11 @@ async function installHarness(page, { state, translator, config = {}, wordAligne
         storage: {
           local: {
             get(defaults, callback) {
-              callback({ learnedWordReplacerState: savedState });
+              const stored = { learnedWordReplacerState: savedState };
+              if (savedFlashcards) {
+                stored.learnedWordReplacerFlashcards = savedFlashcards;
+              }
+              callback(stored);
             },
             set(items, callback) {
               window.__storageWrites = window.__storageWrites || [];
@@ -254,6 +261,7 @@ async function installHarness(page, { state, translator, config = {}, wordAligne
     },
     {
       savedState: state,
+      savedFlashcards: flashcards,
       testConfig: {
         applyDebounceMs: 20,
         viewportMarginPx: 10000,
@@ -1371,6 +1379,27 @@ async function testProcessedBlocksAreMarkedOnPage(browser) {
   await hiddenPage.close();
 }
 
+async function dispatchHoverAtWord(page, length, extraX = 0) {
+  await page.evaluate(
+    ({ wordLength, offsetX }) => {
+      const textNode = document.getElementById("hover-copy").firstChild;
+      const range = document.createRange();
+      range.setStart(textNode, 0);
+      range.setEnd(textNode, wordLength);
+      const rect = range.getBoundingClientRect();
+      document.dispatchEvent(
+        new PointerEvent("pointermove", {
+          bubbles: true,
+          clientX: rect.left + rect.width / 2 + offsetX,
+          clientY: rect.top + rect.height / 2,
+          pointerType: "mouse"
+        })
+      );
+    },
+    { wordLength: length, offsetX: extraX }
+  );
+}
+
 async function testHoverTranslatesEnglishWord(browser) {
   const page = await browser.newPage();
   let houseTranslationCalls = 0;
@@ -1407,11 +1436,7 @@ async function testHoverTranslatesEnglishWord(browser) {
   await page.waitForFunction(
     () => window.__learnedWordReplacerDebug.getSnapshot().status === "complete"
   );
-  await page.evaluate(() => {
-    document.dispatchEvent(
-      new PointerEvent("pointermove", { bubbles: true, clientX: 80, clientY: 40, pointerType: "mouse" })
-    );
-  });
+  await dispatchHoverAtWord(page, 5);
   await page.waitForSelector('.learned-word-replacer-hover-tooltip[data-visible="true"]');
   const firstHover = await page.evaluate(() => ({
     rows: Array.from(
@@ -1428,11 +1453,7 @@ async function testHoverTranslatesEnglishWord(browser) {
   assert(firstHover.color === "rgb(60, 60, 60)", "English hover tooltip lost Duolingo's hint text color");
   assert(houseTranslationCalls === 2, "English word was not translated for the hover tooltip");
 
-  await page.evaluate(() => {
-    document.dispatchEvent(
-      new PointerEvent("pointermove", { bubbles: true, clientX: 85, clientY: 40, pointerType: "mouse" })
-    );
-  });
+  await dispatchHoverAtWord(page, 5, 2);
   await page.waitForTimeout(30);
   assert(houseTranslationCalls === 2, "hovering the same word did not use the translation cache");
   await page.close();
@@ -1539,11 +1560,7 @@ async function testEnglishHoverShowsVocabularyAlternates(browser) {
   await page.waitForFunction(
     () => window.__learnedWordReplacerDebug.getSnapshot().status === "complete"
   );
-  await page.evaluate(() => {
-    document.dispatchEvent(
-      new PointerEvent("pointermove", { bubbles: true, clientX: 80, clientY: 40, pointerType: "mouse" })
-    );
-  });
+  await dispatchHoverAtWord(page, 3);
   await page.waitForSelector('.learned-word-replacer-hover-tooltip[data-visible="true"]');
   const result = await page.evaluate(() => ({
     rows: Array.from(
@@ -1559,6 +1576,302 @@ async function testEnglishHoverShowsVocabularyAlternates(browser) {
   assert(
     catTranslationCalls === 0,
     "the hover translator ran even though the vocabulary already had translations"
+  );
+  await page.close();
+}
+
+async function testReplacementsUseDuolingoHintUnderline(browser) {
+  const page = await browser.newPage();
+  const source = "The sweater is warm.";
+  await page.setContent(`<p>${source}</p>`);
+  await installHarness(page, {
+    state: createState([
+      { id: "e1", source: "sweater", target: "светр", enabled: true, createdAt: 1 }
+    ]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === source ? "Светр теплий." : "")
+    },
+    config: {
+      ukrainianLemmas: { светр: ["светр"] }
+    }
+  });
+
+  await page.waitForFunction(
+    () => document.querySelectorAll(".learned-word-replacer-token").length === 1
+  );
+  const style = await page.evaluate(() => {
+    const computed = getComputedStyle(document.querySelector(".learned-word-replacer-token"));
+    return {
+      backgroundImage: computed.backgroundImage,
+      backgroundRepeat: computed.backgroundRepeat,
+      backgroundPosition: computed.backgroundPosition,
+      backgroundColor: computed.backgroundColor
+    };
+  });
+
+  assert(
+    style.backgroundImage.includes("data:image/svg+xml") &&
+      style.backgroundImage.includes("afafaf"),
+    `replacements lost Duolingo's dashed-underline tile: ${style.backgroundImage}`
+  );
+  assert(
+    style.backgroundRepeat === "repeat-x" && style.backgroundPosition.includes("100%"),
+    `the underline tile is not painted along the bottom edge: ${JSON.stringify(style)}`
+  );
+  assert(
+    style.backgroundColor === "rgba(0, 0, 0, 0)",
+    `replacements still paint a background box: ${style.backgroundColor}`
+  );
+  await page.close();
+}
+
+async function testTargetLanguageBlocksAreNotRewritten(browser) {
+  const page = await browser.newPage();
+  const source = "The sweater is warm.";
+  await page.setContent(
+    `<p id="uk-copy">Кіт спить у будинку, а светр лежить на стільці.</p><p id="en-copy">${source}</p>`
+  );
+  const ukrainianBefore = await page.evaluate(
+    () => document.getElementById("uk-copy").innerHTML
+  );
+  await installHarness(page, {
+    state: createState([
+      {
+        id: "e1",
+        source: "sweater",
+        target: "светр",
+        definition: "Duolingo meanings: sweater, jumper, pullover",
+        enabled: true,
+        createdAt: 1
+      },
+      { id: "e2", source: "cat", target: "кіт", enabled: true, createdAt: 2 }
+    ]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => (text === source ? "Светр теплий." : "")
+    },
+    config: {
+      ukrainianLemmas: { светр: ["светр"] }
+    }
+  });
+
+  await page.waitForFunction(
+    () => document.querySelectorAll(".learned-word-replacer-token").length === 1
+  );
+  await page.waitForFunction(
+    () => window.__learnedWordReplacerDebug.getSnapshot().status === "complete"
+  );
+  const result = await page.evaluate(() => ({
+    ukrainianHtml: document.getElementById("uk-copy").innerHTML,
+    englishTokens: document.querySelectorAll("#en-copy .learned-word-replacer-token").length,
+    unitsCollected: window.__learnedWordReplacerDebug.getSnapshot().unitsCollected
+  }));
+
+  assert(
+    result.ukrainianHtml === ukrainianBefore,
+    `a block already in the target language was rewritten: ${result.ukrainianHtml}`
+  );
+  assert(result.englishTokens === 1, "the English block next to it was no longer translated");
+  assert(
+    result.unitsCollected === 1,
+    `the target-language block was still collected for translation: ${result.unitsCollected} units`
+  );
+  await page.close();
+}
+
+async function testTargetWordHoverShowsVocabularyMeanings(browser) {
+  const page = await browser.newPage();
+  let translationCalls = 0;
+  await page.setContent('<p id="hover-copy">светр</p>');
+  await page.evaluate(() => {
+    const textNode = document.getElementById("hover-copy").firstChild;
+    Object.defineProperty(document, "caretPositionFromPoint", {
+      configurable: true,
+      value: undefined
+    });
+    document.caretRangeFromPoint = () => {
+      const range = document.createRange();
+      range.setStart(textNode, 2);
+      range.collapse(true);
+      return range;
+    };
+  });
+
+  await installHarness(page, {
+    state: createState([
+      {
+        id: "e1",
+        source: "sweater",
+        target: "светр",
+        definition: "Duolingo meanings: sweater, jumper, pullover",
+        enabled: true,
+        createdAt: 1
+      }
+    ]),
+    translator: {
+      availability: async () => "available",
+      translate: async () => {
+        translationCalls += 1;
+        return "";
+      }
+    },
+    config: { reverseHoverDelayMs: 10 }
+  });
+
+  // A page whose only block is already in the target language finishes with
+  // zero units, so the eager translator warm-up can overwrite "complete" —
+  // finishedAt is the reliable end-of-pass signal.
+  await page.waitForFunction(
+    () => window.__learnedWordReplacerDebug.getSnapshot().finishedAt > 0
+  );
+  await dispatchHoverAtWord(page, 5);
+  await page.waitForSelector('.learned-word-replacer-hover-tooltip[data-visible="true"]');
+  const result = await page.evaluate(() => ({
+    rows: Array.from(
+      document.querySelectorAll(".learned-word-replacer-hover-tooltip-row"),
+      (row) => row.textContent
+    )
+  }));
+
+  assert(
+    result.rows.join(",") === "sweater,jumper,pullover",
+    `hovering a learned target-language word did not show its English meanings: ${JSON.stringify(result.rows)}`
+  );
+  assert(
+    translationCalls === 0,
+    "the hover translator ran even though the vocabulary already had the English side"
+  );
+  await page.close();
+}
+
+async function testTargetWordHoverFallsBackToReverseTranslation(browser) {
+  const page = await browser.newPage();
+  const availabilityOptions = [];
+  await page.setContent('<p id="hover-copy">будинок</p>');
+  await page.evaluate(() => {
+    const textNode = document.getElementById("hover-copy").firstChild;
+    Object.defineProperty(document, "caretPositionFromPoint", {
+      configurable: true,
+      value: undefined
+    });
+    document.caretRangeFromPoint = () => {
+      const range = document.createRange();
+      range.setStart(textNode, 2);
+      range.collapse(true);
+      return range;
+    };
+  });
+
+  await installHarness(page, {
+    state: createState([{ id: "e1", source: "cat", target: "кіт", enabled: true, createdAt: 1 }]),
+    translator: {
+      availability: async (options) => {
+        availabilityOptions.push(options);
+        return "available";
+      },
+      translate: async (text) => (text === "будинок" ? "house" : "")
+    },
+    config: { reverseHoverDelayMs: 10 }
+  });
+
+  await page.waitForFunction(
+    () => window.__learnedWordReplacerDebug.getSnapshot().finishedAt > 0
+  );
+  await dispatchHoverAtWord(page, 7);
+  await page.waitForSelector('.learned-word-replacer-hover-tooltip[data-visible="true"]');
+  const result = await page.evaluate(() => ({
+    rows: Array.from(
+      document.querySelectorAll(".learned-word-replacer-hover-tooltip-row"),
+      (row) => row.textContent
+    )
+  }));
+
+  assert(
+    result.rows.join(",") === "house",
+    `hovering an unlearned target-language word did not reverse-translate it: ${JSON.stringify(result.rows)}`
+  );
+  assert(
+    availabilityOptions.some(
+      (options) => options.sourceLanguage === "uk" && options.targetLanguage === "en"
+    ),
+    `the hover translator was not requested in the target→English direction: ${JSON.stringify(availabilityOptions)}`
+  );
+  await page.close();
+}
+
+async function testHoverIgnoresEmptySpaceAndAnchorsToWord(browser) {
+  const page = await browser.newPage();
+  await page.setContent('<p id="hover-copy">house</p>');
+  await page.evaluate(() => {
+    const textNode = document.getElementById("hover-copy").firstChild;
+    Object.defineProperty(document, "caretPositionFromPoint", {
+      configurable: true,
+      value: undefined
+    });
+    // Chrome's caret-from-point snaps to the NEAREST text even when the
+    // pointer is nowhere near it — the stub mimics that worst case, so only
+    // the extension's own rect check can reject the empty-space hover.
+    document.caretRangeFromPoint = () => {
+      const range = document.createRange();
+      range.setStart(textNode, 2);
+      range.collapse(true);
+      return range;
+    };
+  });
+
+  await installHarness(page, {
+    state: createState([
+      { id: "e1", source: "house", target: "будинок", enabled: true, createdAt: 1 }
+    ]),
+    translator: {
+      availability: async () => "available",
+      translate: async () => ""
+    },
+    config: { reverseHoverDelayMs: 10 }
+  });
+
+  await page.waitForFunction(
+    () => window.__learnedWordReplacerDebug.getSnapshot().finishedAt > 0
+  );
+
+  await dispatchHoverAtWord(page, 5, 220);
+  await page.waitForTimeout(60);
+  const emptySpace = await page.evaluate(
+    () => document.querySelector(".learned-word-replacer-hover-tooltip")?.dataset.visible || "none"
+  );
+  assert(
+    emptySpace !== "true",
+    "hovering empty space next to a word still showed the hover tooltip"
+  );
+
+  await dispatchHoverAtWord(page, 5, -8);
+  await page.waitForSelector('.learned-word-replacer-hover-tooltip[data-visible="true"]');
+  const anchored = await page.evaluate(() => {
+    const textNode = document.getElementById("hover-copy").firstChild;
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, 5);
+    const rect = range.getBoundingClientRect();
+    const tooltip = document.querySelector(".learned-word-replacer-hover-tooltip");
+    return {
+      left: Number.parseFloat(tooltip.style.left),
+      top: Number.parseFloat(tooltip.style.top),
+      placement: tooltip.dataset.placement,
+      wordCenter: rect.left + rect.width / 2,
+      wordTop: rect.top,
+      wordBottom: rect.bottom
+    };
+  });
+
+  assert(
+    Math.abs(anchored.left - anchored.wordCenter) < 1,
+    `the hover tooltip followed the cursor instead of centering on the word: ${JSON.stringify(anchored)}`
+  );
+  assert(
+    (anchored.placement === "below" && Math.abs(anchored.top - anchored.wordBottom) < 1) ||
+      (anchored.placement === "above" && Math.abs(anchored.top - anchored.wordTop) < 1),
+    `the hover tooltip is not anchored to the word's box: ${JSON.stringify(anchored)}`
   );
   await page.close();
 }
@@ -3341,7 +3654,7 @@ async function testDuolingoWordsPageManualTabManagesManualWords(browser) {
   }));
   assert(initial.tabsBeforeRegion, "tab bar was not inserted before the words header row");
   assert(
-    initial.tabLabels.join(",") === "Duolingo words,Sly Fox manual words",
+    initial.tabLabels.join(",") === "Duolingo words,Sly Fox manual words,Flashcards",
     `wrong tab labels: ${initial.tabLabels.join(",")}`
   );
   assert(initial.listVisible && initial.panelHidden, "Duolingo list should show by default");
@@ -3479,6 +3792,592 @@ async function testDuolingoWordsPageManualTabManagesManualWords(browser) {
     restored.listVisible && restored.regionVisible && restored.panelHidden,
     "switching back did not restore Duolingo's list"
   );
+
+  await page.close();
+}
+
+function flashcardsWordsPageBody() {
+  return `
+    <h1>Practice your Ukrainian words</h1>
+    <section id="native-section">
+      <div id="region"><div><h2>3 words</h2></div><div>Recently learned</div></div>
+      <ul id="words">
+        <li><div><div><h3>кафе</h3><p>a cafe</p></div></div></li>
+      </ul>
+    </section>
+  `;
+}
+
+function flashcardsTestEntries() {
+  return [
+    {
+      id: "d1",
+      source: "cafe",
+      target: "кафе",
+      definition: "Duolingo meanings: a cafe",
+      origin: "duolingo",
+      enabled: true,
+      createdAt: 1
+    },
+    {
+      id: "d2",
+      source: "tea",
+      target: "чай",
+      definition: "Duolingo meanings: tea",
+      origin: "duolingo",
+      enabled: true,
+      createdAt: 2
+    },
+    {
+      id: "d3",
+      source: "bread",
+      target: "хліб",
+      definition: "Duolingo meanings: bread",
+      origin: "duolingo",
+      enabled: true,
+      createdAt: 3
+    }
+  ];
+}
+
+async function testDuolingoFlashcardsSessionTracksTypedRecall(browser) {
+  const page = await browser.newPage();
+  await page.route("https://www.duolingo.com/practice-hub/words", (route) =>
+    route.fulfill({ contentType: "text/html; charset=utf-8", body: flashcardsWordsPageBody() })
+  );
+  await page.goto("https://www.duolingo.com/practice-hub/words");
+  await installHarness(page, {
+    state: createState(flashcardsTestEntries()),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => text
+    }
+  });
+
+  await page.waitForSelector("#learned-word-replacer-duolingo-words-tabs");
+  const chrome = await page.evaluate(() => ({
+    tabLabels: [...document.querySelectorAll("[data-lwr-words-tab]")].map((tab) => tab.textContent),
+    quickstartInWrap: Boolean(
+      document
+        .getElementById("learned-word-replacer-duolingo-import-wrap")
+        ?.querySelector("#learned-word-replacer-duolingo-flashcards-start")
+    )
+  }));
+  assert(
+    chrome.tabLabels.join(",") === "Duolingo words,Sly Fox manual words,Flashcards",
+    `flashcards tab missing: ${chrome.tabLabels.join(",")}`
+  );
+  assert(chrome.quickstartInWrap, "Practice flashcards button is not in the words header row");
+
+  await page.click("button[data-lwr-words-tab='flashcards']");
+  const panelView = await page.evaluate(() => {
+    const panel = document.getElementById("learned-word-replacer-duolingo-flashcards-panel");
+    return {
+      visible: panel.style.display !== "none",
+      nativeHidden: document.getElementById("words").style.display === "none",
+      count: panel.querySelector("[data-lwr-flashcards-count]").textContent,
+      rows: [...panel.querySelectorAll("[data-lwr-flashcards-row]")].length,
+      allNew: [...panel.querySelectorAll("[data-lwr-flashcards-row]")].every((row) =>
+        row.textContent.includes("New")
+      )
+    };
+  });
+  assert(panelView.visible && panelView.nativeHidden, "flashcards tab did not swap the panel in");
+  assert(panelView.count === "3 flashcard words", `wrong deck count: ${panelView.count}`);
+  assert(panelView.rows === 3 && panelView.allNew, "unpracticed words should all show as New");
+
+  const defaults = await page.evaluate(() => ({
+    activeDirection: document
+      .querySelector("[data-lwr-flashcards-direction][aria-pressed='true']")
+      ?.getAttribute("data-lwr-flashcards-direction"),
+    bucketChips: [...document.querySelectorAll("button[data-lwr-flashcards-bucket]")].map(
+      (chip) => `${chip.textContent}:${chip.getAttribute("aria-pressed")}`
+    )
+  }));
+  assert(defaults.activeDirection === "mixed", `default direction is not mixed: ${defaults.activeDirection}`);
+  assert(
+    defaults.bucketChips.join(",") === "Strong 0:true,Good 0:true,Weak 0:true,New 3:true",
+    `bucket filter chips are wrong: ${defaults.bucketChips.join(",")}`
+  );
+
+  // Answers for the English → word direction, keyed by prompt text.
+  const answers = { cafe: "кафе", tea: "чай", bread: "хліб" };
+
+  await page.click("[data-lwr-flashcards-direction='en2tg']");
+  await page.click("[data-lwr-flashcards-session-start]");
+  await page.waitForSelector("#learned-word-replacer-flashcards-overlay");
+
+  // The on-card timer ticks while the answer is open.
+  const timerStart = await page.evaluate(
+    () => document.querySelector("[data-lwr-flashcard-timer]").textContent
+  );
+  assert(/^\d+\.\ds$/.test(timerStart), `timer is not rendered as seconds: ${timerStart}`);
+  await page.waitForFunction(
+    (initial) =>
+      document.querySelector("[data-lwr-flashcard-timer]").textContent !== initial,
+    timerStart
+  );
+
+  async function readPrompt() {
+    return page.evaluate(
+      () => document.querySelector("[data-lwr-flashcard-prompt]").textContent
+    );
+  }
+
+  // Card 1: correct, submitted through the form (Enter path).
+  const firstPrompt = await readPrompt();
+  assert(answers[firstPrompt], `unexpected first prompt: ${firstPrompt}`);
+  await page.fill("[data-lwr-flashcard-input]", answers[firstPrompt]);
+  await page.press("[data-lwr-flashcard-input]", "Enter");
+  const firstFeedback = await page.evaluate(() => ({
+    feedback: document.querySelector("[data-lwr-flashcard-feedback]").textContent,
+    action: document.querySelector("[data-lwr-flashcard-action]").textContent,
+    write: (window.__storageWrites || [])
+      .map((items) => items.learnedWordReplacerFlashcards)
+      .filter(Boolean)
+      .at(-1)
+  }));
+  assert(firstFeedback.feedback.includes("Nice!"), "correct answer did not show Nice!");
+  assert(firstFeedback.action === "Continue", "check button did not become Continue");
+  const firstRecord = firstFeedback.write.languages.uk.cards[`en2tg:${firstPrompt === "cafe" ? "кафе" : answers[firstPrompt]}`];
+  assert(firstRecord, "first answer was not recorded under the word key");
+  assert(
+    firstRecord.attempts === 1 && firstRecord.correct === 1 && firstRecord.streak === 1,
+    `wrong first record: ${JSON.stringify(firstRecord)}`
+  );
+  assert(firstRecord.avgMs > 0, "recall time was not recorded");
+  assert(firstRecord.lastAt > 0 && firstRecord.lastCorrect === true, "record lost recency fields");
+
+  // Grading freezes the timer at the recall time shown in the feedback.
+  const frozenTimer = await page.evaluate(
+    () => document.querySelector("[data-lwr-flashcard-timer]").textContent
+  );
+  assert(
+    firstFeedback.feedback.includes(frozenTimer),
+    `feedback (${firstFeedback.feedback}) does not show the frozen timer (${frozenTimer})`
+  );
+  await page.waitForTimeout(250);
+  const stillFrozen = await page.evaluate(
+    () => document.querySelector("[data-lwr-flashcard-timer]").textContent
+  );
+  assert(stillFrozen === frozenTimer, "timer kept ticking after the answer was graded");
+  await page.click("[data-lwr-flashcard-action]");
+
+  // Card 2: an answer that isn't recognizably the word grades wrong
+  // IMMEDIATELY — no second chance — requeues at the end, and the stored
+  // stats count exactly one failed attempt.
+  const secondPrompt = await readPrompt();
+  await page.fill("[data-lwr-flashcard-input]", "definitely wrong");
+  await page.click("[data-lwr-flashcard-action]");
+  const wrongFeedback = await page.evaluate(() => ({
+    feedback: document.querySelector("[data-lwr-flashcard-feedback]").textContent,
+    inputDisabled: document.querySelector("[data-lwr-flashcard-input]").disabled
+  }));
+  assert(
+    !wrongFeedback.feedback.includes("one more try"),
+    `a way-off answer was offered a second chance: ${wrongFeedback.feedback}`
+  );
+  assert(
+    wrongFeedback.feedback.includes("Correct answer:") &&
+      wrongFeedback.feedback.includes(answers[secondPrompt]),
+    `wrong-answer feedback did not show the solution: ${wrongFeedback.feedback}`
+  );
+  assert(wrongFeedback.inputDisabled, "input stayed editable after grading");
+  await page.click("[data-lwr-flashcard-action]");
+
+  // Card 3: correct.
+  const thirdPrompt = await readPrompt();
+  await page.fill("[data-lwr-flashcard-input]", answers[thirdPrompt]);
+  await page.click("[data-lwr-flashcard-action]");
+  await page.click("[data-lwr-flashcard-action]");
+
+  // Card 4 is the requeued miss; answering it correctly must not change the
+  // stored stats for that word (only first tries are measurements).
+  const retryPrompt = await readPrompt();
+  assert(retryPrompt === secondPrompt, `missed card was not requeued: ${retryPrompt}`);
+  await page.fill("[data-lwr-flashcard-input]", answers[retryPrompt]);
+  await page.click("[data-lwr-flashcard-action]");
+  const afterRetry = await page.evaluate(() =>
+    (window.__storageWrites || [])
+      .map((items) => items.learnedWordReplacerFlashcards)
+      .filter(Boolean)
+      .at(-1)
+  );
+  const missedRecord = afterRetry.languages.uk.cards[`en2tg:${answers[secondPrompt]}`];
+  assert(
+    missedRecord.attempts === 1 && missedRecord.correct === 0 && missedRecord.streak === 0,
+    `retry leaked into stored stats: ${JSON.stringify(missedRecord)}`
+  );
+  await page.click("[data-lwr-flashcard-action]");
+
+  const summary = await page.evaluate(() => ({
+    title: document.querySelector("[data-lwr-flashcard-summary]")?.textContent,
+    main: document.querySelector("[data-lwr-flashcard-main]").textContent,
+    action: document.querySelector("[data-lwr-flashcard-action]").textContent
+  }));
+  assert(summary.title === "Session complete!", "summary screen did not appear");
+  assert(
+    summary.main.includes("2 / 3 correct on the first try"),
+    `summary lost the first-try score: ${summary.main}`
+  );
+  assert(
+    summary.main.includes("Average recall time:"),
+    "summary lost the average recall time"
+  );
+  assert(
+    summary.main.includes(answers[secondPrompt]),
+    "summary did not list the missed word"
+  );
+  assert(summary.action === "Finish", "summary action button is not Finish");
+
+  await page.click("[data-lwr-flashcard-action]");
+  const closed = await page.evaluate(() => ({
+    overlayGone: !document.getElementById("learned-word-replacer-flashcards-overlay"),
+    strongRows: [...document.querySelectorAll("[data-lwr-flashcards-row]")].filter(
+      (row) => !row.textContent.includes("New")
+    ).length
+  }));
+  assert(closed.overlayGone, "Finish did not close the session overlay");
+  assert(
+    closed.strongRows === 3,
+    `practiced words should show strength on the dashboard: ${closed.strongRows}`
+  );
+
+  await page.close();
+}
+
+async function testDuolingoFlashcardsTypoToleranceAndRetry(browser) {
+  const page = await browser.newPage();
+  await page.route("https://www.duolingo.com/practice-hub/words", (route) =>
+    route.fulfill({ contentType: "text/html; charset=utf-8", body: flashcardsWordsPageBody() })
+  );
+  await page.goto("https://www.duolingo.com/practice-hub/words");
+  await installHarness(page, {
+    state: createState([
+      {
+        id: "t1",
+        source: "twenty-three",
+        target: "двадцять три",
+        definition: "Duolingo meanings: twenty-three",
+        origin: "duolingo",
+        enabled: true,
+        createdAt: 1
+      },
+      {
+        id: "t2",
+        source: "cafe",
+        target: "кафе",
+        definition: "Duolingo meanings: a cafe",
+        origin: "duolingo",
+        enabled: true,
+        createdAt: 2
+      },
+      {
+        id: "t3",
+        source: "tea",
+        target: "чай",
+        definition: "Duolingo meanings: tea",
+        origin: "duolingo",
+        enabled: true,
+        createdAt: 3
+      }
+    ]),
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => text
+    }
+  });
+
+  await page.waitForSelector("#learned-word-replacer-duolingo-words-tabs");
+  await page.click("button[data-lwr-words-tab='flashcards']");
+  await page.click("[data-lwr-flashcards-direction='en2tg']");
+  await page.click("[data-lwr-flashcards-session-start]");
+  await page.waitForSelector("#learned-word-replacer-flashcards-overlay");
+
+  // Per prompt: the attempts to type, what each should produce, and the word
+  // key the final grade must be stored under. Cards are dealt in random
+  // order, so drive each card by whatever prompt shows up.
+  const plans = {
+    "twenty-three": {
+      key: "en2tg:двадцять три",
+      attempts: [{ value: "двадцять-три", outcome: "typo" }],
+      answer: "двадцять три"
+    },
+    cafe: {
+      key: "en2tg:кафе",
+      attempts: [
+        // Two characters off — recognizably the word, so it earns the
+        // second chance instead of grading wrong outright.
+        { value: "кава", outcome: "retry" },
+        { value: "кафи", outcome: "typo" }
+      ],
+      answer: "кафе"
+    },
+    tea: {
+      key: "en2tg:чай",
+      attempts: [
+        // Distance 1, but too short for typo forgiveness — чаї is a
+        // different word form, so this must burn the second chance instead.
+        { value: "чаї", outcome: "retry" },
+        { value: "чай", outcome: "correct" }
+      ],
+      answer: "чай"
+    }
+  };
+
+  for (let cardIndex = 0; cardIndex < 3; cardIndex += 1) {
+    const prompt = await page.evaluate(
+      () => document.querySelector("[data-lwr-flashcard-prompt]").textContent
+    );
+    const plan = plans[prompt];
+    assert(plan, `unexpected prompt: ${prompt}`);
+
+    for (const attempt of plan.attempts) {
+      await page.fill("[data-lwr-flashcard-input]", attempt.value);
+      await page.click("[data-lwr-flashcard-action]");
+      const graded = await page.evaluate((key) => {
+        const write = (window.__storageWrites || [])
+          .map((items) => items.learnedWordReplacerFlashcards)
+          .filter(Boolean)
+          .at(-1);
+        return {
+          feedback: document.querySelector("[data-lwr-flashcard-feedback]").textContent,
+          inputDisabled: document.querySelector("[data-lwr-flashcard-input]").disabled,
+          record: write ? write.languages.uk.cards[key] : undefined
+        };
+      }, plan.key);
+
+      if (attempt.outcome === "retry") {
+        assert(
+          graded.feedback.includes("one more try"),
+          `expected a second chance for "${attempt.value}": ${graded.feedback}`
+        );
+        assert(!graded.inputDisabled, "input locked during the second chance");
+        assert(!graded.record, "stats were written before the card was finally graded");
+      } else {
+        const expectedTitle = attempt.outcome === "typo" ? "You have a typo" : "Nice!";
+        assert(
+          graded.feedback.includes(expectedTitle) && graded.feedback.includes(plan.answer),
+          `expected "${expectedTitle}" with the correction for "${attempt.value}": ${graded.feedback}`
+        );
+        assert(graded.inputDisabled, "input stayed live after the final grade");
+        assert(
+          graded.record && graded.record.attempts === 1 && graded.record.correct === 1,
+          `typo/correct answers should store one correct attempt: ${JSON.stringify(graded.record)}`
+        );
+      }
+    }
+    await page.click("[data-lwr-flashcard-action]");
+  }
+
+  const summary = await page.evaluate(() => ({
+    title: document.querySelector("[data-lwr-flashcard-summary]")?.textContent,
+    score: document.querySelector("[data-lwr-flashcard-main]").textContent
+  }));
+  assert(summary.title === "Session complete!", "typo session did not reach the summary");
+  assert(
+    summary.score.includes("3 / 3 correct on the first try"),
+    `typo-forgiven answers should all count as correct: ${summary.score}`
+  );
+
+  await page.close();
+}
+
+async function testDuolingoFlashcardsProgressExportImport(browser) {
+  const page = await browser.newPage();
+  await page.route("https://www.duolingo.com/practice-hub/words", (route) =>
+    route.fulfill({ contentType: "text/html; charset=utf-8", body: flashcardsWordsPageBody() })
+  );
+  await page.goto("https://www.duolingo.com/practice-hub/words");
+  await installHarness(page, {
+    state: createState(flashcardsTestEntries()),
+    flashcards: {
+      version: 1,
+      languages: {
+        uk: {
+          cards: {
+            "en2tg:кафе": {
+              attempts: 4,
+              correct: 4,
+              streak: 4,
+              avgMs: 2000,
+              lastAt: 1000,
+              lastCorrect: true
+            },
+            "en2tg:чай": {
+              attempts: 2,
+              correct: 0,
+              streak: 0,
+              avgMs: 0,
+              lastAt: 500,
+              lastCorrect: false
+            }
+          }
+        }
+      }
+    },
+    translator: {
+      availability: async () => "available",
+      translate: async (text) => text
+    }
+  });
+
+  await page.waitForSelector("#learned-word-replacer-duolingo-words-tabs");
+  await page.click("button[data-lwr-words-tab='flashcards']");
+
+  // Seeded stats drive the dashboard: weakest first, then unpracticed last.
+  const dashboard = await page.evaluate(() =>
+    [...document.querySelectorAll("[data-lwr-flashcards-row]")].map((row) =>
+      row.getAttribute("data-lwr-flashcards-row")
+    )
+  );
+  assert(
+    dashboard.join(",") === "чай,кафе,хліб",
+    `dashboard is not sorted weakest-first with new words last: ${dashboard.join(",")}`
+  );
+
+  // Export: capture the blob instead of letting the browser download it.
+  const exported = await page.evaluate(async () => {
+    let capturedBlob = null;
+    const originalCreate = URL.createObjectURL;
+    URL.createObjectURL = (blob) => {
+      capturedBlob = blob;
+      return "blob:capture";
+    };
+    document.querySelector("[data-lwr-flashcards-export]").click();
+    URL.createObjectURL = originalCreate;
+    return {
+      payload: capturedBlob ? JSON.parse(await capturedBlob.text()) : null,
+      status: document.querySelector("[data-lwr-flashcards-status]").textContent
+    };
+  });
+  assert(exported.payload, "export did not produce a file blob");
+  assert(
+    exported.payload.type === "sly-fox-flashcards" &&
+      Object.keys(exported.payload.languages.uk.cards).sort().join(",") ===
+        "en2tg:кафе,en2tg:чай",
+    `export payload lost records: ${JSON.stringify(exported.payload)}`
+  );
+  assert(
+    exported.status.includes("Downloaded progress for 2 cards"),
+    `wrong export status: ${exported.status}`
+  );
+
+  // Import from "another browser": newer records win, older ones are ignored,
+  // unknown words come along for the ride.
+  const importedFile = {
+    type: "sly-fox-flashcards",
+    version: 1,
+    languages: {
+      uk: {
+        cards: {
+          "en2tg:кафе": {
+            attempts: 9,
+            correct: 1,
+            streak: 0,
+            avgMs: 9000,
+            lastAt: 1,
+            lastCorrect: false
+          },
+          "en2tg:чай": {
+            attempts: 5,
+            correct: 5,
+            streak: 5,
+            avgMs: 1500,
+            lastAt: 999999,
+            lastCorrect: true
+          },
+          "en2tg:хліб": {
+            attempts: 3,
+            correct: 2,
+            streak: 2,
+            avgMs: 2500,
+            lastAt: 700,
+            lastCorrect: true
+          }
+        }
+      }
+    }
+  };
+  await page.setInputFiles("[data-lwr-flashcards-file]", {
+    name: "sly-fox-flashcards-progress.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(importedFile))
+  });
+  await page.waitForFunction(() =>
+    document
+      .querySelector("[data-lwr-flashcards-status]")
+      .textContent.includes("Imported 3 card records")
+  );
+
+  const merged = await page.evaluate(() => ({
+    status: document.querySelector("[data-lwr-flashcards-status]").textContent,
+    cards: (window.__storageWrites || [])
+      .map((items) => items.learnedWordReplacerFlashcards)
+      .filter(Boolean)
+      .at(-1).languages.uk.cards
+  }));
+  assert(
+    merged.status.includes("2 newer than this browser's"),
+    `wrong import status: ${merged.status}`
+  );
+  assert(
+    merged.cards["en2tg:кафе"].attempts === 4 && merged.cards["en2tg:кафе"].correct === 4,
+    "older imported record overwrote the local one"
+  );
+  assert(
+    merged.cards["en2tg:чай"].attempts === 5 && merged.cards["en2tg:чай"].correct === 5,
+    "newer imported record did not replace the local one"
+  );
+  assert(
+    merged.cards["en2tg:хліб"].attempts === 3,
+    "imported record for a new word was dropped"
+  );
+
+  // After the merge: кафе and чай are Strong, хліб is Good. Deselecting
+  // categories narrows what a session draws from; deselecting everything a
+  // word could come from blocks the start with a clear message.
+  await page.click("button[data-lwr-flashcards-bucket='Strong']");
+  await page.click("button[data-lwr-flashcards-bucket='Good']");
+  await page.click("[data-lwr-flashcards-direction='en2tg']");
+  await page.click("[data-lwr-flashcards-session-start]");
+  const blocked = await page.evaluate(() => ({
+    overlayOpen: Boolean(document.getElementById("learned-word-replacer-flashcards-overlay")),
+    status: document.querySelector("[data-lwr-flashcards-status]").textContent,
+    strongPressed: document
+      .querySelector("button[data-lwr-flashcards-bucket='Strong']")
+      .getAttribute("aria-pressed")
+  }));
+  assert(!blocked.overlayOpen, "session started with every eligible category deselected");
+  assert(
+    blocked.status.includes("No words in the selected categories"),
+    `missing empty-category message: ${blocked.status}`
+  );
+  assert(blocked.strongPressed === "false", "deselected bucket chip still reads as pressed");
+
+  await page.click("button[data-lwr-flashcards-bucket='Good']");
+  await page.click("[data-lwr-flashcards-session-start]");
+  await page.waitForSelector("#learned-word-replacer-flashcards-overlay");
+  const narrowed = await page.evaluate(() => ({
+    prompt: document.querySelector("[data-lwr-flashcard-prompt]").textContent
+  }));
+  assert(
+    narrowed.prompt === "bread",
+    `session should only draw from the Good bucket (хліб): ${narrowed.prompt}`
+  );
+  await page.fill("[data-lwr-flashcard-input]", "хліб");
+  await page.click("[data-lwr-flashcard-action]");
+  await page.click("[data-lwr-flashcard-action]");
+  const bucketSummary = await page.evaluate(() => ({
+    title: document.querySelector("[data-lwr-flashcard-summary]")?.textContent,
+    score: document.querySelector("[data-lwr-flashcard-main]").textContent
+  }));
+  assert(
+    bucketSummary.title === "Session complete!" &&
+      bucketSummary.score.includes("1 / 1 correct on the first try"),
+    `single-bucket session did not complete cleanly: ${bucketSummary.score}`
+  );
+  await page.click("[data-lwr-flashcard-action]");
 
   await page.close();
 }
@@ -4789,6 +5688,11 @@ function testToolbarOpensPopup() {
     await testHoverTranslatesEnglishWord(browser);
     await testReplacementHoverShowsThreeDuolingoMeanings(browser);
     await testEnglishHoverShowsVocabularyAlternates(browser);
+    await testReplacementsUseDuolingoHintUnderline(browser);
+    await testTargetLanguageBlocksAreNotRewritten(browser);
+    await testTargetWordHoverShowsVocabularyMeanings(browser);
+    await testTargetWordHoverFallsBackToReverseTranslation(browser);
+    await testHoverIgnoresEmptySpaceAndAnchorsToWord(browser);
     await testHoverSettingsCanBeDisabled(browser);
     await testProfileLanguageIsInferredFromImportedTargets(browser);
     await testEnglishHintAlignmentAvoidsDeletionProbe(browser);
@@ -4821,6 +5725,9 @@ function testToolbarOpensPopup() {
     await testDuolingoWordsPageImportButton(browser);
     await testDuolingoWordsPageShowsPerWordEntryChips(browser);
     await testDuolingoWordsPageManualTabManagesManualWords(browser);
+    await testDuolingoFlashcardsSessionTracksTypedRecall(browser);
+    await testDuolingoFlashcardsTypoToleranceAndRetry(browser);
+    await testDuolingoFlashcardsProgressExportImport(browser);
     await testDuolingoSettingsPageShowsExtensionPanel(browser);
     await testDuolingoMobileSettingsMenuGetsCardItemAndFullPagePanel(browser);
     await testDuolingoLogoBadgeShowsExtensionIsActive(browser);
