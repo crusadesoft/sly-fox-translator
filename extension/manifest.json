@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Sly Fox Translator",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Replace only the words and phrases you have learned so far on every webpage.",
   "permissions": ["storage", "scripting", "tabs", "offscreen"],
   "host_permissions": ["<all_urls>"],
@@ -41,6 +41,12 @@
       "run_at": "document_start",
       "all_frames": true,
       "world": "MAIN"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["page-cloak.js"],
+      "run_at": "document_start",
+      "all_frames": true
     },
     {
       "matches": ["<all_urls>"],

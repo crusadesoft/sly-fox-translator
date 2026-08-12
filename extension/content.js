@@ -8,6 +8,17 @@
   const BACK_TRANSLATION_MATCH_KIND = "back-translation";
   const UNLEARNED_MATCH_KIND = "unlearned";
   const STRUCTURED_BLOCK_CLASS = "learned-word-replacer-structured";
+  const INLINE_STRUCTURED_CLASS = "learned-word-replacer-inline";
+  // Content that cannot survive a block being rebuilt from its own text: it
+  // carries something other than words (an image, a control, a media element),
+  // so a block holding any of it is left to per-word replacement instead.
+  // Still-image content (an avatar, an icon) is carried across untouched, so it
+  // does not make a block unsafe. What does is content that cannot be moved
+  // without losing something: a control loses its listeners, a video restarts,
+  // a canvas or iframe comes back blank.
+  // Plain HTML text wrappers, safe to copy: they have no state of their own
+  // beyond their attributes. Anything else in a block — a framework element —
+  // is left where it stands instead.
   const STRUCTURE_SAFE_INLINE_TAGS = new Set([
     "A",
     "ABBR",
@@ -20,6 +31,7 @@
     "DFN",
     "EM",
     "I",
+    "IMG",
     "INS",
     "MARK",
     "Q",
@@ -32,6 +44,22 @@
     "TIME",
     "U",
     "WBR"
+  ]);
+
+  const STRUCTURE_UNSAFE_TAGS = new Set([
+    "AUDIO",
+    "BUTTON",
+    "CANVAS",
+    "EMBED",
+    "FORM",
+    "IFRAME",
+    "INPUT",
+    "MATH",
+    "OBJECT",
+    "SELECT",
+    "TABLE",
+    "TEXTAREA",
+    "VIDEO"
   ]);
   const STYLE_ID = "learned-word-replacer-style";
   const SOURCE_LANGUAGE = "en";
@@ -147,9 +175,9 @@
     "select",
     "option",
     "button",
-    "nav",
-    "aside",
-    "footer",
+    // Sidebars, navigation and footers are read like body text: a table of
+    // contents or a sidebar is real reading material for a learner. Their
+    // text is still deprioritized within a pass by isCommonPageChromeText.
     "pre",
     "code",
     "kbd",
@@ -158,12 +186,13 @@
     "math",
     "[hidden]",
     "[aria-hidden='true']",
-    "[role='navigation']",
-    "[role='complementary']",
-    "[role='contentinfo']",
     "[contenteditable]",
     "[data-lwr-ui]",
     `[class~='${REPLACEMENT_CLASS}']`,
+    // Words already rewritten in place are not source text: an ancestor block
+    // that read them back would translate the translation, and rebuild itself
+    // around a copy of the link they sit in.
+    `[class~='${INLINE_STRUCTURED_CLASS}']`,
     `[class~='${REVERSE_HOVER_TOOLTIP_CLASS}']`
   ].join(",");
 
@@ -171,12 +200,18 @@
     version: 3,
     enabled: true,
     showHighlights: true,
+    fullTranslation: false,
     structureMode: true,
+    targetLanguagePages: true,
+    hideTextUntilTranslated: true,
     showProcessedSections: true,
     showOriginalOnHover: true,
     translateEnglishOnHover: true,
     duolingoAutoContinue: true,
     duolingoTypeAnswers: true,
+    duolingoCopyPhrase: true,
+    duolingoLowercaseBank: true,
+    duolingoDecoyWords: true,
     wholeWords: true,
     caseSensitive: false,
     preserveCase: true,
@@ -195,6 +230,9 @@
 
   let state = DEFAULT_STATE;
   let compiledEntries = [];
+  // Vocabulary is stable between recompiles, so each entry's target is split
+  // into words once instead of on every sentence.
+  const candidateTokenValueCache = new Map();
   let observer = null;
   let pendingTimer = null;
   let applying = false;
@@ -221,6 +259,7 @@
   let reverseHoverKey = "";
   let reverseHoverAnchorRect = null;
   let reverseHoverTranslatorKey = "";
+  let reverseTranslatorAvailability = "";
   let reverseHoverTranslatorPromise = null;
   const reverseHoverTranslationCache = new Map();
 
@@ -585,8 +624,9 @@
 
   // Text that is already written in the target language must never enter the
   // English→target pipeline: the translator mangles it and alignment then
-  // "replaces" words that were never English. Detectable whenever the target
-  // language uses a non-Latin script.
+  // "replaces" words that were never English. Those blocks go through the
+  // mirrored target→English pass instead (see processReverseUnits).
+  // Detectable whenever the target language uses a non-Latin script.
   const TARGET_LANGUAGE_SCRIPT_PATTERNS = {
     el: /[Ͱ-Ͽἀ-῿]/gu,
     uk: /[Ѐ-ӿ]/gu
@@ -635,6 +675,7 @@
   }
 
   function compileEntries() {
+    candidateTokenValueCache.clear();
     compiledEntries = getCurrentEntries()
       .filter((entry) => state.enabled && entry.enabled)
       .map((entry) => {
@@ -650,6 +691,7 @@
       .sort(
         (a, b) => getLongestTargetLength(b) - getLongestTargetLength(a) || a.createdAt - b.createdAt
       );
+
   }
 
   function getLongestTargetLength(entry) {
@@ -1011,13 +1053,39 @@
     // document root: page stacking contexts (e.g. Wikipedia's page container)
     // and overflow-clipping ancestors would trap or cut off a CSS ::after.
     const originalHoverStyle = "";
+    // A small dot hanging in the left margin marks a block that was checked
+    // and left unchanged. It floats out of the text flow by its own width, so
+    // nothing on the page shifts, and it takes its colour from the block's own
+    // text so it sits quietly on any page, light or dark.
     const processedBlockStyle = state.showProcessedSections
       ? `
-      .${PROCESSED_BLOCK_CLASS} {
-        box-shadow: inset 3px 0 0 rgba(37, 99, 235, 0.62) !important;
+      .${PROCESSED_BLOCK_CLASS}::before {
+        background: currentColor;
+        border-radius: 50%;
+        content: "";
+        float: left;
+        height: 0.32em;
+        margin-left: -0.95em;
+        margin-top: 0.55em;
+        opacity: 0.35;
+        pointer-events: none;
+        user-select: none;
+        -webkit-user-select: none;
+        width: 0.32em;
       }
     `
       : "";
+    // Blocks waiting on their translation keep their layout but show nothing,
+    // so the untranslated wording is never readable and each block appears
+    // once it is finished.
+    const pendingBlockStyle = `
+      [${PENDING_HIDE_ATTRIBUTE}],
+      [${PENDING_HIDE_ATTRIBUTE}] * {
+        color: transparent !important;
+        -webkit-text-fill-color: transparent !important;
+        text-shadow: none !important;
+      }
+    `;
 
     if (!state.translateEnglishOnHover) {
       clearReverseHover();
@@ -1049,13 +1117,13 @@
           background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='2' viewBox='0 0 6 2'%3E%3Crect fill='%231cb0f6' width='3' height='2' x='0' y='0'/%3E%3C/svg%3E");
         }
 
-      ` + processedBlockStyle + originalHoverStyle + reverseHoverTooltipStyle
+      ` + processedBlockStyle + pendingBlockStyle + originalHoverStyle + reverseHoverTooltipStyle
         : `
         .${REPLACEMENT_CLASS} {
           cursor: inherit;
           position: relative;
         }
-      ` + processedBlockStyle + originalHoverStyle + reverseHoverTooltipStyle);
+      ` + processedBlockStyle + pendingBlockStyle + originalHoverStyle + reverseHoverTooltipStyle);
   }
 
   function removeStyle() {
@@ -1098,6 +1166,33 @@
 
   function isApostrophe(char) {
     return char === "'" || char === "\u2019" || char === "\u02bc";
+  }
+
+  function isCyrillic(char) {
+    return Boolean(char && /\p{Script=Cyrillic}/u.test(char));
+  }
+
+  function isWordInternalApostrophe(text, index) {
+    return (
+      isApostrophe(text[index]) &&
+      isWordCharacter(text[index - 1]) &&
+      isWordCharacter(text[index + 1])
+    );
+  }
+
+  // Ukrainian glues compounds together with a hyphen (\u0431\u0443\u0434\u044c-\u044f\u043a\u0438\u0439, \u043f\u043e-\u043f\u0435\u0440\u0448\u0435,
+  // \u0432\u0441\u0435-\u0442\u0430\u043a\u0438), so neither half is a word on its own. Latin script uses the
+  // hyphen as a genuine boundary ("mid-1890s", "well-known"), so keying off the
+  // neighbouring script leaves English splitting as it always has, without
+  // threading a language code through every matcher.
+  function isCyrillicCompoundHyphen(text, index) {
+    return (
+      text[index] === "-" &&
+      isWordCharacter(text[index - 1]) &&
+      isWordCharacter(text[index + 1]) &&
+      isCyrillic(text[index - 1]) &&
+      isCyrillic(text[index + 1])
+    );
   }
 
   function installReverseHoverTranslation() {
@@ -1268,7 +1363,7 @@
       }
 
       if (!rows.length) {
-        const translator = await getReverseHoverTranslator(targetLanguage);
+        const translator = await getReverseTranslator(targetLanguage);
         if (translator) {
           const translated = String(await translator.translate(word)).trim();
           if (translated && translated.toLocaleLowerCase() !== word.toLocaleLowerCase()) {
@@ -1289,10 +1384,11 @@
     }
   }
 
-  // The target→English translator is created lazily for hover only, and only
-  // when the language pack is already installed — a hover must never start a
-  // model download.
-  function getReverseHoverTranslator(targetLanguage) {
+  // The target→English translator, shared by hover and the target-language
+  // page pass. It is created lazily and only when the language pack is already
+  // installed — neither a hover nor a page pass may start a model download;
+  // a failed create arms the next trusted click instead.
+  function getReverseTranslator(targetLanguage) {
     const key = `${targetLanguage}:${SOURCE_LANGUAGE}`;
     if (reverseHoverTranslatorPromise && reverseHoverTranslatorKey === key) {
       return reverseHoverTranslatorPromise;
@@ -1309,6 +1405,10 @@
         translatorApi.availability(options),
         TRANSLATOR_AVAILABILITY_TIMEOUT_MS
       );
+      // Remembered so the page pass can say WHY it did nothing: "unavailable"
+      // means Chrome is not serving this pair at all (no click will help),
+      // which is a different problem from a pack that needs one gesture.
+      reverseTranslatorAvailability = String(availability || "");
       if (availability === "unavailable") {
         return null;
       }
@@ -1540,6 +1640,21 @@
 
   function showReplacementOriginalTooltip(span) {
     const original = span.dataset.learnedWordOriginal;
+    const visibleText = String(span.textContent || "").trim();
+
+    // On target-language pages a learned word is shown exactly as the page
+    // wrote it, so there is no original to reveal — answer with its English
+    // side instead, like hovering an untouched target-language word.
+    if (
+      getCurrentLanguageCode() &&
+      String(original || "").trim() === visibleText &&
+      isTextAlreadyInTargetLanguage(visibleText)
+    ) {
+      reverseHoverAnchorRect = span.getBoundingClientRect();
+      handleTargetWordHover(visibleText, getCurrentLanguageCode());
+      return;
+    }
+
     const key = `original\u0000${original}\u0000${span.dataset.learnedWordTarget || ""}`;
 
     if (key === reverseHoverKey) {
@@ -1634,13 +1749,19 @@
     return parts;
   }
 
+  const REPLACEMENT_RANGE_KINDS = new Set([
+    WORD_FAMILY_MATCH_KIND,
+    BACK_TRANSLATION_MATCH_KIND,
+    UNLEARNED_MATCH_KIND
+  ]);
+
   function mergeReplacementRanges(ranges) {
     const normalizedRanges = [...ranges]
       .map((range) => ({
         start: Math.max(0, Number(range.start) || 0),
         end: Math.max(0, Number(range.end) || 0),
         target: String(range.target || "").trim(),
-        kind: range.kind === WORD_FAMILY_MATCH_KIND ? WORD_FAMILY_MATCH_KIND : "exact"
+        kind: REPLACEMENT_RANGE_KINDS.has(range.kind) ? range.kind : "exact"
       }))
       .filter((range) => range.start < range.end && range.target)
       .sort((a, b) => a.start - b.start || b.end - a.end);
@@ -1657,46 +1778,296 @@
     return merged.sort((a, b) => a.start - b.start || b.end - a.end);
   }
 
-  function createReplacementFragment(parts) {
-    const fragment = document.createDocumentFragment();
+  // Elements holding no words of their own — an avatar, an icon, a badge image
+  // — are not part of any sentence, so rebuilding a block would simply drop
+  // them. They are copied back instead, before or after the words depending on
+  // which side of the text they sat on.
+  function getTextlessChildren(element) {
+    const before = [];
+    const after = [];
+    let seenText = false;
 
-    for (const part of parts) {
-      if (part.type === "text") {
-        fragment.appendChild(document.createTextNode(part.value));
+    for (const child of element.childNodes) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        seenText = seenText || Boolean(child.nodeValue.trim());
         continue;
       }
 
-      const span = document.createElement("span");
-      span.className = REPLACEMENT_CLASS;
-      span.dataset.learnedWordOriginal = part.original;
-      span.dataset.learnedWordSource = part.source;
-      span.dataset.learnedWordTarget = part.target;
-      span.dataset.learnedWordMatchKind = part.kind || "exact";
-      span.textContent = part.value;
-      fragment.appendChild(span);
+      if (child.nodeType !== Node.ELEMENT_NODE) {
+        continue;
+      }
+
+      if (child.textContent.trim()) {
+        seenText = true;
+        continue;
+      }
+
+      (seenText ? after : before).push(child);
     }
 
+    return { before, after };
+  }
+
+  function appendTextlessChildren(container, elements) {
+    for (const element of elements) {
+      container.appendChild(element.cloneNode(true));
+    }
+  }
+
+  function createReplacementFragment(parts, block = null) {
+    const fragment = document.createDocumentFragment();
+    const blockAtomics = block ? getTextlessChildren(block) : { before: [], after: [] };
+    appendTextlessChildren(fragment, blockAtomics.before);
+    // Each element is rebuilt once, held open from its first word to its last.
+    // Anything falling between — the punctuation the translator put there —
+    // lands inside it, which is what keeps a block-level link (a YouTube video
+    // title) from breaking apart and leaving commas on lines of their own.
+    const spans = getElementSpans(parts);
+    const open = [];
+
+    const closeTo = (depth) => {
+      while (open.length > depth) {
+        const entry = open.pop();
+        appendTextlessChildren(entry.clone, entry.atomics.after);
+      }
+    };
+
+    for (const [index, part] of parts.entries()) {
+      while (open.length && open[open.length - 1].last < index) {
+        closeTo(open.length - 1);
+      }
+
+      for (const element of part.chain || []) {
+        if (open.some((entry) => entry.element === element)) {
+          continue;
+        }
+
+        const span = spans.get(element);
+        if (!span) {
+          continue;
+        }
+
+        const clone = element.cloneNode(false);
+        const atomics = getTextlessChildren(element);
+        (open[open.length - 1]?.clone || fragment).appendChild(clone);
+        appendTextlessChildren(clone, atomics.before);
+        open.push({ element, clone, last: span.last, atomics });
+      }
+
+      appendReplacementPart(open[open.length - 1]?.clone || fragment, part);
+    }
+
+    closeTo(0);
+    appendTextlessChildren(fragment, blockAtomics.after);
     return fragment;
+  }
+
+  function getElementSpans(parts) {
+    const spans = new Map();
+
+    parts.forEach((part, index) => {
+      for (const element of part.chain || []) {
+        const span = spans.get(element);
+        if (span) {
+          span.last = index;
+        } else {
+          spans.set(element, { first: index, last: index });
+        }
+      }
+    });
+
+    return spans;
+  }
+
+  function appendReplacementPart(container, part) {
+    if (part.type === "text") {
+      container.appendChild(document.createTextNode(part.value));
+      return;
+    }
+
+    const span = document.createElement("span");
+    span.className = REPLACEMENT_CLASS;
+    span.dataset.learnedWordOriginal = part.original;
+    span.dataset.learnedWordSource = part.source;
+    span.dataset.learnedWordTarget = part.target;
+    span.dataset.learnedWordMatchKind = part.kind || "exact";
+    span.textContent = part.value;
+    container.appendChild(span);
   }
 
   function replaceTextNodeWithParts(textNode, parts) {
     textNode.replaceWith(createReplacementFragment(parts));
   }
 
+  // While a block waits for its translation its text is hidden, so the reader
+  // never reads the pre-translation wording and each block simply appears once
+  // it is done. Nothing is animated and no text is rewritten: the block carries
+  // an attribute that a stylesheet rule paints transparent, so there is no way
+  // for a failure to corrupt the page's words. A deadline still clears the
+  // attribute, so a block can never stay invisible.
+  const MAX_PENDING_HIDE_MS = 8000;
+  const PENDING_HIDE_ATTRIBUTE = "data-lwr-pending";
+  const PENDING_HIDE_SWEEP_MS = 500;
+  const hiddenPendingBlocks = new Map();
+  // A block is hidden at most once per page session. Re-collection is
+  // legitimate (a pass can run out of budget, a translation can come back
+  // empty, the page can rewrite a block), but text the reader has already
+  // watched appear must never blink out again.
+  let hiddenOnceBlocks = new WeakSet();
+  let pendingHideTimer = null;
+
+  // page-cloak.js hid the page's text at document_start. It lifts itself after
+  // its own timeout no matter what, so these helpers are best-effort: the page
+  // is never left unreadable because content.js failed to call them.
+  const CLOAK_STYLE_ID = "learned-word-replacer-cloak-style";
+  const UNCLOAK_KEY = "__learnedWordReplacerUncloak";
+  const HOLD_CLOAK_KEY = "__learnedWordReplacerHoldCloak";
+
+  // "I exist" — the cloak waits on content.js turning up at document_idle,
+  // which on a heavy page is seconds after it hid the text.
+  function holdCloak() {
+    const hold = globalThis[HOLD_CLOAK_KEY];
+    if (typeof hold === "function") {
+      hold();
+    }
+  }
+
+  // The cloak IS its stylesheet, so both of these work off the shared DOM
+  // rather than trusting a global to have survived.
+  function isPageCloaked() {
+    return Boolean(document.getElementById(CLOAK_STYLE_ID));
+  }
+
+  function uncloakPage() {
+    const uncloak = globalThis[UNCLOAK_KEY];
+    if (typeof uncloak === "function") {
+      uncloak();
+      return;
+    }
+
+    document.getElementById(CLOAK_STYLE_ID)?.remove();
+  }
+
+  function shouldHideTextUntilTranslated() {
+    return Boolean(state.hideTextUntilTranslated);
+  }
+
+  function beginPendingHide(units) {
+    if (!shouldHideTextUntilTranslated()) {
+      return;
+    }
+
+    const deadline = Date.now() + MAX_PENDING_HIDE_MS;
+    for (const unit of units) {
+      const block = unit.block;
+      if (
+        !block ||
+        block.nodeType !== Node.ELEMENT_NODE ||
+        !block.isConnected ||
+        hiddenOnceBlocks.has(block) ||
+        hiddenPendingBlocks.has(block)
+      ) {
+        continue;
+      }
+
+      hiddenOnceBlocks.add(block);
+      hiddenPendingBlocks.set(block, deadline);
+      block.setAttribute(PENDING_HIDE_ATTRIBUTE, "");
+    }
+
+    if (hiddenPendingBlocks.size && !pendingHideTimer) {
+      pendingHideTimer = setInterval(sweepPendingHides, PENDING_HIDE_SWEEP_MS);
+    }
+  }
+
+  // Called once a unit has been painted (or given up on): its block is done
+  // waiting and can show whatever it now says.
+  function endPendingHide(unit) {
+    revealPendingBlock(unit?.block);
+
+    if (!hiddenPendingBlocks.size) {
+      stopPendingHideTimer();
+    }
+  }
+
+  function endAllPendingHides() {
+    for (const block of Array.from(hiddenPendingBlocks.keys())) {
+      revealPendingBlock(block);
+    }
+
+    stopPendingHideTimer();
+  }
+
+  function revealPendingBlock(block) {
+    if (!block || !hiddenPendingBlocks.has(block)) {
+      return;
+    }
+
+    hiddenPendingBlocks.delete(block);
+    block.removeAttribute(PENDING_HIDE_ATTRIBUTE);
+  }
+
+  // The safety net: a pass that dies without reaching its blocks must not
+  // leave them invisible.
+  function sweepPendingHides() {
+    const now = Date.now();
+
+    for (const [block, deadline] of Array.from(hiddenPendingBlocks.entries())) {
+      if (!block.isConnected || now > deadline) {
+        revealPendingBlock(block);
+      }
+    }
+
+    if (!hiddenPendingBlocks.size) {
+      stopPendingHideTimer();
+    }
+  }
+
+  function stopPendingHideTimer() {
+    if (pendingHideTimer) {
+      clearInterval(pendingHideTimer);
+      pendingHideTimer = null;
+    }
+  }
+
   async function processContextRoot(root, runId, options = {}) {
     const targetLanguage = getCurrentLanguageCode();
-    const units = options.roots
+    const collectedUnits = options.roots
       ? collectContextUnitsFromRoots(options.roots)
       : collectContextUnits(root);
     updateRuntimeStats({
       targetLanguage,
-      unitsCollected: units.length
+      unitsCollected: collectedUnits.length
     });
 
-    if (!units.length) {
+    if (!collectedUnits.length) {
       return;
     }
 
+    // Hiding text is strictly a first-paint concern. While the page is still
+    // cloaked the reader has seen nothing yet, so this pass's blocks take over
+    // the hide individually and the page is handed back — the untranslated
+    // wording is never on screen. Once the reader has the page, later passes
+    // (scrolling into new text) must never blank anything out: text vanishing
+    // from under someone who is reading is worse than watching it swap.
+    if (isPageCloaked()) {
+      beginPendingHide(collectedUnits);
+      uncloakPage();
+    }
+
+    const units = collectedUnits.filter((unit) => !unit.reverse);
+    const reverseUnits = collectedUnits.filter((unit) => unit.reverse);
+
+    if (units.length) {
+      await processForwardUnits(units, targetLanguage, runId, options);
+    }
+
+    if (reverseUnits.length && runId === applyRunId) {
+      await processReverseUnits(reverseUnits, targetLanguage, runId);
+    }
+  }
+
+  async function processForwardUnits(units, targetLanguage, runId, options = {}) {
     const translator = await getContextTranslator(targetLanguage, options);
 
     if (!translator || runId !== applyRunId) {
@@ -1708,7 +2079,6 @@
       status: "translating",
       targetLanguage
     });
-
     // Each block is its own unit, so a finished unit's text nodes are never
     // touched again by later units and its replacements can be painted right
     // away instead of holding the whole pass invisible until the last block.
@@ -1735,14 +2105,25 @@
         }
 
         const unit = units[index];
+        // Everything below reads or rewrites this block's text, so it has to
+        // stop churning first.
+        endPendingHide(unit);
         updateRuntimeStats({ unitsProcessed: runtimeStats.unitsProcessed + 1 });
 
         const translatedText = translatedTexts[index];
         if (!translatedText) {
+          // Nothing usable came back for this block. Remember it anyway: an
+          // unrecorded block is collected again by every later pass, which on
+          // a long page means the same untouched text churns on every scroll.
+          recordProcessedUnit(unit);
+          markCheckedBlock(unit.block);
           continue;
         }
 
-        if (state.structureMode && isSafeToRestructureBlock(unit.block, unit.text)) {
+        if (
+          (state.fullTranslation || state.structureMode) &&
+          isSafeToRestructureBlock(unit.block, unit.text)
+        ) {
           const structured = await applyStructuredUnit(unit, translatedText, targetLanguage, runId);
           if (structured === STRUCTURED_UNIT_HALTED) {
             halted = true;
@@ -1751,6 +2132,7 @@
 
           if (structured === STRUCTURED_UNIT_APPLIED) {
             recordProcessedUnit(unit);
+            markCheckedBlock(unit.block);
             if (index % 4 === 3) {
               await yieldToBrowser();
             }
@@ -1774,8 +2156,9 @@
           return;
         }
 
-        recordProcessedUnit(unit);
         applyNodeReplacements(replacementsByNode);
+        recordProcessedUnit(unit);
+        markCheckedBlock(unit.block);
 
         if (index % 4 === 3) {
           await yieldToBrowser();
@@ -1795,6 +2178,219 @@
     await processTranslatedUnits(translatedTexts, units.length);
   }
 
+  // The mirror of the English→target pass, for pages that are already written
+  // in the target language. The page's own sentence stays as the frame — no
+  // machine-written target text is ever painted in — and every word the
+  // learner has not studied is swapped to its aligned English, so the target
+  // language's structure can be read directly with broken English as the
+  // scaffold instead of the other way round.
+  async function processReverseUnits(units, targetLanguage, runId) {
+    const translator = await getReverseTranslator(targetLanguage);
+
+    if (runId !== applyRunId) {
+      return;
+    }
+
+    if (!translator) {
+      // Say WHY nothing happened. "unavailable" is Chrome refusing the pair
+      // outright — usually its on-device translator service needs a browser
+      // restart — and no amount of clicking will change that. Anything else
+      // armed the next trusted click, which refreshes the page.
+      const unavailable = reverseTranslatorAvailability === "unavailable";
+      updateRuntimeStats({
+        unitsSkipped: runtimeStats.unitsSkipped + units.length,
+        status: runtimeStats.replacementCount
+          ? runtimeStats.status
+          : unavailable
+            ? "translator-unavailable"
+            : "translator-not-ready",
+        lastError: unavailable
+          ? `Chrome Translator is not available for ${targetLanguage} to English. Restarting Chrome usually restores it.`
+          : `Chrome needs one click on this page to prepare Translator for ${targetLanguage} to English.`
+      });
+      return;
+    }
+
+    const replacementsByNode = new Map();
+    updateRuntimeStats({
+      status: "translating",
+      targetLanguage
+    });
+
+    let nextUnitIndex = 0;
+    let halted = false;
+
+    const processTranslatedUnits = async (englishTexts, limit) => {
+      while (nextUnitIndex < limit && !halted) {
+        const index = nextUnitIndex;
+        nextUnitIndex += 1;
+
+        if (runId !== applyRunId) {
+          halted = true;
+          return;
+        }
+
+        if (runtimeStats.translationCalls >= getMaxTranslationCallsPerPass()) {
+          updateRuntimeStats({
+            unitsSkipped: runtimeStats.unitsSkipped + units.length - index,
+            lastError: "Translation budget reached for this pass."
+          });
+          halted = true;
+          return;
+        }
+
+        const unit = units[index];
+        // Everything below reads or rewrites this block's text, so it has to
+        // stop churning first.
+        endPendingHide(unit);
+        updateRuntimeStats({ unitsProcessed: runtimeStats.unitsProcessed + 1 });
+
+        const englishText = englishTexts[index];
+        if (!englishText) {
+          recordProcessedUnit(unit);
+          markCheckedBlock(unit.block);
+          continue;
+        }
+
+        const completed = await addReverseRangesFromTranslation(
+          unit,
+          englishText,
+          replacementsByNode,
+          targetLanguage,
+          runId
+        );
+        if (!completed) {
+          halted = true;
+          return;
+        }
+
+        applyNodeReplacements(replacementsByNode);
+        recordProcessedUnit(unit);
+        markCheckedBlock(unit.block);
+
+        if (index % 4 === 3) {
+          await yieldToBrowser();
+        }
+      }
+    };
+
+    // The cache is namespaced by the language the text is translated INTO, so
+    // English keys can never collide with the forward direction's target-language
+    // ones for the same string.
+    const englishTexts = await translateContextTexts(
+      translator,
+      SOURCE_LANGUAGE,
+      units.map((unit) => unit.text),
+      { onBatchTranslated: processTranslatedUnits }
+    );
+
+    await processTranslatedUnits(englishTexts, units.length);
+  }
+
+  async function addReverseRangesFromTranslation(
+    unit,
+    englishText,
+    replacementsByNode,
+    targetLanguage,
+    runId
+  ) {
+    const englishSentences = splitTranslatedSentences(englishText);
+    // Punctuation can change during translation; without a 1:1 sentence match
+    // the whole unit is aligned as a single pair rather than risking English
+    // from one sentence landing in another.
+    const pairs =
+      englishSentences.length === unit.sentenceRanges.length
+        ? unit.sentenceRanges.map((range, index) => ({
+            range,
+            english: englishSentences[index]
+          }))
+        : [{ range: { start: 0, end: unit.text.length }, english: englishText }];
+
+    for (const pair of pairs) {
+      const targetSentence = unit.text.slice(pair.range.start, pair.range.end);
+      if (!targetSentence.trim() || !String(pair.english || "").trim()) {
+        continue;
+      }
+
+      const whitelistMatches = await findWhitelistMatchesInText(
+        targetSentence,
+        targetLanguage,
+        pair.english
+      );
+      const alignmentPairs = await requestWordAlignment(pair.english, targetSentence);
+      if (runId !== applyRunId) {
+        return false;
+      }
+
+      const ranges = buildReverseReplacementRanges(
+        targetSentence,
+        pair.english,
+        whitelistMatches,
+        alignmentPairs
+      );
+      if (ranges.length) {
+        addConfirmedSentenceReplacements(unit, pair.range, ranges, replacementsByNode);
+      }
+    }
+
+    return true;
+  }
+
+  // Ranges over the page's own target-language sentence: learned words keep
+  // their text (wrapped so they stay highlighted and hoverable), and every
+  // other aligned word is replaced by its English. Words the aligner could not
+  // resolve are left untouched — hovering them still answers with English.
+  function buildReverseReplacementRanges(
+    targetSentence,
+    englishSentence,
+    whitelistMatches,
+    alignmentPairs
+  ) {
+    const knownRanges = getMergedKnownRanges(whitelistMatches);
+    const strongPairs = alignmentPairs.filter((pair) => !pair.weak);
+    const usedEnglishSpans = createUsedEnglishSpans();
+    const ranges = [];
+
+    for (const token of getReplaceableSourceTokens(targetSentence)) {
+      const known = knownRanges.find(
+        (range) => range.start <= token.start && token.start < range.end
+      );
+      if (known) {
+        // The learned word is left standing in the target language, and the
+        // reader already reads its English off it. Claim that English so the
+        // next word cannot say it a second time.
+        claimEnglishForKnownRange(strongPairs, englishSentence, known, usedEnglishSpans);
+        ranges.push({
+          start: known.start,
+          end: known.end,
+          target: targetSentence.slice(known.start, known.end),
+          kind: known.kind
+        });
+        continue;
+      }
+
+      const english = collectAlignedEnglish(
+        strongPairs,
+        englishSentence,
+        token.start,
+        token.end,
+        usedEnglishSpans
+      );
+      if (!english) {
+        continue;
+      }
+
+      ranges.push({
+        start: token.start,
+        end: token.end,
+        target: adaptEnglishScaffoldCase(english, token.value, englishSentence),
+        kind: BACK_TRANSLATION_MATCH_KIND
+      });
+    }
+
+    return mergeReplacementRanges(ranges);
+  }
+
   function applyNodeReplacements(replacementsByNode) {
     for (const [node, ranges] of replacementsByNode.entries()) {
       if (!node.isConnected || shouldIgnoreTextNode(node)) {
@@ -1805,7 +2401,15 @@
       if (parts) {
         const replacementParts = parts.filter((part) => part.type === "replacement");
         updateRuntimeStats({
-          replacementCount: runtimeStats.replacementCount + replacementParts.length,
+          // Scaffold words (the English painted into target-language pages) are
+          // not learned-word replacements, and countExistingReplacements skips
+          // them too, so the two counts stay in step across passes.
+          replacementCount:
+            runtimeStats.replacementCount +
+            replacementParts.filter(
+              (part) =>
+                part.kind !== BACK_TRANSLATION_MATCH_KIND && part.kind !== UNLEARNED_MATCH_KIND
+            ).length,
           wordFamilyReplacementCount:
             runtimeStats.wordFamilyReplacementCount +
             replacementParts.filter((part) => part.kind === WORD_FAMILY_MATCH_KIND).length
@@ -1817,11 +2421,64 @@
     replacementsByNode.clear();
   }
 
+  // Records what the block looked like so later passes can skip it. The stored
+  // value has to come from getBlockSourceText, because that is what the next
+  // pass will compare against: a unit's own text covers only the text nodes
+  // that belong to THIS block, while getBlockSourceText walks the whole
+  // subtree, so a block wrapping nested blocks never matched its stored unit
+  // text and was re-collected — and re-hidden — on every single pass.
+  //
+  // Call after the block's replacements have been painted: getBlockSourceText
+  // reads originals back through the replacement spans.
   function recordProcessedUnit(unit) {
-    if (unit?.block && unit.block.nodeType === Node.ELEMENT_NODE && unit.text) {
-      processedBlockSourceTexts.set(unit.block, unit.text);
-      unit.block.classList.add(PROCESSED_BLOCK_CLASS);
+    const block = unit?.block;
+    if (block && block.nodeType === Node.ELEMENT_NODE && block.isConnected && unit.text) {
+      processedBlockSourceTexts.set(block, getBlockSourceText(block));
     }
+  }
+
+  // The checked mark only means "looked at this block and changed nothing" —
+  // blocks that did get replacements already announce themselves with the
+  // underline under each replaced word, so a second marker there is noise.
+  // Call this after the block's replacements have been painted.
+  function markCheckedBlock(block) {
+    if (!block || block.nodeType !== Node.ELEMENT_NODE || !block.isConnected) {
+      return;
+    }
+
+    if (blockShowsReplacementMarks(block) || !canMarkCheckedBlock(block)) {
+      block.classList.remove(PROCESSED_BLOCK_CLASS);
+      return;
+    }
+
+    block.classList.add(PROCESSED_BLOCK_CLASS);
+  }
+
+  // What counts is whether the reader can SEE that the block was touched.
+  // Back-translation scaffold — the English left standing in the target
+  // language's word order — is deliberately drawn without an underline, so a
+  // block holding nothing else (a rebuilt heading such as "Union Uzhhorod")
+  // looks exactly like untouched page text and still needs the fox.
+  function blockShowsReplacementMarks(block) {
+    if (!state.showHighlights) {
+      return false;
+    }
+
+    const scaffoldSelector = `[data-learned-word-match-kind="${BACK_TRANSLATION_MATCH_KIND}"]`;
+    if (block.classList.contains(REPLACEMENT_CLASS)) {
+      return block.dataset.learnedWordMatchKind !== BACK_TRANSLATION_MATCH_KIND;
+    }
+
+    return Boolean(block.querySelector(`.${REPLACEMENT_CLASS}:not(${scaffoldSelector})`));
+  }
+
+  // The mark hangs in the left margin as a floated ::before, so it only works
+  // on block-level boxes: an inline element has no margin for it to sit in,
+  // and a flex or grid container would turn it into a layout item of its own.
+  const CHECKED_BLOCK_DISPLAYS = new Set(["block", "list-item", "flow-root", "table-cell"]);
+
+  function canMarkCheckedBlock(block) {
+    return CHECKED_BLOCK_DISPLAYS.has(getComputedStyle(block).display);
   }
 
   // Structure mode may only rebuild pure prose. Blocks that carry UI markup
@@ -1834,13 +2491,34 @@
       return false;
     }
 
+    let hasForeignElement = false;
     for (const element of block.querySelectorAll("*")) {
+      if (element.classList.contains(REPLACEMENT_CLASS)) {
+        continue;
+      }
+
+      // Replaced and interactive content cannot survive a rebuild, and a nested
+      // block is a unit in its own right.
       if (
-        !STRUCTURE_SAFE_INLINE_TAGS.has(element.tagName) &&
-        !element.classList.contains(REPLACEMENT_CLASS)
+        STRUCTURE_UNSAFE_TAGS.has(element.tagName.toUpperCase()) ||
+        element.matches(NATURAL_BLOCK_SELECTOR)
       ) {
         return false;
       }
+
+      // Anything that is not a plain HTML text wrapper — a framework's own
+      // element — must not be copied. Cloning one makes a second instance that
+      // re-renders itself from properties the copy never had, which on YouTube
+      // emptied every sidebar entry of both its label and its avatar. Blocks
+      // holding one are still translated, but only through the path below that
+      // rewrites their text where it stands.
+      if (!STRUCTURE_SAFE_INLINE_TAGS.has(element.tagName)) {
+        hasForeignElement = true;
+      }
+    }
+
+    if (hasForeignElement && !getSoleTextNode(block, unitText)) {
+      return false;
     }
 
     const rendered = String(block.innerText || "")
@@ -1862,11 +2540,21 @@
   // Learned words stay in the target language; every other word is translated
   // back into English through the word aligner, so the sentence teaches the
   // target language's structure instead of only its vocabulary.
+  //
+  // Full-translation mode uses the same painter with the English scaffold
+  // turned off: every word stays in the target language and the aligner's
+  // English only rides along in the span, where hovering can reach it.
   async function applyStructuredUnit(unit, translatedText, targetLanguage, runId) {
+    const keepTargetLanguage = Boolean(state.fullTranslation);
     const block = unit.block;
     if (!block || block.nodeType !== Node.ELEMENT_NODE || !block.isConnected) {
       return STRUCTURED_UNIT_APPLIED;
     }
+
+    // One text node means the words can be rewritten where they stand, already
+    // inside whatever wraps them — so nothing is rebuilt and no element needs
+    // to be carried over.
+    const soleTextNode = getSoleTextNode(block, unit.text);
 
     const normalizedTranslation = normalizeStructuredTranslationPunctuation(
       translatedText,
@@ -1877,9 +2565,10 @@
       translatedSentences.length === unit.sentenceRanges.length
         ? unit.sentenceRanges.map((range, index) => ({
             source: unit.text.slice(range.start, range.end),
-            translated: translatedSentences[index]
+            translated: translatedSentences[index],
+            sourceOffset: range.start
           }))
-        : [{ source: unit.text, translated: normalizedTranslation }];
+        : [{ source: unit.text, translated: normalizedTranslation, sourceOffset: 0 }];
 
     const parts = [];
     for (const pair of sentencePairs) {
@@ -1893,9 +2582,11 @@
         return STRUCTURED_UNIT_HALTED;
       }
 
-      if (!alignmentPairs.length) {
+      if (!alignmentPairs.length && !keepTargetLanguage) {
         // Without alignment the rebuilt sentence would be unreadable, so keep
-        // the original English for this sentence.
+        // the original English for this sentence. Full translation does not
+        // need the aligner at all — it only borrows its English for hovering —
+        // so an unaligned sentence is still painted, just without hints.
         parts.push({ type: "text", value: pair.source });
         continue;
       }
@@ -1904,12 +2595,14 @@
         pair.source,
         pair.translated,
         matches,
-        alignmentPairs
+        alignmentPairs,
+        keepTargetLanguage
       );
       const faithful = await structuredSentencePartsAreFaithful(
         pair.source,
         sentenceParts,
-        targetLanguage
+        targetLanguage,
+        keepTargetLanguage
       );
       if (runId !== applyRunId) {
         return STRUCTURED_UNIT_HALTED;
@@ -1923,17 +2616,40 @@
         return STRUCTURED_UNIT_REJECTED;
       }
 
+      if (!soleTextNode) {
+        assignElementChains(sentenceParts, unit, pair.sourceOffset, pair.source.length);
+      }
       parts.push(...sentenceParts);
     }
 
     const replacementParts = parts.filter((part) => part.type === "replacement");
-    if (!replacementParts.length) {
+    // Structure mode has nothing to show without replacements. Full
+    // translation still does — an unaligned block is all plain target text —
+    // but flattening a block whose translation came back unchanged (a name, a
+    // number, "OK") would destroy its markup for nothing.
+    if (!replacementParts.length && !(keepTargetLanguage && paintedTextDiffers(parts, unit.text))) {
       return STRUCTURED_UNIT_APPLIED;
     }
 
-    captureStructuredBlockOriginal(block, unit.text);
-    block.replaceChildren(createReplacementFragment(parts));
-    block.classList.add(STRUCTURED_BLOCK_CLASS);
+    if (soleTextNode) {
+      // The words are rewritten where they stand. Everything around them — the
+      // link, the avatar, the framework's own elements and whatever state they
+      // hold — is never touched, so nothing can be lost by copying it.
+      const inline = document.createElement("span");
+      inline.className = INLINE_STRUCTURED_CLASS;
+      inline.dataset.lwrOriginalText = soleTextNode.nodeValue;
+      inline.appendChild(createReplacementFragment(parts));
+      soleTextNode.replaceWith(inline);
+      block.classList.add(STRUCTURED_BLOCK_CLASS);
+    } else {
+      // Build first: capturing the original moves the block's children out, and
+      // the rebuild reads them — the icons it carries across, and the elements
+      // it rebuilds the words under.
+      const rebuilt = createReplacementFragment(parts, block);
+      captureStructuredBlockOriginal(block, unit.text);
+      block.replaceChildren(rebuilt);
+      block.classList.add(STRUCTURED_BLOCK_CLASS);
+    }
     updateRuntimeStats({
       replacementCount:
         runtimeStats.replacementCount +
@@ -1965,14 +2681,24 @@
   // once came back containing the non-word "Боліва"). Only use the rebuilt
   // sentence when it keeps every distinctive source token and every
   // target-language word it shows is a real dictionary word.
-  async function structuredSentencePartsAreFaithful(sourceSentence, parts, targetLanguage) {
+  async function structuredSentencePartsAreFaithful(
+    sourceSentence,
+    parts,
+    targetLanguage,
+    keepTargetLanguage = false
+  ) {
     const visibleText = parts.map((part) => part.value).join(" ");
     const retainedText = `${visibleText} ${parts
       .filter((part) => part.type === "replacement")
       .map((part) => part.original || "")
       .join(" ")}`.toLocaleLowerCase();
 
-    for (const token of getDistinctiveSourceTokens(sourceSentence)) {
+    // A name legitimately leaves the sentence when everything is translated
+    // ("Augustine" becomes "Августин"), so full translation only insists on
+    // numbers surviving. The dictionary check below is what still catches a
+    // mangled proper-noun run, and it gets stricter here, not looser: every
+    // word on screen is target-language text now, so every word is vetted.
+    for (const token of getDistinctiveSourceTokens(sourceSentence, keepTargetLanguage)) {
       if (!retainedText.includes(token.toLocaleLowerCase())) {
         return false;
       }
@@ -1985,11 +2711,27 @@
     // Ukrainian words the learner has not studied are shown verbatim from the
     // translation, so vet those against the morphology dictionary. Learned
     // words (whitelist matches) are trusted as-is.
+    //
+    // A transliterated name is never in the dictionary — "Живіть з рабином
+    // Йосефом Мізрачі" is a perfectly good rendering of "Live with Rabbi Yosef
+    // Mizrachi" — so a word standing in for a capitalised English word is taken
+    // on trust. Words carrying ordinary lowercase English stay vetted, which is
+    // where invented words actually show up.
     const scaffoldWords = [];
     for (const part of parts) {
-      if (part.type === "text" || part.kind === UNLEARNED_MATCH_KIND) {
-        scaffoldWords.push(...getCyrillicValidationWords(part.value));
+      if (part.type !== "text" && part.kind !== UNLEARNED_MATCH_KIND) {
+        continue;
       }
+
+      // Only full translation takes names on trust. Structure mode paints an
+      // English scaffold around the target words it keeps, so a mangled
+      // proper-noun run there is exactly what the dictionary check is for and
+      // it stays strict.
+      if (keepTargetLanguage && part.type === "replacement" && standsInForAName(part.original)) {
+        continue;
+      }
+
+      scaffoldWords.push(...getCyrillicValidationWords(part.value));
     }
 
     if (!scaffoldWords.length) {
@@ -1997,15 +2739,33 @@
     }
 
     const lemmasByWord = await getUkrainianLemmas(scaffoldWords);
-    return scaffoldWords.every(
-      (word) => (lemmasByWord.get(normalizeUkrainianMorphologyWord(word)) || []).length > 0
+    const unknown = scaffoldWords.filter(
+      (word) => (lemmasByWord.get(normalizeUkrainianMorphologyWord(word)) || []).length === 0
     );
+
+    if (!keepTargetLanguage) {
+      return unknown.length === 0;
+    }
+
+    // Structure mode shows target words inside an English sentence, where one
+    // invented word is glaring, so nothing unknown is allowed there. A fully
+    // translated sentence is a different bargain: the dictionary does not list
+    // every compound the language forms — "відеокаталог" for "video catalogue"
+    // is ordinary Ukrainian — and throwing the sentence away over one word left
+    // whole paragraphs in English. What is still worth catching is a sentence
+    // the model made up wholesale, so this asks whether most of it is unknown.
+    return unknown.length < 3 || unknown.length / scaffoldWords.length < 0.4;
+  }
+
+  function standsInForAName(english) {
+    const words = String(english || "").match(/[\p{L}][\p{L}'’-]*/gu) || [];
+    return words.length > 0 && words.every((word) => /^\p{Lu}/u.test(word));
   }
 
   // Capitalized words (except the sentence opener) and numbers are the tokens
   // a translation must not lose; lowercase filler may legitimately disappear
   // into the target language's grammar.
-  function getDistinctiveSourceTokens(sourceSentence) {
+  function getDistinctiveSourceTokens(sourceSentence, numbersOnly = false) {
     const tokens = [];
     let isFirstWord = true;
 
@@ -2020,10 +2780,15 @@
           continue;
         }
 
-        if (/\p{N}/u.test(piece)) {
-          tokens.push(piece);
-        } else if (!wasFirstWord && /^\p{Lu}/u.test(piece)) {
-          tokens.push(piece);
+        // A possessive is re-expressed rather than carried over ("Augustine's"
+        // becomes the glossed "of-St Augustine"), so require the name itself
+        // and not the English case marker.
+        const bare = stripPossessiveMarker(piece) || piece;
+
+        if (/\p{N}/u.test(bare)) {
+          tokens.push(bare);
+        } else if (!numbersOnly && !wasFirstWord && /^\p{Lu}/u.test(bare)) {
+          tokens.push(bare);
         }
       }
     }
@@ -2039,12 +2804,221 @@
     return words.filter((word) => word.length >= 3);
   }
 
-  function buildStructuredSentenceParts(sourceSentence, translatedSentence, whitelistMatches, alignmentPairs) {
+  // "it's" is "it is", not a possessive, and the aligner does link contractions.
+  const POSSESSIVE_LOOKALIKES = new Set([
+    "it's",
+    "that's",
+    "he's",
+    "she's",
+    "what's",
+    "there's",
+    "here's",
+    "who's",
+    "let's"
+  ]);
+
+  function stripPossessiveMarker(value) {
+    const text = String(value || "");
+    if (POSSESSIVE_LOOKALIKES.has(text.toLocaleLowerCase())) {
+      return null;
+    }
+
+    const match = /^(.+?)(?:['’ʼ]s|['’ʼ])$/u.exec(text);
+    return match && /\p{L}$/u.test(match[1]) ? match[1] : null;
+  }
+
+  // English marks possession with "'s" ahead of the noun; Ukrainian marks it
+  // with the genitive case behind it. Reusing the English span verbatim strands
+  // the possessive in Ukrainian order — "texts St Augustine's" — which reads as
+  // a mistake rather than as Ukrainian structure. Glossing it as a prefixed
+  // "of-" says what the case ending is doing: "texts of-St Augustine". The
+  // hyphen marks that no separate Ukrainian word answers to "of"; the case
+  // ending carries it alone, so it is not given a slot of its own.
+  function applyGenitiveGlossToPlan(plan, sourceSentence) {
+    plan.forEach((item, index) => {
+      const possessor = item.english ? stripPossessiveMarker(item.english) : null;
+      if (!possessor) {
+        return;
+      }
+
+      item.english = possessor;
+
+      // A possessor can run to several words ("St Augustine's"), and "of-"
+      // belongs on the first of them — where English would have opened the
+      // phrase. Neighbours only join it if the English source really does have
+      // them side by side, so unrelated adjacent words are never swept in.
+      let start = index;
+      let phrase = possessor;
+
+      while (start > 0) {
+        const previous = plan[start - 1];
+        if (!previous.english) {
+          break;
+        }
+
+        const extended = `${previous.english} ${phrase}`;
+        if (!sourceSentence.includes(extended)) {
+          break;
+        }
+
+        phrase = extended;
+        start -= 1;
+      }
+
+      plan[start].genitivePrefix = "of-";
+    });
+  }
+
+  function mergeSourceRanges(ranges) {
+    if (!ranges || !ranges.length) {
+      return null;
+    }
+
+    return {
+      start: Math.min(...ranges.map((range) => range.start)),
+      end: Math.max(...ranges.map((range) => range.end))
+    };
+  }
+
+  // Repainting a block rebuilds its children, which used to drop the elements
+  // inside it: a nav item's <a> became bare text, so the link stopped working
+  // and any CSS written for `li a` stopped applying. Every element between the
+  // block and its text is carried over, whatever its tag — pages keep their
+  // text in custom elements as often as in <em> these days — so each word is
+  // rebuilt under the same chain of elements it came from.
+  function getSourceElementChain(unit, sourceStart) {
+    const nodeRange = (unit.nodeRanges || []).find(
+      (range) => range.start <= sourceStart && sourceStart < range.end
+    );
+    if (!nodeRange) {
+      return [];
+    }
+
+    const chain = [];
+    let element = nodeRange.node.parentElement;
+    while (element && element !== unit.block && unit.block.contains(element)) {
+      chain.unshift(element);
+      element = element.parentElement;
+    }
+
+    return chain;
+  }
+
+  function getElementSourceRanges(unit) {
+    const byElement = new Map();
+
+    for (const range of unit.nodeRanges || []) {
+      let element = range.node.parentElement;
+      while (element && element !== unit.block && unit.block.contains(element)) {
+        const existing = byElement.get(element);
+        if (existing) {
+          existing.start = Math.min(existing.start, range.start);
+          existing.end = Math.max(existing.end, range.end);
+        } else {
+          byElement.set(element, { start: range.start, end: range.end });
+        }
+        element = element.parentElement;
+      }
+    }
+
+    return byElement;
+  }
+
+  function assignElementChains(parts, unit, sourceOffset, sourceLength) {
+    for (const part of parts) {
+      if (part.type !== "replacement" || !part.sourceRange) {
+        continue;
+      }
+
+      part.chain = getSourceElementChain(unit, part.sourceRange.start + sourceOffset);
+    }
+
+    // Punctuation at either end of the sentence has no English of its own for
+    // the aligner to place, so it is decided by how far the element reaches: an
+    // element wrapping the whole sentence keeps that sentence's own full stop
+    // inside it. Left outside a block-level link, a full stop becomes its own
+    // line.
+    const first = parts.findIndex((part) => part.chain?.length);
+    if (first < 0) {
+      return;
+    }
+
+    const last = parts.findLastIndex((part) => part.chain?.length);
+    const ranges = getElementSourceRanges(unit);
+    // An element's ancestors always reach at least as far as it does, so
+    // filtering a chain this way still leaves a chain.
+    const leading = parts[first].chain.filter(
+      (element) => (ranges.get(element)?.start ?? Infinity) <= sourceOffset
+    );
+    const trailing = parts[last].chain.filter(
+      (element) => (ranges.get(element)?.end ?? -1) >= sourceOffset + sourceLength
+    );
+
+    for (const part of parts.slice(0, first)) {
+      if (part.type === "text") {
+        part.chain = leading;
+      }
+    }
+
+    for (const part of parts.slice(last + 1)) {
+      if (part.type === "text") {
+        part.chain = trailing;
+      }
+    }
+  }
+
+  // Most blocks worth translating hold all their words in one text node: a
+  // heading, a nav item, a video title, a channel name. Those can be rewritten
+  // where they stand — the node is already inside whatever elements wrap it, so
+  // nothing has to be copied and nothing around the words is disturbed.
+  function getSoleTextNode(block, unitText) {
+    const nodes = [];
+    for (const node of collectTextNodes(block)) {
+      if (node.nodeValue && node.nodeValue.trim()) {
+        nodes.push(node);
+        if (nodes.length > 1) {
+          return null;
+        }
+      }
+    }
+
+    if (nodes.length !== 1) {
+      return null;
+    }
+
+    // The one node has to be the whole unit, or the words painted into it would
+    // not be the words the translation was made from.
+    const normalize = (value) =>
+      String(value || "")
+        .replace(/\s+/gu, " ")
+        .trim();
+    return normalize(nodes[0].nodeValue) === normalize(unitText) ? nodes[0] : null;
+  }
+
+  function paintedTextDiffers(parts, sourceText) {
+    const painted = parts
+      .map((part) => part.value)
+      .join("")
+      .replace(/\s+/gu, " ")
+      .trim();
+    const source = String(sourceText || "")
+      .replace(/\s+/gu, " ")
+      .trim();
+    return Boolean(painted) && painted !== source;
+  }
+
+  function buildStructuredSentenceParts(
+    sourceSentence,
+    translatedSentence,
+    whitelistMatches,
+    alignmentPairs,
+    keepTargetLanguage = false
+  ) {
     const knownRanges = getMergedKnownRanges(whitelistMatches);
     const tokens = getReplaceableSourceTokens(translatedSentence);
     const strongPairs = alignmentPairs.filter((pair) => !pair.weak);
     const weakPairs = alignmentPairs.filter((pair) => pair.weak);
-    const usedEnglishKeys = new Set();
+    const usedEnglishSpans = createUsedEnglishSpans();
 
     // Assign confident English first, in sentence order.
     const plan = tokens.map((token) => {
@@ -2052,17 +3026,26 @@
         (range) => range.start <= token.start && token.start < range.end
       );
       if (known) {
+        // The learned word stays in Ukrainian and the reader takes its English
+        // straight off it, so claim that English here. Otherwise the next word
+        // repeats it: "Я радий" ("I glad") came out as "Я I'm glad".
+        claimEnglishForKnownRange(strongPairs, sourceSentence, known, usedEnglishSpans);
         return { token, known };
       }
 
+      // Where in the English this word came from, so a link or an <em> around
+      // that English can be rebuilt around the word that replaced it.
+      const sourceRanges = [];
       return {
         token,
+        sourceRanges,
         english: collectAlignedEnglish(
           strongPairs,
           sourceSentence,
           token.start,
           token.end,
-          usedEnglishKeys
+          usedEnglishSpans,
+          sourceRanges
         )
       };
     });
@@ -2092,9 +3075,12 @@
         }
 
         item.guess = value;
+        item.sourceRanges = [{ start: candidate.srcStart, end: candidate.srcEnd }];
         break;
       }
     }
+
+    applyGenitiveGlossToPlan(plan, sourceSentence);
 
     const parts = [];
     let cursor = 0;
@@ -2116,39 +3102,59 @@
       if (item.known) {
         const known = item.known;
         const value = translatedSentence.slice(known.start, known.end);
+        const knownRanges = [];
         const english =
-          collectAlignedEnglish(strongPairs, sourceSentence, known.start, known.end, null) ||
-          String(known.source || "");
+          collectAlignedEnglish(
+            strongPairs,
+            sourceSentence,
+            known.start,
+            known.end,
+            null,
+            knownRanges
+          ) || String(known.source || "");
         parts.push({
           type: "replacement",
           value,
           original: english,
           source: english,
           target: value,
-          kind: known.kind
+          kind: known.kind,
+          sourceRange: mergeSourceRanges(knownRanges)
         });
         cursor = known.end;
         continue;
       }
 
-      if (item.english) {
-        const value = adaptTargetCaseToSource(item.english, token.value);
+      if (item.english && !keepTargetLanguage) {
+        // The prefix goes on after case adaptation so the gloss marker stays
+        // lowercase even when the Ukrainian word it fronts is capitalised.
+        const value = `${item.genitivePrefix || ""}${adaptEnglishScaffoldCase(
+          item.english,
+          token.value,
+          sourceSentence
+        )}`;
         parts.push({
           type: "replacement",
           value,
           original: token.value,
           source: token.value,
           target: value,
-          kind: BACK_TRANSLATION_MATCH_KIND
+          kind: BACK_TRANSLATION_MATCH_KIND,
+          sourceRange: mergeSourceRanges(item.sourceRanges)
         });
-      } else if (item.guess) {
+      } else if (item.english || item.guess) {
+        // Full translation lands here for every unlearned word: confident
+        // English and best-guess English are both demoted to hover text, so
+        // nothing English is painted into the sentence.
+        const english = item.english || item.guess;
         parts.push({
           type: "replacement",
           value: token.value,
-          original: item.guess,
-          source: item.guess,
+          original: english,
+          source: english,
           target: token.value,
-          kind: UNLEARNED_MATCH_KIND
+          kind: UNLEARNED_MATCH_KIND,
+          sourceRange: mergeSourceRanges(item.sourceRanges)
         });
       } else {
         pushText(token.value);
@@ -2181,16 +3187,43 @@
     return merged;
   }
 
-  function collectAlignedEnglish(alignmentPairs, sourceSentence, tgtStart, tgtEnd, usedKeys) {
+  // Once a word has taken a piece of the English sentence, no other word may
+  // take it again — and overlap is what counts, not an identical span, because
+  // the aligner will happily link "I", "I'm" and "I'm glad" as three different
+  // spans over the same pronoun.
+  function createUsedEnglishSpans() {
+    const spans = [];
+
+    return {
+      claims(pair) {
+        return spans.some((span) => pair.srcStart < span.end && span.start < pair.srcEnd);
+      },
+      claim(pair) {
+        spans.push({ start: pair.srcStart, end: pair.srcEnd });
+      }
+    };
+  }
+
+  function claimEnglishForKnownRange(alignmentPairs, sourceSentence, known, usedSpans) {
+    collectAlignedEnglish(alignmentPairs, sourceSentence, known.start, known.end, usedSpans);
+  }
+
+  function collectAlignedEnglish(
+    alignmentPairs,
+    sourceSentence,
+    tgtStart,
+    tgtEnd,
+    usedSpans,
+    claimedRanges = null
+  ) {
     const words = [];
-    const seen = new Set();
+    const takenHere = createUsedEnglishSpans();
     const linked = alignmentPairs
       .filter((pair) => pair.tgtStart < tgtEnd && tgtStart < pair.tgtEnd)
       .sort((a, b) => a.srcStart - b.srcStart);
 
     for (const pair of linked) {
-      const key = `${pair.srcStart}:${pair.srcEnd}`;
-      if (seen.has(key) || (usedKeys && usedKeys.has(key))) {
+      if (takenHere.claims(pair) || usedSpans?.claims(pair)) {
         continue;
       }
 
@@ -2199,10 +3232,9 @@
         continue;
       }
 
-      seen.add(key);
-      if (usedKeys) {
-        usedKeys.add(key);
-      }
+      takenHere.claim(pair);
+      usedSpans?.claim(pair);
+      claimedRanges?.push({ start: pair.srcStart, end: pair.srcEnd });
       words.push(value);
     }
 
@@ -2456,12 +3488,19 @@
     }
 
     const message = event.data;
+    const targetLanguage = getCurrentLanguageCode();
+    const isForward =
+      message?.sourceLanguage === SOURCE_LANGUAGE && message?.targetLanguage === targetLanguage;
+    // Target-language pages arm the opposite direction, and its activation has
+    // to refresh the page just the same.
+    const isReverse =
+      message?.sourceLanguage === targetLanguage && message?.targetLanguage === SOURCE_LANGUAGE;
     if (
       !message ||
       message.source !== MESSAGE_SOURCE ||
       message.channel !== TRANSLATOR_BRIDGE_ACTIVATION_CHANNEL ||
-      message.sourceLanguage !== SOURCE_LANGUAGE ||
-      message.targetLanguage !== getCurrentLanguageCode()
+      !targetLanguage ||
+      (!isForward && !isReverse)
     ) {
       return;
     }
@@ -2470,11 +3509,15 @@
       return;
     }
 
+    const direction = isReverse
+      ? `${message.sourceLanguage} to English`
+      : `English to ${message.targetLanguage}`;
+
     if (message.progress) {
       updateRuntimeStats({
         status: "translator-preparing",
         translatorDownloadProgress: Number(message.loaded || 0),
-        lastError: `Chrome is preparing Translator for English to ${message.targetLanguage}.`
+        lastError: `Chrome is preparing Translator for ${direction}.`
       });
       return;
     }
@@ -2483,8 +3526,21 @@
       updateRuntimeStats({
         status: "translator-not-ready",
         lastError:
-          message.error?.message ||
-          `Chrome still needs page activation for English to ${message.targetLanguage}.`
+          message.error?.message || `Chrome still needs page activation for ${direction}.`
+      });
+      return;
+    }
+
+    if (isReverse) {
+      // A failed reverse create is never cached, so the refreshed pass picks
+      // the now-ready translator up on its own.
+      reverseHoverTranslatorPromise = null;
+      reverseHoverTranslatorKey = "";
+      applyToPage({ preserveExisting: true }).catch((error) => {
+        updateRuntimeStats({
+          status: "translator-error",
+          lastError: error && error.message ? error.message : "Translator activation refresh failed."
+        });
       });
       return;
     }
@@ -2741,9 +3797,29 @@
     return collectContextUnitsFromRoots([root]);
   }
 
-  function collectContextUnitsFromRoots(roots) {
+  // Which blocks still have work in them, ignoring the per-pass cap. Queueing
+  // is not the place to apply the budget — the pass applies its own when it
+  // runs, and a capped queue made a continuing pass believe the page was done.
+  function collectPendingContextBlocks(root) {
+    return Array.from(
+      new Set(collectContextUnitsFromRoots([root], { unlimited: true }).map((unit) => unit.block))
+    );
+  }
+
+  function collectContextUnitsFromRoots(roots, { unlimited = false } = {}) {
     const groups = new Map();
     const seenBlocks = new Set();
+
+    // A block that still holds replacement spans reads back without the words
+    // they replaced — collecting it unrestored fed the translator gaps ("It is
+    // in the  now.") and then recorded that gap-ridden text as the block's
+    // source, which shut the block out of every later pass. Whichever queue a
+    // block arrived through, put changed ones back to their own words first.
+    for (const root of roots) {
+      if (root && root.isConnected) {
+        restoreChangedProcessedBlocks(root);
+      }
+    }
 
     for (const root of roots) {
       if (!root || !root.isConnected) {
@@ -2773,19 +3849,37 @@
     }
 
     let collectionOrder = 0;
-    return Array.from(groups.entries())
+    const eligible = Array.from(groups.entries())
       .flatMap(([block, nodes]) =>
         createContextUnitsForNodes(nodes, block).map((unit) => ({
           ...unit,
           collectionOrder: collectionOrder++
         }))
       )
-      .filter((unit) => !isTextAlreadyInTargetLanguage(unit.text))
+      // Blocks already written in the target language are kept, but marked for
+      // the mirrored target→English pass instead of the English→target one.
+      .map((unit) =>
+        isTextAlreadyInTargetLanguage(unit.text) ? { ...unit, reverse: true } : unit
+      )
+      // Full translation is the opposite instruction to the reverse pass — the
+      // whole page belongs in the target language — so it wins and no English
+      // is swapped back in, on pages the extension translated or pages that
+      // arrived in the target language already.
+      .filter((unit) => !unit.reverse || (state.targetLanguagePages && !state.fullTranslation))
       .sort(
         (a, b) =>
           getContextUnitPriority(b) - getContextUnitPriority(a) ||
           a.collectionOrder - b.collectionOrder
-      )
+      );
+
+    if (unlimited) {
+      return eligible.sort((a, b) => a.collectionOrder - b.collectionOrder);
+    }
+
+    // A pass takes the highest-priority slice and drops the rest. The rest is
+    // not stranded: a pass that finished work looks again when it ends, which
+    // is what keeps a page longer than one pass from stopping partway down.
+    return eligible
       .slice(0, getMaxContextUnitsPerPass())
       .sort((a, b) => a.collectionOrder - b.collectionOrder);
   }
@@ -2819,6 +3913,13 @@
       }
 
       if (node.nodeType !== Node.ELEMENT_NODE) {
+        return;
+      }
+
+      // Words rewritten in place keep the text they replaced, so the block
+      // still reads back as its own source and is not collected again.
+      if (node !== block && node.dataset && node.dataset.lwrOriginalText) {
+        text += node.dataset.lwrOriginalText;
         return;
       }
 
@@ -2988,7 +4089,14 @@
     const rects = Array.from(block.getClientRects());
 
     if (!rects.length) {
-      return true;
+      // No box of its own is not the same as not being shown — `display:
+      // contents` renders its text through its children — but genuinely hidden
+      // text must be left alone. Collecting it burned the block: it was
+      // translated while invisible, nothing could be painted into a box that
+      // does not exist, and it was recorded as done, so revealing it later
+      // showed English forever. YouTube's whole subscription list sits behind
+      // a "Show more" expander like that.
+      return typeof block.checkVisibility === "function" ? block.checkVisibility() : true;
     }
 
     return rects.some((rect) => {
@@ -3194,27 +4302,36 @@
       ...match,
       alignmentId: index
     }));
-    const confidence = getConfidenceAlignedSentenceReplacements(
+    const alignmentPairs = (await requestWordAlignment(sourceSentence, translatedText)).filter(
+      (pair) => !pair.weak
+    );
+
+    if (runId !== applyRunId) {
+      return [];
+    }
+
+    const credibleMatches = rejectMatchesContradictedByAlignment(
       sourceSentence,
       indexedMatches,
+      alignmentPairs
+    );
+    const confidence = getConfidenceAlignedSentenceReplacements(
+      sourceSentence,
+      credibleMatches,
       alignmentOptions
     );
     let replacements = confidence.replacements;
-    let unresolvedMatches = indexedMatches.filter(
+    let unresolvedMatches = credibleMatches.filter(
       (match) => !confidence.resolvedMatchIds.has(match.alignmentId)
     );
 
     if (unresolvedMatches.length) {
-      const neural = await getNeuralAlignedSentenceReplacements(
+      const neural = getNeuralAlignedSentenceReplacements(
         sourceSentence,
-        translatedText,
+        alignmentPairs,
         unresolvedMatches,
         replacements
       );
-
-      if (runId !== applyRunId) {
-        return [];
-      }
 
       if (neural.replacements.length) {
         replacements = mergeReplacementRanges([...replacements, ...neural.replacements]);
@@ -3240,17 +4357,15 @@
     return mergeReplacementRanges([...replacements, ...deletionReplacements]);
   }
 
-  async function getNeuralAlignedSentenceReplacements(
+  function getNeuralAlignedSentenceReplacements(
     sourceSentence,
-    translatedText,
+    pairs,
     whitelistMatches,
     existingReplacements
   ) {
     const resolvedMatchIds = new Set();
     const replacements = [];
-    const pairs = (await requestWordAlignment(sourceSentence, translatedText)).filter(
-      (pair) => !pair.weak
-    );
+
     if (!pairs.length) {
       return { replacements, resolvedMatchIds };
     }
@@ -3312,6 +4427,64 @@
     }
 
     return { replacements, resolvedMatchIds };
+  }
+
+  // An entry's English hint appearing somewhere in the sentence is not proof
+  // that the target word found in the translation is that hint's counterpart.
+  // "Крім того" means "Additionally", but the lemma matcher sees "того" as a
+  // form of "той" (that), and the sentence happened to contain "that" further
+  // along — so "that" was overwritten with a word that, here, means nothing of
+  // the sort. The aligner already knows "того" came from "Additionally", so when
+  // it has a firm opinion and the hint disagrees with it, the hint is a
+  // coincidence and the word is not being used in the sense the learner knows.
+  //
+  // Dropping the match is deliberate: placing it where the aligner points would
+  // teach "того" = "Additionally", which is just as wrong. A missed highlight
+  // costs the learner far less than a confidently wrong one.
+  function rejectMatchesContradictedByAlignment(sourceSentence, matches, pairs) {
+    if (!pairs.length) {
+      return matches;
+    }
+
+    return matches.filter((match) => {
+      // No hint in this sentence means there is nothing to contradict; those
+      // matches are exactly what the neural pass exists to place.
+      const hintCandidates = findSourceAlignmentCandidates(sourceSentence, match.entry);
+      if (!hintCandidates.length) {
+        return true;
+      }
+
+      const matchStart = match.index;
+      const matchEnd = match.index + match.target.length;
+      const alignedPairs = pairs.filter(
+        (pair) =>
+          pair.tgtStart < matchEnd &&
+          matchStart < pair.tgtEnd &&
+          isReplaceableNeuralSourceSpan(sourceSentence.slice(pair.srcStart, pair.srcEnd))
+      );
+      if (!alignedPairs.length) {
+        return true;
+      }
+
+      const agrees = alignedPairs.some((pair) =>
+        hintCandidates.some((candidate) =>
+          rangesOverlap(
+            { start: candidate.start, end: candidate.end },
+            { start: pair.srcStart, end: pair.srcEnd }
+          )
+        )
+      );
+
+      if (!agrees) {
+        debugLog("align-contradiction", {
+          target: match.target,
+          hints: hintCandidates.map((candidate) => candidate.value),
+          aligned: alignedPairs.map((pair) => sourceSentence.slice(pair.srcStart, pair.srcEnd))
+        });
+      }
+
+      return agrees;
+    });
   }
 
   function isReplaceableNeuralSourceSpan(text) {
@@ -3435,7 +4608,7 @@
 
       let index = haystack.indexOf(needle);
       while (index >= 0) {
-        if (passesTargetBoundaryCheck(sourceSentence, index, variant.length)) {
+        if (passesEnglishBoundaryCheck(sourceSentence, index, variant.length)) {
           matches.push({
             start: index,
             end: index + variant.length,
@@ -3477,6 +4650,37 @@
     }
 
     return variants;
+  }
+
+  // Scaffold English takes its case from the Ukrainian word it stands in for,
+  // which is right for a capital the sentence merely forced, and wrong for one
+  // the word carries itself. English capitalises "I" wherever it stands, and
+  // capitalises languages, months and weekdays where Ukrainian does not, so
+  // matching a lowercase Ukrainian token produced "i'm", "monday", "ukrainian".
+  // A word already seen mid-sentence in the source never got its capital from
+  // position, so its capital is its own.
+  const ALWAYS_CAPITAL_ENGLISH = /^I(['’ʼ](m|ve|ll|d))?$/u;
+
+  function hasIntrinsicEnglishCapital(english, sourceSentence) {
+    const firstWord = String(english || "").split(/\s+/u)[0] || "";
+
+    if (ALWAYS_CAPITAL_ENGLISH.test(firstWord)) {
+      return true;
+    }
+
+    if (!/^\p{Lu}/u.test(firstWord)) {
+      return false;
+    }
+
+    return String(sourceSentence || "").indexOf(english) > 0;
+  }
+
+  function adaptEnglishScaffoldCase(english, targetToken, sourceSentence) {
+    if (hasIntrinsicEnglishCapital(english, sourceSentence)) {
+      return english;
+    }
+
+    return adaptTargetCaseToSource(english, targetToken);
   }
 
   function adaptTargetCaseToSource(target, sourceValue) {
@@ -3673,11 +4877,10 @@
           continue;
         }
 
-        if (
-          isApostrophe(char) &&
-          isWordCharacter(text[index - 1]) &&
-          isWordCharacter(text[index + 1])
-        ) {
+        // An apostrophe between two letters is word-internal in every language
+        // here: English contractions ("don't"), French elision ("l'homme") and
+        // Ukrainian's hard separator ("православ'я") are all single words.
+        if (isWordInternalApostrophe(text, index) || isCyrillicCompoundHyphen(text, index)) {
           index += 1;
           continue;
         }
@@ -3770,16 +4973,18 @@
   }
 
   async function findWhitelistMatchesInText(translatedText, targetLanguage, sourceText = "") {
+    // Both matchers read the same sentence, so it is tokenized once and they
+    // share the result. Everything below works on whole tokens: an entry can
+    // only ever claim complete words, never a slice of one.
+    const tokenIndex = buildSentenceTokenIndex(translatedText);
     const exactMatches = compiledEntries.flatMap((entry) =>
-      findTargetCandidateMatches(translatedText, entry).map((match) => ({
+      findTargetCandidateMatches(tokenIndex, entry).map((match) => ({
         ...match,
         entry
       }))
     );
     const wordFamilyMatches =
-      targetLanguage === "uk"
-        ? await findUkrainianWordFamilyMatchesInText(translatedText)
-        : [];
+      targetLanguage === "uk" ? await findUkrainianWordFamilyMatchesInText(tokenIndex) : [];
 
     // Several entries can claim the same translated word (ambiguous Ukrainian
     // forms share lemmas, e.g. "їх" is a form of both "вони" and "їхати").
@@ -3811,14 +5016,14 @@
     return findSourceAlignmentCandidates(sourceText, entry).length > 0;
   }
 
-  function findTargetCandidateMatches(translatedText, entry) {
+  function findTargetCandidateMatches(tokenIndex, entry) {
     return entry.targetCandidates
-      .flatMap((candidate) => findTargetCandidateMatchesInText(translatedText, candidate))
+      .flatMap((candidate) => findTargetCandidateTokenMatches(tokenIndex, candidate))
       .sort((a, b) => a.index - b.index || b.target.length - a.target.length);
   }
 
-  async function findUkrainianWordFamilyMatchesInText(translatedText) {
-    const translatedTokens = getReplaceableSourceTokens(translatedText);
+  async function findUkrainianWordFamilyMatchesInText(tokenIndex) {
+    const translatedTokens = tokenIndex.tokens;
     const targetTerms = getSingleWordTargetTerms();
     if (!translatedTokens.length || !targetTerms.length) {
       return [];
@@ -4013,28 +5218,87 @@
       .filter((pair) => pair.srcStart < pair.srcEnd && pair.tgtStart < pair.tgtEnd);
   }
 
-  function findTargetCandidateMatchesInText(translatedText, candidate) {
-    const haystack = translatedText.toLocaleLowerCase();
-    const needle = String(candidate || "").toLocaleLowerCase();
-    const matches = [];
-    let index = haystack.indexOf(needle);
+  // Splitting the sentence into words first, then matching whole words, is what
+  // makes it structurally impossible for an entry to claim part of a word. The
+  // old approach searched the raw string and asked afterwards whether the hit
+  // happened to land on a boundary, so every punctuation mark the boundary rule
+  // did not know about ("православ'я", "будь-яку") became a fresh bug.
+  function buildSentenceTokenIndex(text) {
+    const tokens = getReplaceableSourceTokens(text);
+    const positionsByValue = new Map();
 
-    while (index >= 0) {
-      if (passesTargetBoundaryCheck(translatedText, index, candidate.length)) {
-        matches.push({
-          index,
-          target: translatedText.slice(index, index + candidate.length),
-          kind: "exact"
-        });
+    tokens.forEach((token, position) => {
+      const key = token.value.toLocaleLowerCase();
+      const positions = positionsByValue.get(key);
+
+      if (positions) {
+        positions.push(position);
+      } else {
+        positionsByValue.set(key, [position]);
+      }
+    });
+
+    return { text, tokens, positionsByValue };
+  }
+
+  function findTargetCandidateTokenMatches(tokenIndex, candidate) {
+    const candidateTokens = getCandidateTokenValues(candidate);
+    if (!candidateTokens.length) {
+      return [];
+    }
+
+    const matches = [];
+
+    for (const position of tokenIndex.positionsByValue.get(candidateTokens[0]) || []) {
+      const last = position + candidateTokens.length - 1;
+      if (last >= tokenIndex.tokens.length) {
+        continue;
       }
 
-      index = haystack.indexOf(needle, index + Math.max(needle.length, 1));
+      // Multi-word entries match a run of adjacent tokens. Only non-word
+      // characters can sit between adjacent tokens, so nothing of substance is
+      // being skipped over.
+      const runMatches = candidateTokens.every(
+        (value, offset) =>
+          tokenIndex.tokens[position + offset].value.toLocaleLowerCase() === value
+      );
+      if (!runMatches) {
+        continue;
+      }
+
+      const start = tokenIndex.tokens[position].start;
+      const end = tokenIndex.tokens[last].end;
+      matches.push({
+        index: start,
+        target: tokenIndex.text.slice(start, end),
+        kind: "exact"
+      });
     }
 
     return matches;
   }
 
-  function passesTargetBoundaryCheck(text, start, length) {
+  function getCandidateTokenValues(candidate) {
+    const key = String(candidate || "");
+    const cached = candidateTokenValueCache.get(key);
+    if (cached) {
+      return cached;
+    }
+
+    const values = getReplaceableSourceTokens(key).map((token) =>
+      token.value.toLocaleLowerCase()
+    );
+    candidateTokenValueCache.set(key, values);
+
+    return values;
+  }
+
+  // Only the English source sentence is matched this way, and only to decide
+  // whether an entry's English hint is present at all — nothing here reaches the
+  // page. Substring semantics are wanted: "Orthodoxy" inside "Orthodoxy's" is
+  // good alignment evidence. Target-language matching goes through the tokenizer
+  // instead (buildSentenceTokenIndex), where partial words cannot occur.
+  function passesEnglishBoundaryCheck(text, start, length) {
     const first = text[start];
     const last = text[start + length - 1];
 
@@ -4098,6 +5362,19 @@
       delete block.dataset.lwrOriginalText;
     }
 
+    // Words rewritten in place put back the text node they replaced, leaving
+    // everything around them exactly as the page built it.
+    const inlineRuns =
+      root.nodeType === Node.ELEMENT_NODE && root.classList.contains(INLINE_STRUCTURED_CLASS)
+        ? [root]
+        : Array.from(root.querySelectorAll?.(`.${INLINE_STRUCTURED_CLASS}`) || []);
+
+    for (const run of inlineRuns) {
+      const parent = run.parentNode;
+      run.replaceWith(document.createTextNode(run.dataset.lwrOriginalText || run.textContent));
+      parent?.normalize();
+    }
+
     const replacements =
       root.nodeType === Node.ELEMENT_NODE && root.classList.contains(REPLACEMENT_CLASS)
         ? [root]
@@ -4147,7 +5424,11 @@
     const blocks = new Set();
 
     for (const replacement of replacements) {
-      const block = getElementTextBlock(replacement);
+      // Resolve from the parent: a replacement span is itself in
+      // IGNORED_SELECTOR (its text must never be re-collected), so asking for
+      // the span's own block always answered null and this whole function
+      // quietly restored nothing.
+      const block = getElementTextBlock(replacement.parentElement);
       if (block) {
         blocks.add(block);
       }
@@ -4303,15 +5584,24 @@
     }
 
     scrollListenerInstalled = true;
-    globalThis.addEventListener(
-      "scroll",
-      () => {
-        if (hasActivePageReplacementFeatures() && !getTranslationExclusion()) {
-          scheduleApplyIfPendingContext();
-        }
-      },
-      { passive: true }
-    );
+    const recheck = () => {
+      if (hasActivePageReplacementFeatures() && !getTranslationExclusion()) {
+        scheduleApplyIfPendingContext();
+      }
+    };
+
+    globalThis.addEventListener("scroll", recheck, { passive: true });
+    // Scroll events do not bubble, so a listener on the window never hears a
+    // pane scrolling inside the page — YouTube's sidebar, a chat column, any
+    // app-style layout that scrolls its own container. The capture phase does
+    // hear them, wherever they come from.
+    document.addEventListener("scroll", recheck, { capture: true, passive: true });
+    // Text can arrive without the page changing shape: a "Show more" expander
+    // reveals items that were in the DOM all along, which is an attribute
+    // change the observer does not watch — YouTube's whole subscription list
+    // sat there in English for exactly that reason. Clicking is what reveals
+    // collapsed content, and it happens rarely enough to look again each time.
+    document.addEventListener("click", recheck, { capture: true, passive: true });
   }
 
   function stopObserver() {
@@ -4372,14 +5662,22 @@
       return;
     }
 
-    const roots = Array.from(new Set(collectContextUnits(document.body).map((unit) => unit.block))).filter(
-      (block) => !hasExistingReplacements(block)
+    const pending = collectPendingContextBlocks(document.body);
+    // Blocks nothing has touched yet.
+    const fresh = pending.filter((block) => !hasExistingReplacements(block));
+    // Blocks whose text moved on since they were processed. The observer is
+    // disconnected while a pass runs, so a page that rewrites itself mid-pass
+    // has no other way back in — catching them here is what keeps a mutation
+    // during a pass from being lost.
+    const changed = pending.filter(
+      (block) => hasExistingReplacements(block) && !isProcessedBlockUnchanged(block)
     );
-    if (!roots.length) {
+    if (!fresh.length && !changed.length) {
       return;
     }
 
-    queueContextBlocks(roots, { restoreChangedExisting: false });
+    queueContextBlocks(fresh, { restoreChangedExisting: false });
+    queueContextBlocks(changed, { restoreChangedExisting: true });
     scheduleApply();
   }
 
@@ -4391,12 +5689,18 @@
     const runId = ++applyRunId;
     applying = true;
     stopObserver();
+    // A superseded pass can leave blocks hidden; show those again before this
+    // one starts, so nothing is left invisible between passes.
+    endAllPendingHides();
 
     try {
       const exclusion = getTranslationExclusion();
       if (exclusion) {
         pendingContextBlocks.clear();
         processedBlockSourceTexts = new WeakMap();
+        // A full restore puts the original text back, so those blocks are
+        // allowed to churn again when they are re-read.
+        hiddenOnceBlocks = new WeakSet();
         clearProcessedBlockMarkers();
         restoreOriginalText(document);
         removeStyle();
@@ -4421,6 +5725,9 @@
       } else {
         pendingContextBlocks.clear();
         processedBlockSourceTexts = new WeakMap();
+        // A full restore puts the original text back, so those blocks are
+        // allowed to churn again when they are re-read.
+        hiddenOnceBlocks = new WeakSet();
         clearProcessedBlockMarkers();
         restoreOriginalText(document);
       }
@@ -4449,6 +5756,10 @@
       installReverseHoverTranslation();
       await processContextRoot(document.body, runId, options);
     } finally {
+      endAllPendingHides();
+      // Whatever happened — excluded page, no translator, a thrown error — the
+      // page must not stay hidden.
+      uncloakPage();
       if (runId === applyRunId) {
         const blockedStatuses = new Set([
           "excluded",
@@ -4460,14 +5771,24 @@
           "translator-preparing",
           "translator-error"
         ]);
+        const blocked = blockedStatuses.has(runtimeStats.status);
         updateRuntimeStats({
-          status: blockedStatuses.has(runtimeStats.status)
-            ? runtimeStats.status
-            : "complete",
+          status: blocked ? runtimeStats.status : "complete",
           finishedAt: Date.now()
         });
         applying = false;
         startObserver();
+
+        // A pass is capped, by collected units and by translation calls, so a
+        // page bigger than one pass used to stop translating partway down and
+        // wait for a scroll that might never come. Look again instead: the
+        // check queues only blocks that are still unprocessed or have changed
+        // since, and does nothing when there are none. Requiring that this pass
+        // finished at least one block is what makes the chain terminate — every
+        // finished block is recorded and dropped from the next collection.
+        if (!blocked && runtimeStats.unitsProcessed > 0) {
+          scheduleApplyIfPendingContext();
+        }
       }
     }
   }
@@ -4486,6 +5807,180 @@
 
   function isDuolingoHost() {
     return /(^|\.)duolingo\.com$/i.test(globalThis.location.hostname);
+  }
+
+  // Duolingo ships a dark theme, and every input row the extension adds sits
+  // straight on the page's own background, so a hard-coded white box glares.
+  // There is no theme flag worth reading — Duolingo repaints through CSS
+  // custom properties — so the page's rendered background colour is the
+  // signal, which also keeps this working if their markup moves again.
+  const DUOLINGO_THEME_STYLE_ID = "learned-word-replacer-duolingo-theme";
+  // Colours are all rgb() strings: several guarded writes below compare a
+  // value against style.background, and only rgb() round-trips through the
+  // shorthand unchanged (#ffffff reads back as "rgb(255, 255, 255)").
+  const DUOLINGO_THEMES = {
+    light: {
+      inputBackground: "rgb(255, 255, 255)",
+      inputSunkenBackground: "rgb(247, 247, 247)",
+      inputText: "rgb(60, 60, 60)",
+      inputPlaceholder: "rgb(175, 175, 175)",
+      inputBorder: "rgb(229, 229, 229)",
+      inputBorderFocus: "rgb(28, 176, 246)",
+      inputBorderError: "rgb(234, 43, 43)",
+      icon: "rgb(175, 175, 175)",
+      badgeBackground: "rgb(60, 60, 60)",
+      badgeErrorBackground: "rgb(234, 43, 43)",
+      badgeText: "rgb(255, 255, 255)",
+      surface: "rgb(255, 255, 255)",
+      surfaceBorder: "rgb(229, 229, 229)",
+      surfaceText: "rgb(60, 60, 60)",
+      surfaceMutedText: "rgb(120, 120, 120)",
+      correctBanner: "rgb(215, 255, 184)",
+      wrongBanner: "rgb(255, 223, 224)",
+      correctText: "rgb(88, 167, 0)",
+      wrongText: "rgb(234, 43, 43)"
+    },
+    dark: {
+      // Duolingo's own dark tokens: page #131f24, raised card #202f36,
+      // hairline #37464f, body text #f1f7fb, muted #8b9fa8. The blue focus
+      // ring and the timer colours already read on both, so they carry over.
+      inputBackground: "rgb(32, 47, 54)",
+      inputSunkenBackground: "rgb(19, 31, 36)",
+      inputText: "rgb(241, 247, 251)",
+      inputPlaceholder: "rgb(139, 159, 168)",
+      inputBorder: "rgb(55, 70, 79)",
+      inputBorderFocus: "rgb(28, 176, 246)",
+      inputBorderError: "rgb(255, 75, 75)",
+      icon: "rgb(139, 159, 168)",
+      badgeBackground: "rgb(55, 70, 79)",
+      badgeErrorBackground: "rgb(255, 75, 75)",
+      badgeText: "rgb(241, 247, 251)",
+      surface: "rgb(19, 31, 36)",
+      surfaceBorder: "rgb(55, 70, 79)",
+      surfaceText: "rgb(241, 247, 251)",
+      surfaceMutedText: "rgb(139, 159, 168)",
+      correctBanner: "rgb(32, 52, 26)",
+      wrongBanner: "rgb(60, 30, 34)",
+      correctText: "rgb(88, 204, 2)",
+      wrongText: "rgb(255, 75, 75)"
+    }
+  };
+
+  let duolingoThemeName = null;
+  let duolingoThemeWatching = false;
+
+  function parseDuolingoThemeColor(value) {
+    const match = /^rgba?\(([^)]+)\)$/i.exec(String(value || "").trim());
+    if (!match) {
+      return null;
+    }
+    const parts = match[1]
+      .split(/[\s,/]+/)
+      .filter(Boolean)
+      .map(Number);
+    if (parts.length < 3 || parts.slice(0, 3).some((part) => !Number.isFinite(part))) {
+      return null;
+    }
+    return { r: parts[0], g: parts[1], b: parts[2], a: parts.length > 3 ? parts[3] : 1 };
+  }
+
+  function detectDuolingoThemeName() {
+    // Whatever actually paints behind the UI decides which palette reads on
+    // it: walk out from <body> and take the first ancestor that is not
+    // see-through.
+    let node = document.body;
+    while (node) {
+      const color = parseDuolingoThemeColor(getComputedStyle(node).backgroundColor);
+      if (color && color.a > 0) {
+        // Rec. 601 luma, which is plenty to split "light page" from "dark".
+        return (color.r * 299 + color.g * 587 + color.b * 114) / 1000 < 128 ? "dark" : "light";
+      }
+      node = node.parentElement;
+    }
+    // A page that paints nothing shows the browser's default surface.
+    return globalThis.matchMedia && globalThis.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  }
+
+  function duolingoTheme() {
+    if (!duolingoThemeName) {
+      duolingoThemeName = detectDuolingoThemeName();
+    }
+    return DUOLINGO_THEMES[duolingoThemeName];
+  }
+
+  function refreshDuolingoTheme() {
+    const next = detectDuolingoThemeName();
+    if (next === duolingoThemeName) {
+      return false;
+    }
+    duolingoThemeName = next;
+    applyDuolingoTheme();
+    return true;
+  }
+
+  function watchDuolingoTheme() {
+    if (duolingoThemeWatching || globalThis !== globalThis.top || !isDuolingoHost()) {
+      return;
+    }
+    duolingoThemeWatching = true;
+    duolingoThemeName = detectDuolingoThemeName();
+
+    // Duolingo's own toggle swaps a class or attribute on <html>/<body>; the
+    // media query covers the system theme changing underneath a page left on
+    // "automatic". A theme flip that shows up neither way still lands on the
+    // next challenge, because a rebuilt input row re-detects.
+    const retheme = () => refreshDuolingoTheme();
+    for (const node of [document.documentElement, document.body]) {
+      if (node) {
+        new MutationObserver(retheme).observe(node, {
+          attributes: true,
+          attributeFilter: ["class", "style", "data-theme"]
+        });
+      }
+    }
+    globalThis.matchMedia?.("(prefers-color-scheme: dark)")?.addEventListener?.("change", retheme);
+  }
+
+  function ensureDuolingoThemeStyle() {
+    const theme = duolingoTheme();
+    let style = document.getElementById(DUOLINGO_THEME_STYLE_ID);
+    if (!style) {
+      style = document.createElement("style");
+      style.id = DUOLINGO_THEME_STYLE_ID;
+      (document.head || document.documentElement).append(style);
+    }
+    // ::placeholder is the one rule with no inline-style equivalent, so it is
+    // the only reason the extension needs a stylesheet at all.
+    const css = `[data-lwr-input]::placeholder{color:${theme.inputPlaceholder};opacity:1}`;
+    // Guarded write: this can run from the MutationObserver.
+    if (style.textContent !== css) {
+      style.textContent = css;
+    }
+  }
+
+  // Repaint every themed surface that is currently on screen. Each write is
+  // guarded by a data-lwr-theme stamp so a repaint driven by the
+  // MutationObserver cannot feed itself.
+  function applyDuolingoTheme() {
+    ensureDuolingoThemeStyle();
+    applyDuolingoTypeInputTheme();
+    applyDuolingoPanelInputTheme();
+    applyFlashcardOverlayTheme();
+  }
+
+  function applyDuolingoPanelInputTheme() {
+    const theme = duolingoTheme();
+    document.querySelectorAll("[data-lwr-panel-input]").forEach((input) => {
+      if (input.getAttribute("data-lwr-theme") === duolingoThemeName) {
+        return;
+      }
+      input.setAttribute("data-lwr-theme", duolingoThemeName);
+      input.style.borderColor = theme.inputBorder;
+      input.style.background = theme.inputBackground;
+      input.style.color = theme.inputText;
+    });
   }
 
   function syncDuolingoAutoContinue() {
@@ -4530,7 +6025,17 @@
   let duolingoTypeFocusListener = null;
   let duolingoTypeBlurListener = null;
   let duolingoTypeInputListener = null;
+  // The hint ladder, one rung per Tab press: the word's shape behind a
+  // sharpening blur first, then a letter at a time. Shape rungs cue recall —
+  // length, word count, letter runs — without spelling anything out, which is
+  // the part a prefix reveal never reaches.
+  const DUOLINGO_HINT_SHAPE_BLURS = [10, 6, 3.5];
+  const DUOLINGO_HINT_SHAPE_MAX_WORDS = 3;
   let duolingoTypeHintTimer = null;
+  // The rung is tied to the typed buffer, not to the badge's fade timer —
+  // pausing to think should not silently change what the next Tab does.
+  let duolingoTypeHintDepth = 0;
+  let duolingoTypeHintPrefix = null;
   let duolingoBankHidden = false;
   // Answer words on match and choice challenges start hidden: the point of
   // typing those answers is recalling the word instead of picking it from
@@ -4626,6 +6131,7 @@
       duolingoTypeInputListener = (event) => {
         if (isDuolingoTypeInputTarget(event)) {
           hideDuolingoTypeHint();
+          resetDuolingoTypeHintDepth();
           updateDuolingoTypeDeadEnd(event.target);
         }
       };
@@ -4650,6 +6156,711 @@
       duolingoTypeInputListener = null;
       removeDuolingoTypeInput();
     }
+  }
+
+  const DUOLINGO_COPY_BUTTON_ID = "learned-word-replacer-duolingo-copy-button";
+  // Lucide "copy" and "check" (ISC license), inlined for the same reason as
+  // the icons above.
+  const DUOLINGO_COPY_ICON =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
+  const DUOLINGO_COPY_DONE_ICON =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+  // The answer side of a challenge. The prompt is never inside it, and a
+  // container that holds any of it is too wide to be the prompt.
+  const DUOLINGO_ANSWER_SELECTOR = [
+    "[data-test='word-bank']",
+    "[data-test$='challenge-tap-token']",
+    "[data-test='challenge-choice']",
+    "[data-test='challenge-judge-text']",
+    "[data-test='player-footer']",
+    "[data-test~='blame']",
+    "input",
+    "textarea"
+  ].join(",");
+  const DUOLINGO_COPY_BUTTON_STYLE = [
+    "display: inline-flex",
+    "align-items: center",
+    "justify-content: center",
+    "vertical-align: middle",
+    "width: 28px",
+    "height: 28px",
+    "margin: 0 0 0 8px",
+    "padding: 0",
+    "border: none",
+    "border-radius: 8px",
+    "background: none",
+    "color: rgb(175, 175, 175)",
+    "cursor: pointer"
+  ].join(";");
+  let duolingoCopyObserver = null;
+  let duolingoCopyClickListener = null;
+  let duolingoCopyResetTimer = null;
+
+  function syncDuolingoCopyPhrase() {
+    const shouldRun =
+      globalThis === globalThis.top && isDuolingoHost() && Boolean(state.duolingoCopyPhrase);
+
+    if (shouldRun && !duolingoCopyObserver) {
+      duolingoCopyObserver = new MutationObserver(() => {
+        ensureDuolingoCopyButton();
+      });
+      duolingoCopyObserver.observe(document.documentElement, {
+        childList: true,
+        subtree: true
+      });
+      // Document capture, not an element listener: Duolingo's slide
+      // transitions swap in cloneNode copies of the challenge subtree, and
+      // clones silently drop element listeners.
+      duolingoCopyClickListener = (event) => {
+        const button =
+          event.target && event.target.closest
+            ? event.target.closest(`[id='${DUOLINGO_COPY_BUTTON_ID}']`)
+            : null;
+        if (!button) {
+          return;
+        }
+        // The button sits among the prompt's hint tokens, so without this the
+        // same click also opens Duolingo's hint popover.
+        event.preventDefault();
+        event.stopPropagation();
+        copyDuolingoPrompt();
+      };
+      document.addEventListener("click", duolingoCopyClickListener, true);
+      ensureDuolingoCopyButton();
+    } else if (!shouldRun && duolingoCopyObserver) {
+      duolingoCopyObserver.disconnect();
+      duolingoCopyObserver = null;
+      document.removeEventListener("click", duolingoCopyClickListener, true);
+      duolingoCopyClickListener = null;
+      removeDuolingoCopyButton();
+    }
+  }
+
+  function getDuolingoPromptElement() {
+    const challenge = getVisibleDuolingoChallenge("challenge");
+    if (!challenge) {
+      return null;
+    }
+
+    // Class names here are hashed and change with every Duolingo build, so
+    // navigate by shape instead: the prompt is what declares a language (or
+    // carries Duolingo's own hint-sentence hook) and holds none of the
+    // answer-side DOM.
+    const candidates = [...challenge.querySelectorAll("[data-test='hint-sentence'],[lang]")].filter(
+      (candidate) =>
+        candidate.offsetParent !== null &&
+        !candidate.closest(DUOLINGO_ANSWER_SELECTOR) &&
+        !candidate.querySelector(DUOLINGO_ANSWER_SELECTOR) &&
+        readDuolingoPromptText(candidate)
+    );
+    if (!candidates.length) {
+      return null;
+    }
+
+    // Gap-fill challenges tag one span per word instead of the sentence, so
+    // the first candidate is a single word. Climb to the smallest element
+    // holding every candidate that still keeps clear of the answer side.
+    let prompt = candidates[0];
+    while (!candidates.every((candidate) => prompt.contains(candidate))) {
+      const parent = prompt.parentElement;
+      if (!parent || parent === challenge || parent.querySelector(DUOLINGO_ANSWER_SELECTOR)) {
+        break;
+      }
+      prompt = parent;
+    }
+
+    return prompt;
+  }
+
+  const DUOLINGO_PROMPT_BLANK = "___";
+  // Empty boxes inside a prompt that are decoration rather than a gap: the
+  // hint underline Duolingo lays over each hinted word, and the audio button
+  // that sits in the prompt bubble.
+  const DUOLINGO_PROMPT_DECORATION_SELECTOR = "[data-test='hint-token'],button,svg,canvas,img";
+
+  function readDuolingoPromptText(element) {
+    if (!element) {
+      return "";
+    }
+
+    return collectDuolingoPromptText(element)
+      .replace(/\s+/gu, " ")
+      .replace(/\s+([,.!?;:…])/gu, "$1")
+      .trim();
+  }
+
+  function collectDuolingoPromptText(node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return node.nodeValue || "";
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE || node.id === DUOLINGO_COPY_BUTTON_ID) {
+      return "";
+    }
+
+    // Text nodes, not innerText: Duolingo splits every hinted word into
+    // per-letter spans with positioned overlays between them, and innerText
+    // reads spaces into those gaps ("старі , але"). No text at all, not
+    // blank-after-trimming: the spans holding the single spaces between words
+    // are boxes with a width too.
+    if (!String(node.textContent || "").length) {
+      // An empty box that still takes up space is the blank of a gap-fill
+      // sentence, and the blank is the part the exercise is about, so it is
+      // worth carrying into the clipboard.
+      const isBlank =
+        !node.matches(DUOLINGO_PROMPT_DECORATION_SELECTOR) &&
+        !node.querySelector(DUOLINGO_PROMPT_DECORATION_SELECTOR) &&
+        node.getBoundingClientRect().width > 0;
+      return isBlank ? ` ${DUOLINGO_PROMPT_BLANK} ` : "";
+    }
+
+    let text = "";
+    node.childNodes.forEach((child) => {
+      text += collectDuolingoPromptText(child);
+    });
+    return text;
+  }
+
+  function removeDuolingoCopyButton() {
+    if (duolingoCopyResetTimer) {
+      clearTimeout(duolingoCopyResetTimer);
+      duolingoCopyResetTimer = null;
+    }
+
+    document
+      .querySelectorAll(`[id='${DUOLINGO_COPY_BUTTON_ID}']`)
+      .forEach((button) => button.remove());
+  }
+
+  function ensureDuolingoCopyButton() {
+    // Guard every write: this runs from the MutationObserver, so an
+    // unconditional append would re-trigger it forever.
+    const prompt = getDuolingoPromptElement();
+
+    // Keep exactly one button: the one inside the visible prompt. Anything
+    // else is a leftover or a transition-clone copy.
+    let keep = null;
+    document.querySelectorAll(`[id='${DUOLINGO_COPY_BUTTON_ID}']`).forEach((button) => {
+      if (!keep && prompt && button.parentElement === prompt) {
+        keep = button;
+      } else {
+        button.remove();
+      }
+    });
+
+    if (!prompt || keep) {
+      return;
+    }
+
+    const button = document.createElement("button");
+    button.id = DUOLINGO_COPY_BUTTON_ID;
+    button.type = "button";
+    // Never in the tab order: Tab belongs to the typing hint ladder.
+    button.tabIndex = -1;
+    button.innerHTML = DUOLINGO_COPY_ICON;
+    button.style.cssText = DUOLINGO_COPY_BUTTON_STYLE;
+    resetDuolingoCopyButton(button);
+    prompt.appendChild(button);
+  }
+
+  function resetDuolingoCopyButton(target) {
+    const button = target || document.getElementById(DUOLINGO_COPY_BUTTON_ID);
+    if (!button) {
+      return;
+    }
+
+    button.setAttribute("data-copy-state", "idle");
+    button.innerHTML = DUOLINGO_COPY_ICON;
+    button.style.color = "rgb(175, 175, 175)";
+    button.title = "Copy this phrase";
+    button.setAttribute("aria-label", button.title);
+  }
+
+  function markDuolingoCopyResult(copied) {
+    const button = document.getElementById(DUOLINGO_COPY_BUTTON_ID);
+    if (!button) {
+      return;
+    }
+
+    if (duolingoCopyResetTimer) {
+      clearTimeout(duolingoCopyResetTimer);
+    }
+
+    button.setAttribute("data-copy-state", copied ? "copied" : "failed");
+    button.innerHTML = copied ? DUOLINGO_COPY_DONE_ICON : DUOLINGO_COPY_ICON;
+    button.style.color = copied ? "rgb(88, 167, 0)" : "rgb(234, 43, 43)";
+    button.title = copied ? "Copied" : "Could not copy the phrase";
+    button.setAttribute("aria-label", button.title);
+    duolingoCopyResetTimer = setTimeout(() => {
+      duolingoCopyResetTimer = null;
+      resetDuolingoCopyButton();
+    }, 1400);
+  }
+
+  function copyDuolingoPrompt() {
+    const text = readDuolingoPromptText(getDuolingoPromptElement());
+    if (!text) {
+      return Promise.resolve(false);
+    }
+
+    return writeClipboardText(text).then((copied) => {
+      markDuolingoCopyResult(copied);
+      return copied;
+    });
+  }
+
+  function writeClipboardText(text) {
+    // navigator.clipboard wants a focused document and a live user gesture;
+    // the textarea fallback covers the transitions where it has neither.
+    const write =
+      navigator.clipboard && navigator.clipboard.writeText
+        ? navigator.clipboard.writeText(text)
+        : Promise.reject(new Error("clipboard api unavailable"));
+
+    return write.then(
+      () => true,
+      () => copyTextWithScratchTextarea(text)
+    );
+  }
+
+  function copyTextWithScratchTextarea(text) {
+    if (!document.body) {
+      return false;
+    }
+
+    const active = document.activeElement;
+    const scratch = document.createElement("textarea");
+    scratch.value = text;
+    scratch.setAttribute("aria-hidden", "true");
+    scratch.style.cssText =
+      "position: fixed; top: 0; left: 0; width: 1px; height: 1px; padding: 0; border: none; opacity: 0";
+    document.body.appendChild(scratch);
+    scratch.select();
+
+    let copied = false;
+    try {
+      copied = document.execCommand("copy");
+    } catch (error) {
+      copied = false;
+    }
+
+    scratch.remove();
+    // The typing input owns focus for the whole challenge; hand it back.
+    if (active && typeof active.focus === "function") {
+      active.focus();
+    }
+    return copied;
+  }
+
+  // Two ways the word bank gives its answer away without meaning to: the one
+  // capitalised word is the sentence's first word, and every word in it is
+  // spelled correctly, so the right one can be picked without knowing how it
+  // is spelled. Both are levelled here.
+  const DUOLINGO_DECOY_ATTRIBUTE = "data-lwr-decoy";
+  const DUOLINGO_CASE_ATTRIBUTE = "data-lwr-original-case";
+  const DUOLINGO_BANK_SCROLL_ATTRIBUTE = "data-lwr-bank-scroll";
+  const DUOLINGO_BANK_SCROLL_STYLE_ID = "learned-word-replacer-duolingo-bank-scroll-style";
+  const DUOLINGO_DECOYS_PER_WORD = 2;
+  const DUOLINGO_DECOY_MAX = 12;
+  // Letters a learner actually confuses, so the decoy is a near miss rather
+  // than obvious noise.
+  const DUOLINGO_DECOY_CONFUSABLES = {
+    uk: [
+      ["и", "і"], ["і", "и"], ["і", "ї"], ["ї", "і"], ["е", "є"], ["є", "е"],
+      ["о", "а"], ["а", "о"], ["г", "ґ"], ["ш", "щ"], ["щ", "ш"]
+    ],
+    el: [["ι", "η"], ["η", "ι"], ["ο", "ω"], ["ω", "ο"], ["ε", "α"]],
+    default: [["a", "e"], ["e", "a"], ["i", "y"], ["y", "i"], ["o", "u"], ["s", "z"]]
+  };
+  let duolingoBankTrapObserver = null;
+  let duolingoBankTrapClickListener = null;
+  let duolingoDecoySignature = "";
+  let duolingoDecoyPlan = [];
+  let duolingoBankNaturalHeight = 0;
+
+  function syncDuolingoBankTraps() {
+    const shouldRun =
+      globalThis === globalThis.top &&
+      isDuolingoHost() &&
+      Boolean(state.duolingoLowercaseBank || state.duolingoDecoyWords);
+
+    if (shouldRun && !duolingoBankTrapObserver) {
+      duolingoBankTrapObserver = new MutationObserver(() => {
+        applyDuolingoBankTraps();
+      });
+      duolingoBankTrapObserver.observe(document.documentElement, {
+        childList: true,
+        subtree: true
+      });
+      // Document capture, because the decoys are clones of Duolingo's own
+      // slots and clones carry no listeners of their own.
+      duolingoBankTrapClickListener = (event) => {
+        const decoy =
+          event.target && event.target.closest
+            ? event.target.closest(`[${DUOLINGO_DECOY_ATTRIBUTE}]`)
+            : null;
+        if (!decoy) {
+          return;
+        }
+        // A decoy is not Duolingo's to place: the click stops here.
+        event.preventDefault();
+        event.stopPropagation();
+        flashDuolingoDecoy(decoy);
+      };
+      document.addEventListener("click", duolingoBankTrapClickListener, true);
+      window.addEventListener("resize", remeasureDuolingoBankHeight);
+      applyDuolingoBankTraps();
+    } else if (!shouldRun && duolingoBankTrapObserver) {
+      duolingoBankTrapObserver.disconnect();
+      duolingoBankTrapObserver = null;
+      document.removeEventListener("click", duolingoBankTrapClickListener, true);
+      window.removeEventListener("resize", remeasureDuolingoBankHeight);
+      duolingoBankTrapClickListener = null;
+      duolingoBankNaturalHeight = 0;
+      removeDuolingoDecoys();
+      restoreDuolingoBankCase();
+    }
+  }
+
+  function applyDuolingoBankTraps() {
+    const bank = getDuolingoWordBank();
+    if (!bank) {
+      duolingoDecoySignature = "";
+      duolingoDecoyPlan = [];
+      duolingoBankNaturalHeight = 0;
+      return;
+    }
+
+    if (state.duolingoLowercaseBank) {
+      lowercaseDuolingoBank(bank);
+    } else {
+      restoreDuolingoBankCase();
+    }
+
+    if (state.duolingoDecoyWords) {
+      ensureDuolingoDecoys(bank);
+    } else {
+      removeDuolingoDecoys();
+    }
+  }
+
+  function getDuolingoTokenTextSpans(bank) {
+    return [...bank.querySelectorAll("[data-test='challenge-tap-token-text']")];
+  }
+
+  function lowercaseDuolingoBank(bank) {
+    // Guard every write: this runs from the MutationObserver.
+    getDuolingoTokenTextSpans(bank).forEach((span) => {
+      const shown = String(span.textContent || "");
+      const locale = span.closest("[lang]")?.getAttribute("lang") || undefined;
+      const lowered = shown.toLocaleLowerCase(locale);
+      if (lowered === shown) {
+        return;
+      }
+
+      // Keep the original so the page can be handed back untouched when the
+      // setting goes off; only the first write records it.
+      if (!span.hasAttribute(DUOLINGO_CASE_ATTRIBUTE)) {
+        span.setAttribute(DUOLINGO_CASE_ATTRIBUTE, shown);
+      }
+      span.textContent = lowered;
+    });
+  }
+
+  function restoreDuolingoBankCase() {
+    document.querySelectorAll(`[${DUOLINGO_CASE_ATTRIBUTE}]`).forEach((span) => {
+      const original = span.getAttribute(DUOLINGO_CASE_ATTRIBUTE);
+      span.removeAttribute(DUOLINGO_CASE_ATTRIBUTE);
+      if (original && span.textContent !== original) {
+        span.textContent = original;
+      }
+    });
+  }
+
+  function removeDuolingoDecoys() {
+    document.querySelectorAll(`[${DUOLINGO_DECOY_ATTRIBUTE}]`).forEach((decoy) => decoy.remove());
+    document.querySelectorAll(`[${DUOLINGO_BANK_SCROLL_ATTRIBUTE}]`).forEach((bank) => {
+      bank.removeAttribute(DUOLINGO_BANK_SCROLL_ATTRIBUTE);
+      bank.style.maxHeight = "";
+    });
+  }
+
+  function installDuolingoBankScrollStyle() {
+    if (document.getElementById(DUOLINGO_BANK_SCROLL_STYLE_ID)) {
+      return;
+    }
+
+    const style = document.createElement("style");
+    style.id = DUOLINGO_BANK_SCROLL_STYLE_ID;
+    // macOS hides overlay scrollbars until something is already scrolling, so
+    // a bank with rows below the fold would look like it had none. A styled
+    // webkit scrollbar is always drawn, which is the whole point of it here.
+    style.textContent = `
+      [${DUOLINGO_BANK_SCROLL_ATTRIBUTE}] {
+        overflow-y: auto;
+        overflow-x: hidden;
+        scrollbar-width: thin;
+        scrollbar-gutter: stable;
+      }
+
+      [${DUOLINGO_BANK_SCROLL_ATTRIBUTE}]::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      [${DUOLINGO_BANK_SCROLL_ATTRIBUTE}]::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.18);
+        border-radius: 4px;
+      }
+
+      [${DUOLINGO_BANK_SCROLL_ATTRIBUTE}]::-webkit-scrollbar-track {
+        background: transparent;
+      }
+    `;
+    document.documentElement.appendChild(style);
+  }
+
+  // The decoys must not cost the challenge any room: a bank that grows from
+  // two rows to four pushes the sentence and the character off the top of the
+  // screen. It keeps the height it had with Duolingo's own words in it, and
+  // the rest is reached by scrolling.
+  function applyDuolingoBankScroll(bank) {
+    const wanted = duolingoBankNaturalHeight ? `${duolingoBankNaturalHeight}px` : "";
+    if (!wanted) {
+      return;
+    }
+
+    installDuolingoBankScrollStyle();
+    // Guard every write: this runs from the MutationObserver.
+    if (bank.getAttribute(DUOLINGO_BANK_SCROLL_ATTRIBUTE) !== "1") {
+      bank.setAttribute(DUOLINGO_BANK_SCROLL_ATTRIBUTE, "1");
+    }
+    if (bank.style.maxHeight !== wanted) {
+      bank.style.maxHeight = wanted;
+    }
+  }
+
+  function remeasureDuolingoBankHeight() {
+    const bank = getDuolingoWordBank();
+    if (!bank || !duolingoDecoyPlan.length) {
+      return;
+    }
+
+    // A resize rewraps Duolingo's own words into a different number of rows,
+    // so the height to hold the bank at has to be taken again — with the
+    // decoys out of the flow, exactly as it was measured the first time.
+    const decoys = [...bank.children].filter((slot) =>
+      slot.hasAttribute(DUOLINGO_DECOY_ATTRIBUTE)
+    );
+    bank.style.maxHeight = "";
+    decoys.forEach((slot) => (slot.style.display = "none"));
+    duolingoBankNaturalHeight = Math.round(bank.getBoundingClientRect().height);
+    decoys.forEach((slot) => (slot.style.display = ""));
+    applyDuolingoBankScroll(bank);
+  }
+
+  function readDuolingoTokenText(button) {
+    const source = button.querySelector("[data-test='challenge-tap-token-text']") || button;
+    return String(source.textContent || "").replace(/\s+/g, " ").trim();
+  }
+
+  function ensureDuolingoDecoys(bank) {
+    const words = [...bank.querySelectorAll("button[data-test*='challenge-tap-token']")].map(
+      readDuolingoTokenText
+    );
+    // A bank with two words in it hides nothing, and a decoy there is just in
+    // the way.
+    if (words.length < 3) {
+      duolingoDecoySignature = "";
+      duolingoDecoyPlan = [];
+      duolingoBankNaturalHeight = 0;
+      removeDuolingoDecoys();
+      return;
+    }
+
+    // Placed words stay in the bank as disabled ghosts, so this signature holds
+    // still for the whole challenge — the decoys must not reshuffle every time
+    // a word is placed.
+    const signature = words
+      .map(normalizeDuolingoTypedText)
+      .sort()
+      .join("|");
+    if (signature !== duolingoDecoySignature) {
+      duolingoDecoySignature = signature;
+      removeDuolingoDecoys();
+      // Measured with Duolingo's own words alone, which is the height the bank
+      // is then held to however many decoys go into it.
+      duolingoBankNaturalHeight = Math.round(bank.getBoundingClientRect().height);
+      duolingoDecoyPlan = planDuolingoDecoys(words, bank.children.length);
+    }
+
+    duolingoDecoyPlan.forEach((decoy, order) => {
+      if (bank.querySelector(`[${DUOLINGO_DECOY_ATTRIBUTE}='${order}']`)) {
+        return;
+      }
+
+      const slot = buildDuolingoDecoySlot(bank, decoy.text, order);
+      if (!slot) {
+        return;
+      }
+      const slots = [...bank.children];
+      bank.insertBefore(slot, slots[Math.min(decoy.index, slots.length)] || null);
+    });
+
+    applyDuolingoBankScroll(bank);
+  }
+
+  function buildDuolingoDecoySlot(bank, text, order) {
+    // Clone one of Duolingo's own slots rather than styling a button from
+    // scratch: the class names are hashed per build and the wrapper carries
+    // the token's margin variables. A slot holding an already-placed word is
+    // a ghost, so clone a live one.
+    const source = [...bank.children].find((slot) => {
+      const button = slot.querySelector("button[data-test*='challenge-tap-token']");
+      return button && button.getAttribute("aria-disabled") !== "true";
+    });
+    if (!source) {
+      return null;
+    }
+
+    const slot = source.cloneNode(true);
+    const button = slot.querySelector("button");
+    const span = slot.querySelector("[data-test='challenge-tap-token-text']");
+    if (!button || !span) {
+      return null;
+    }
+
+    // Drop Duolingo's hooks: a decoy must not read as a real token to the
+    // typing input, the hint ladder or anything else selecting on them.
+    slot.setAttribute(DUOLINGO_DECOY_ATTRIBUTE, String(order));
+    button.setAttribute(DUOLINGO_DECOY_ATTRIBUTE, String(order));
+    button.removeAttribute("data-test");
+    button.removeAttribute("aria-disabled");
+    span.removeAttribute("data-test");
+    span.textContent = text;
+    return slot;
+  }
+
+  function flashDuolingoDecoy(element) {
+    const button = element.matches("button") ? element : element.querySelector("button");
+    if (!button || button.getAttribute(`${DUOLINGO_DECOY_ATTRIBUTE}-flash`) === "1") {
+      return;
+    }
+
+    button.setAttribute(`${DUOLINGO_DECOY_ATTRIBUTE}-flash`, "1");
+    button.style.color = "rgb(234, 43, 43)";
+    setTimeout(() => {
+      button.style.color = "";
+      button.removeAttribute(`${DUOLINGO_DECOY_ATTRIBUTE}-flash`);
+    }, 400);
+  }
+
+  function planDuolingoDecoys(words, slotCount) {
+    // Nothing already on screen, and nothing the user has actually learned,
+    // may end up as a decoy: a real word marked wrong teaches the wrong thing.
+    const taken = new Set(words.map(normalizeDuolingoTypedText));
+    for (const entry of getCurrentEntries()) {
+      for (const alternate of String(entry.target || "").split(" / ")) {
+        const key = normalizeDuolingoTypedText(alternate);
+        if (key) {
+          taken.add(key);
+        }
+      }
+    }
+
+    const bankKeys = words.map(normalizeDuolingoTypedText);
+    const sources = shuffleDuolingoList([...new Set(words)]);
+    const plan = [];
+    // Breadth before depth: every word earns its first decoy before any word
+    // earns a second, so the words worth being unsure about are never the ones
+    // left standing alone.
+    for (let round = 0; round < DUOLINGO_DECOYS_PER_WORD; round += 1) {
+      for (const word of sources) {
+        if (plan.length >= DUOLINGO_DECOY_MAX) {
+          break;
+        }
+
+        const text = makeDuolingoMisspelling(word, taken, bankKeys);
+        if (!text) {
+          continue;
+        }
+        taken.add(normalizeDuolingoTypedText(text));
+        // Scattered through the bank, not tacked on the end, or their position
+        // alone would name them.
+        plan.push({ text, index: Math.floor(Math.random() * (slotCount + plan.length + 1)) });
+      }
+    }
+    return plan;
+  }
+
+  function makeDuolingoMisspelling(word, taken, bankKeys) {
+    const letters = [...word];
+    const spots = letters
+      .map((letter, index) => (/\p{L}/u.test(letter) ? index : -1))
+      .filter((index) => index >= 0);
+    // Below four letters a single edit tends to land on another real word.
+    if (spots.length < 4) {
+      return "";
+    }
+
+    const confusables =
+      DUOLINGO_DECOY_CONFUSABLES[getCurrentLanguageCode()] || DUOLINGO_DECOY_CONFUSABLES.default;
+    const candidates = [];
+
+    for (const [from, to] of confusables) {
+      spots.forEach((index) => {
+        if (letters[index].toLocaleLowerCase() !== from) {
+          return;
+        }
+        const swapped = [...letters];
+        swapped[index] = matchDuolingoLetterCase(letters[index], to);
+        candidates.push(swapped.join(""));
+      });
+    }
+
+    // Only swaps and substitutions, so a decoy is always its source word's
+    // length. A doubled or dropped letter changes the shape of the word, and
+    // a wrong shape is spotted without reading the word at all.
+    spots.forEach((index, order) => {
+      const next = spots[order + 1];
+      if (next !== index + 1) {
+        return;
+      }
+      const transposed = [...letters];
+      transposed[index] = letters[next];
+      transposed[next] = letters[index];
+      candidates.push(transposed.join(""));
+    });
+
+    for (const candidate of shuffleDuolingoList(candidates)) {
+      const key = normalizeDuolingoTypedText(candidate);
+      if (!key || candidate === word || taken.has(key)) {
+        continue;
+      }
+      // A decoy that is a bank word with its tail cut off (or one with
+      // something stuck on the end) is half-invisible to the typing input,
+      // which completes any unique prefix: typing the misspelling would place
+      // the real word rather than fail.
+      if (bankKeys.some((real) => real.startsWith(key) || key.startsWith(real))) {
+        continue;
+      }
+      return candidate;
+    }
+    return "";
+  }
+
+  function matchDuolingoLetterCase(sample, letter) {
+    return sample === sample.toLocaleUpperCase() && sample !== sample.toLocaleLowerCase()
+      ? letter.toLocaleUpperCase()
+      : letter;
+  }
+
+  function shuffleDuolingoList(items) {
+    const shuffled = [...items];
+    for (let index = shuffled.length - 1; index > 0; index -= 1) {
+      const swap = Math.floor(Math.random() * (index + 1));
+      [shuffled[index], shuffled[swap]] = [shuffled[swap], shuffled[index]];
+    }
+    return shuffled;
   }
 
   function getDuolingoWordBank() {
@@ -4695,6 +6906,16 @@
       challengeName: "challenge-assist",
       cardSelector: "[data-test='challenge-choice']",
       textSelector: "[data-test='challenge-judge-text']"
+    },
+    // Pairs ("Select the matching pairs"): two columns of word cards, one
+    // column per language, each card numbered. Unlike listen-match the
+    // pairing is nowhere in the DOM — every card's data-test is its own word
+    // — so only the target-language column is hidden and typed, and the other
+    // column is picked by its number badge.
+    pairs: {
+      challengeName: "challenge-match",
+      cardSelector: "button[data-test*='challenge-tap-token']",
+      textSelector: "[data-test='challenge-tap-token-text']"
     }
   };
 
@@ -4713,6 +6934,56 @@
     }
 
     return null;
+  }
+
+  function getDuolingoTypeCards(context) {
+    const spec = DUOLINGO_TYPE_KINDS[context.kind];
+    const cardSelector = spec ? spec.cardSelector : "button[data-test*='challenge-tap-token']";
+    const cards = [...context.container.querySelectorAll(cardSelector)];
+    return context.kind === "pairs" ? getDuolingoRecallCards(cards, spec) : cards;
+  }
+
+  // On a pairs challenge both columns hold readable words, so hiding all of
+  // them would leave nothing to work from. The half worth recalling is the one
+  // in the language being learned.
+  function getDuolingoRecallCards(cards, spec) {
+    const readCard = (card) => {
+      const source = card.querySelector(spec.textSelector);
+      return source ? String(source.textContent || "") : "";
+    };
+
+    const targetScript = cards.filter((card) => isTextAlreadyInTargetLanguage(readCard(card)));
+    if (targetScript.length && targetScript.length < cards.length) {
+      return targetScript;
+    }
+
+    // A Latin-script target (Spanish, French) leaves the script test blind.
+    // Fall back to geometry: the cards sit in two columns sharing a left edge,
+    // and Duolingo puts the language being learned in the right-hand one.
+    const columns = new Map();
+    cards.forEach((card) => {
+      const left = Math.round(card.getBoundingClientRect().left);
+      const key = [...columns.keys()].find((edge) => Math.abs(edge - left) <= 8);
+      const column = key === undefined ? left : key;
+      columns.set(column, [...(columns.get(column) || []), card]);
+    });
+    if (columns.size === 2) {
+      const rightEdge = Math.max(...columns.keys());
+      return columns.get(rightEdge);
+    }
+
+    return cards;
+  }
+
+  function getDuolingoRecallTexts(context) {
+    const spec = DUOLINGO_TYPE_KINDS[context.kind];
+    if (context.kind !== "pairs") {
+      return [...context.challenge.querySelectorAll(spec.textSelector)];
+    }
+
+    return getDuolingoTypeCards(context)
+      .map((card) => card.querySelector(spec.textSelector))
+      .filter(Boolean);
   }
 
   function removeDuolingoTypeInput() {
@@ -4744,13 +7015,11 @@
     } else if (context) {
       // Hide only the word text; the cards, number badges and audio buttons
       // stay visible and clickable.
-      context.challenge
-        .querySelectorAll(DUOLINGO_TYPE_KINDS[context.kind].textSelector)
-        .forEach((span) => {
-          if (span.style.visibility !== wanted) {
-            span.style.visibility = wanted;
-          }
-        });
+      getDuolingoRecallTexts(context).forEach((span) => {
+        if (span.style.visibility !== wanted) {
+          span.style.visibility = wanted;
+        }
+      });
     }
 
     const subject = context && context.kind !== "bank" ? "the answer words" : "the word bank";
@@ -4789,19 +7058,31 @@
       return;
     }
 
+    // A fresh row is the cheapest place to re-read the page's theme: it costs
+    // one getComputedStyle per challenge, and it catches a theme flip that the
+    // attribute watcher could not see.
+    refreshDuolingoTheme();
+    const theme = duolingoTheme();
+    ensureDuolingoThemeStyle();
+
     const input = document.createElement("input");
     input.id = DUOLINGO_TYPE_INPUT_ID;
     input.type = "text";
     input.autocomplete = "off";
     input.spellcheck = false;
+    input.setAttribute("data-lwr-input", "");
+    input.setAttribute("data-lwr-theme", duolingoThemeName);
     if (context.kind === "match") {
       input.placeholder = "Press a number to listen, type the word, then space";
       input.setAttribute("aria-label", "Type the word matching the audio you hear");
+    } else if (context.kind === "pairs") {
+      input.placeholder = "Press a number to pick a word, type its pair, then space";
+      input.setAttribute("aria-label", "Type the word pairing with the one you picked");
     } else if (context.kind === "choice") {
       input.placeholder = "Type the meaning, then space — Enter checks";
       input.setAttribute("aria-label", "Type the answer matching the prompt");
     } else {
-      input.placeholder = "Type a word, then space — Tab hints, Enter checks";
+      input.placeholder = "Type a word, then space — Tab hints (again: more), Enter checks";
       input.setAttribute("aria-label", "Type a word from the word bank");
     }
     input.style.cssText = [
@@ -4810,10 +7091,10 @@
       "box-sizing: border-box",
       "margin: 0",
       "padding: 10px 84px 10px 14px",
-      "border: 2px solid rgb(229, 229, 229)",
+      `border: 2px solid ${theme.inputBorder}`,
       "border-radius: 12px",
-      "background: #ffffff",
-      "color: rgb(60, 60, 60)",
+      `background: ${theme.inputBackground}`,
+      `color: ${theme.inputText}`,
       "font-family: 'duolingo-sans', -apple-system, sans-serif",
       "font-size: 17px",
       "font-weight: 500",
@@ -4830,6 +7111,7 @@
     toggle.id = DUOLINGO_BANK_TOGGLE_ID;
     toggle.type = "button";
     toggle.tabIndex = -1;
+    toggle.setAttribute("data-lwr-theme", duolingoThemeName);
     toggle.style.cssText = [
       "position: absolute",
       "right: 8px",
@@ -4844,7 +7126,7 @@
       "border: none",
       "border-radius: 8px",
       "background: none",
-      "color: rgb(175, 175, 175)",
+      `color: ${theme.icon}`,
       "cursor: pointer"
     ].join(";");
 
@@ -4852,8 +7134,9 @@
     hintButton.id = DUOLINGO_TYPE_HINT_BUTTON_ID;
     hintButton.type = "button";
     hintButton.tabIndex = -1;
-    hintButton.title = "Hint the next letter (Tab)";
+    hintButton.title = "Hint (Tab) — the word's shape first, then letters";
     hintButton.setAttribute("aria-label", hintButton.title);
+    hintButton.setAttribute("data-lwr-theme", duolingoThemeName);
     hintButton.innerHTML = DUOLINGO_LIGHTBULB_ICON;
     hintButton.style.cssText = [
       "position: absolute",
@@ -4869,13 +7152,14 @@
       "border: none",
       "border-radius: 8px",
       "background: none",
-      "color: rgb(175, 175, 175)",
+      `color: ${theme.icon}`,
       "cursor: pointer"
     ].join(";");
 
     const badge = document.createElement("div");
     badge.id = DUOLINGO_TYPE_HINT_BADGE_ID;
     badge.setAttribute("role", "status");
+    badge.setAttribute("data-lwr-theme", duolingoThemeName);
     badge.style.cssText = [
       "position: absolute",
       "right: 8px",
@@ -4883,8 +7167,8 @@
       "display: none",
       "padding: 6px 12px",
       "border-radius: 10px",
-      "background: rgb(60, 60, 60)",
-      "color: #ffffff",
+      `background: ${theme.badgeBackground}`,
+      `color: ${theme.badgeText}`,
       "font-family: 'duolingo-sans', -apple-system, sans-serif",
       "font-size: 15px",
       "font-weight: 600",
@@ -4895,6 +7179,9 @@
 
     wrap.append(input, hintButton, toggle, badge);
     container.parentElement.insertBefore(wrap, container);
+    // A fresh input row means a new challenge: the previous word's reveal
+    // depth must not carry over into it.
+    resetDuolingoTypeHintDepth();
     applyDuolingoBankVisibility();
     input.focus();
   }
@@ -4942,8 +7229,7 @@
     }
 
     const spec = DUOLINGO_TYPE_KINDS[context.kind];
-    const cardSelector = spec ? spec.cardSelector : "button[data-test*='challenge-tap-token']";
-    return [...context.container.querySelectorAll(cardSelector)]
+    return getDuolingoTypeCards(context)
       .filter(
         (card) => !card.disabled && card.getAttribute("aria-disabled") !== "true"
       )
@@ -5007,37 +7293,137 @@
       .replace(/^ /, "");
   }
 
-  function getDuolingoNextLetterHint(typed) {
+  function getDuolingoNextLetterHint(typed, depth = 1) {
     const tokens = getDuolingoBankTokens();
     if (!tokens.length) {
       return null;
     }
 
     const query = normalizeDuolingoTypedPrefix(typed);
+    // Every candidate contributes its own next `depth` letters, so a bank that
+    // still has "мене" and "мій" in it reads "ме / мі" rather than picking a
+    // branch for the user.
     const letters = new Set();
     let complete = false;
+    let longestRemainder = 0;
     for (const text of new Set(tokens.map((token) => token.text))) {
       if (!text.startsWith(query)) {
         continue;
       }
-      if (text.length === query.length) {
+      const remainder = text.slice(query.length);
+      if (!remainder) {
         complete = true;
-      } else {
-        letters.add(text[query.length]);
+        continue;
       }
+      longestRemainder = Math.max(longestRemainder, remainder.length);
+      letters.add(remainder.slice(0, Math.max(1, depth)));
     }
 
-    return { viable: complete || letters.size > 0, letters: [...letters].sort(), complete };
+    return {
+      viable: complete || letters.size > 0,
+      letters: [...letters].sort(),
+      complete,
+      longestRemainder
+    };
+  }
+
+  // Candidate words rendered behind a blur: the first presses cue the word's
+  // silhouette — its length, its word count, the run of its letters — which is
+  // what makes a word click, without spelling any of it out. Radii picked by
+  // eye at 19px text: a blob, then contours, then almost-legible.
+  function getDuolingoShapeHintWords(typed) {
+    const query = normalizeDuolingoTypedPrefix(typed);
+    const words = [];
+    const seen = new Set();
+    for (const token of getDuolingoBankTokens()) {
+      // Skip a candidate the buffer already spells out: its shape is on screen
+      // in the input, so blurring it back at the user cues nothing.
+      if (!token.text.startsWith(query) || token.text.length === query.length) {
+        continue;
+      }
+      if (token.raw && !seen.has(token.raw)) {
+        seen.add(token.raw);
+        words.push(token.raw);
+      }
+    }
+    return words.sort().slice(0, DUOLINGO_HINT_SHAPE_MAX_WORDS);
+  }
+
+  function resetDuolingoTypeHintDepth() {
+    duolingoTypeHintDepth = 0;
+    duolingoTypeHintPrefix = null;
+  }
+
+  // One rung per press while the buffer is unchanged: the shape stages first,
+  // then a letter at a time. A fresh buffer (typing, backspacing, a placed
+  // token) starts the ladder over.
+  function nextDuolingoTypeHintDepth(input) {
+    const prefix = normalizeDuolingoTypedPrefix(input.value);
+    if (prefix !== duolingoTypeHintPrefix) {
+      duolingoTypeHintPrefix = prefix;
+      duolingoTypeHintDepth = 1;
+      return duolingoTypeHintDepth;
+    }
+
+    // Cap at the last rung: shape stages plus the longest remaining candidate.
+    // Past that there is nothing left to reveal, so extra presses hold.
+    const remaining = getDuolingoNextLetterHint(input.value, 1);
+    const letters = remaining && remaining.longestRemainder ? remaining.longestRemainder : 0;
+    const limit = Math.max(1, countDuolingoShapeStages(input.value) + letters);
+    duolingoTypeHintDepth = Math.min(duolingoTypeHintDepth + 1, limit);
+    return duolingoTypeHintDepth;
+  }
+
+  function countDuolingoShapeStages(typed) {
+    return getDuolingoShapeHintWords(typed).length ? DUOLINGO_HINT_SHAPE_BLURS.length : 0;
   }
 
   function setDuolingoTypeBorder(input) {
+    const theme = duolingoTheme();
     if (input.getAttribute("data-lwr-dead-end") === "true") {
-      input.style.borderColor = "rgb(234, 43, 43)";
+      input.style.borderColor = theme.inputBorderError;
     } else if (document.activeElement === input) {
-      input.style.borderColor = "rgb(28, 176, 246)";
+      input.style.borderColor = theme.inputBorderFocus;
     } else {
-      input.style.borderColor = "rgb(229, 229, 229)";
+      input.style.borderColor = theme.inputBorder;
     }
+  }
+
+  function applyDuolingoTypeInputTheme() {
+    const theme = duolingoTheme();
+
+    document.querySelectorAll(`[id='${DUOLINGO_TYPE_INPUT_ID}']`).forEach((input) => {
+      if (input.getAttribute("data-lwr-theme") === duolingoThemeName) {
+        return;
+      }
+      input.setAttribute("data-lwr-theme", duolingoThemeName);
+      input.style.background = theme.inputBackground;
+      input.style.color = theme.inputText;
+      setDuolingoTypeBorder(input);
+    });
+
+    for (const id of [DUOLINGO_BANK_TOGGLE_ID, DUOLINGO_TYPE_HINT_BUTTON_ID]) {
+      document.querySelectorAll(`[id='${id}']`).forEach((button) => {
+        if (button.getAttribute("data-lwr-theme") === duolingoThemeName) {
+          return;
+        }
+        button.setAttribute("data-lwr-theme", duolingoThemeName);
+        button.style.color = theme.icon;
+      });
+    }
+
+    document.querySelectorAll(`[id='${DUOLINGO_TYPE_HINT_BADGE_ID}']`).forEach((badge) => {
+      if (badge.getAttribute("data-lwr-theme") === duolingoThemeName) {
+        return;
+      }
+      badge.setAttribute("data-lwr-theme", duolingoThemeName);
+      badge.style.color = theme.badgeText;
+      // The background carries the hint's verdict, so leave it to the next
+      // reveal rather than guessing which of the two it should be now.
+      if (badge.style.display === "none") {
+        badge.style.background = theme.badgeBackground;
+      }
+    });
   }
 
   function updateDuolingoTypeDeadEnd(input) {
@@ -5064,17 +7450,28 @@
 
   function showDuolingoTypeHint(input) {
     const badge = document.getElementById(DUOLINGO_TYPE_HINT_BADGE_ID);
-    const hint = getDuolingoNextLetterHint(input.value);
+    const press = nextDuolingoTypeHintDepth(input);
+    const shapeStages = countDuolingoShapeStages(input.value);
+    // On a shape rung the letter hint is still read, for its "space places it"
+    // verdict; the reveal depth only starts counting once the ladder is past
+    // the blurs.
+    const hint = getDuolingoNextLetterHint(input.value, Math.max(1, press - shapeStages));
     if (!badge || !hint) {
       return;
     }
 
+    const shaping = hint.viable && press <= shapeStages;
+    const blur = shaping ? DUOLINGO_HINT_SHAPE_BLURS[press - 1] : 0;
+    const shapeWords = shaping ? getDuolingoShapeHintWords(input.value) : [];
+
     let text;
     if (!hint.viable) {
       text = "✗ no bank word matches — backspace";
+    } else if (shaping) {
+      text = hint.complete ? "space places it · shape:" : "shape:";
     } else {
       const letters = hint.letters
-        .map((letter) => (letter === " " ? "␣" : letter))
+        .map((letter) => letter.replace(/ /g, "␣"))
         .join(" / ");
       if (hint.complete) {
         text = letters ? `space places it · or continue: ${letters}` : "space places it";
@@ -5083,10 +7480,31 @@
       }
     }
 
-    if (badge.textContent !== text) {
+    // Guarded write: rewriting the badge's children feeds the MutationObserver.
+    const signature = `${text}|${blur}|${shapeWords.join(" · ")}`;
+    if (badge.getAttribute("data-lwr-hint") !== signature) {
+      badge.setAttribute("data-lwr-hint", signature);
       badge.textContent = text;
+      if (shapeWords.length) {
+        const shape = document.createElement("span");
+        // aria-hidden: a blurred word is a purely visual cue, and reading it
+        // out would hand over the answer the blur exists to withhold.
+        shape.setAttribute("aria-hidden", "true");
+        shape.textContent = shapeWords.join(" · ");
+        shape.style.cssText = [
+          "display: inline-block",
+          "margin-left: 2px",
+          // Padding keeps the blur's bleed inside the badge's own background.
+          "padding: 2px 8px",
+          `filter: blur(${blur}px)`,
+          "font-size: 19px",
+          "vertical-align: -1px"
+        ].join(";");
+        badge.append(shape);
+      }
     }
-    const background = hint.viable ? "rgb(60, 60, 60)" : "rgb(234, 43, 43)";
+    const theme = duolingoTheme();
+    const background = hint.viable ? theme.badgeBackground : theme.badgeErrorBackground;
     if (badge.style.background !== background) {
       badge.style.background = background;
     }
@@ -5102,7 +7520,7 @@
 
   function clickDuolingoMatchCardByNumber(digit) {
     const context = getDuolingoTypeContext();
-    if (!context || context.kind !== "match") {
+    if (!context || (context.kind !== "match" && context.kind !== "pairs")) {
       return false;
     }
 
@@ -5141,7 +7559,7 @@
   }
 
   function flashDuolingoTypeInput(input) {
-    input.style.borderColor = "rgb(234, 43, 43)";
+    input.style.borderColor = duolingoTheme().inputBorderError;
     setTimeout(() => {
       setDuolingoTypeBorder(input);
     }, 350);
@@ -5150,11 +7568,27 @@
   function handleDuolingoTypeKeydown(event) {
     event.stopPropagation();
 
+    const input = event.target;
+
+    // The typing input holds focus for the whole challenge, so a plain copy
+    // would come back empty. With nothing selected, ⌘/Ctrl+C copies the
+    // phrase the challenge is asking about; with a selection it copies that.
+    if (
+      (event.metaKey || event.ctrlKey) &&
+      !event.altKey &&
+      String(event.key).toLowerCase() === "c"
+    ) {
+      if (state.duolingoCopyPhrase && input.selectionStart === input.selectionEnd) {
+        copyDuolingoPrompt();
+        event.preventDefault();
+      }
+      return;
+    }
+
     if (event.ctrlKey || event.metaKey || event.altKey) {
       return;
     }
 
-    const input = event.target;
     const typed = input.value.trim();
 
     if (event.key === "Backspace" && !input.value) {
@@ -5172,10 +7606,11 @@
       return;
     }
 
-    // Match challenges: a digit on an empty buffer taps that numbered card,
-    // so the audio can be played without reaching for the mouse. With text
-    // in the buffer digits type normally (and dead-end like any other miss).
-    if (/^[1-9]$/.test(event.key) && !input.value) {
+    // Match and pairs challenges: a digit on an empty buffer taps that
+    // numbered card, so the audio can be played (or a word picked) without
+    // reaching for the mouse. Pairs number their tenth card "0". With text in
+    // the buffer digits type normally (and dead-end like any other miss).
+    if (/^[0-9]$/.test(event.key) && !input.value) {
       if (clickDuolingoMatchCardByNumber(event.key)) {
         event.preventDefault();
       }
@@ -5211,6 +7646,7 @@
       // Clearing the value programmatically fires no input event, so reset
       // the hint UI here.
       hideDuolingoTypeHint();
+      resetDuolingoTypeHintDepth();
       updateDuolingoTypeDeadEnd(input);
       event.preventDefault();
       return;
@@ -5611,6 +8047,11 @@
       return;
     }
 
+    // Every duolingo.com page load reaches here, so this is where the light /
+    // dark palette gets read and kept in step with the page.
+    watchDuolingoTheme();
+    ensureDuolingoThemeStyle();
+
     duolingoImportObserver = new MutationObserver(() => {
       ensureDuolingoImportButton();
       ensureDuolingoSettingsUi();
@@ -5995,20 +8436,25 @@
   }
 
   function duolingoManualInput(placeholder) {
+    const theme = duolingoTheme();
+    ensureDuolingoThemeStyle();
     const input = document.createElement("input");
     input.type = "text";
     input.autocomplete = "off";
     input.spellcheck = false;
     input.placeholder = placeholder;
+    input.setAttribute("data-lwr-input", "");
+    input.setAttribute("data-lwr-panel-input", "");
+    input.setAttribute("data-lwr-theme", duolingoThemeName);
     input.style.cssText = [
       "flex: 1 1 180px",
       "min-width: 140px",
       "box-sizing: border-box",
       "padding: 9px 12px",
-      "border: 2px solid rgb(229, 229, 229)",
+      `border: 2px solid ${theme.inputBorder}`,
       "border-radius: 12px",
-      "background: #ffffff",
-      "color: rgb(60, 60, 60)",
+      `background: ${theme.inputBackground}`,
+      `color: ${theme.inputText}`,
       "font-family: 'duolingo-sans', -apple-system, sans-serif",
       "font-size: 15px",
       "outline: none"
@@ -7156,16 +9602,24 @@
   }
 
   function buildFlashcardOverlay() {
+    // The overlay covers the page whole, so it has to bring its own copy of
+    // the page's theme — otherwise a dark-mode session opens as a white flash
+    // and the answer box has nothing dark to sit on.
+    refreshDuolingoTheme();
+    const theme = duolingoTheme();
+    ensureDuolingoThemeStyle();
+
     const overlay = document.createElement("div");
     overlay.id = DUOLINGO_FLASHCARDS_OVERLAY_ID;
     overlay.dataset.lwrUi = "true";
+    overlay.setAttribute("data-lwr-theme", duolingoThemeName);
     overlay.style.cssText = [
       "position: fixed",
       "inset: 0",
       "z-index: 2147483000",
       "display: flex",
       "flex-direction: column",
-      "background: #ffffff",
+      `background: ${theme.surface}`,
       "font-family: 'duolingo-sans', -apple-system, sans-serif"
     ].join(";");
 
@@ -7177,12 +9631,11 @@
     quit.textContent = "✕";
     quit.title = "End this flashcard session";
     quit.setAttribute("data-lwr-flashcard-quit", "");
-    quit.style.cssText =
-      "border: none; background: none; padding: 4px; color: rgb(175, 175, 175); font-size: 22px; font-weight: 700; cursor: pointer";
+    quit.style.cssText = `border: none; background: none; padding: 4px; color: ${theme.icon}; font-size: 22px; font-weight: 700; cursor: pointer`;
     quit.addEventListener("click", () => closeFlashcardOverlay());
     const track = document.createElement("div");
-    track.style.cssText =
-      "flex: 1; height: 16px; border-radius: 8px; background: rgb(229, 229, 229); overflow: hidden";
+    track.setAttribute("data-lwr-flashcard-track", "");
+    track.style.cssText = `flex: 1; height: 16px; border-radius: 8px; background: ${theme.inputBorder}; overflow: hidden`;
     const fill = document.createElement("div");
     fill.setAttribute("data-lwr-flashcard-progress", "");
     fill.style.cssText = `height: 100%; width: 0%; border-radius: 8px; background: ${FLASHCARD_GREEN}; transition: width 0.2s`;
@@ -7196,7 +9649,7 @@
 
     const footer = document.createElement("div");
     footer.setAttribute("data-lwr-flashcard-footer", "");
-    footer.style.cssText = "border-top: 2px solid rgb(229, 229, 229)";
+    footer.style.cssText = `border-top: 2px solid ${theme.surfaceBorder}`;
     const footerInner = document.createElement("div");
     footerInner.style.cssText =
       "display: flex; align-items: center; gap: 16px; width: 100%; max-width: 720px; margin: 0 auto; padding: 24px; box-sizing: border-box";
@@ -7216,6 +9669,33 @@
     // shortcuts away from the session without cancelling text insertion.
     globalThis.addEventListener("keydown", handleFlashcardOverlayKeydown, true);
     flashcardsTimerInterval = setInterval(updateFlashcardTimer, 100);
+  }
+
+  // Only the overlay's shell needs repainting on a live theme flip: the card
+  // body is rebuilt from scratch on every question, so it picks the palette up
+  // on its own.
+  function applyFlashcardOverlayTheme() {
+    const overlay = document.getElementById(DUOLINGO_FLASHCARDS_OVERLAY_ID);
+    if (!overlay || overlay.getAttribute("data-lwr-theme") === duolingoThemeName) {
+      return;
+    }
+    const theme = duolingoTheme();
+    overlay.setAttribute("data-lwr-theme", duolingoThemeName);
+    overlay.style.background = theme.surface;
+    const track = overlay.querySelector("[data-lwr-flashcard-track]");
+    if (track) {
+      track.style.background = theme.inputBorder;
+    }
+    const footer = overlay.querySelector("[data-lwr-flashcard-footer]");
+    if (footer) {
+      footer.style.borderTopColor = theme.surfaceBorder;
+    }
+    const input = overlay.querySelector("[data-lwr-flashcard-input]");
+    if (input) {
+      input.style.borderColor = theme.inputBorder;
+      input.style.background = theme.inputSunkenBackground;
+      input.style.color = theme.inputText;
+    }
   }
 
   function closeFlashcardOverlay() {
@@ -7294,6 +9774,7 @@
     const item = session.queue[session.position];
     const profile = getCurrentProfile();
     const languageName = profile ? profile.name : "target language";
+    const theme = duolingoTheme();
 
     elements.progress.style.width = `${Math.round((session.completed / session.total) * 100)}%`;
     elements.footer.style.background = "";
@@ -7309,8 +9790,7 @@
       item.direction === "tg2en"
         ? "Type the English meaning"
         : `Type the ${languageName} word`;
-    instruction.style.cssText =
-      "margin: 0; font-size: 24px; font-weight: 700; color: rgb(60, 60, 60)";
+    instruction.style.cssText = `margin: 0; font-size: 24px; font-weight: 700; color: ${theme.surfaceText}`;
     const timer = document.createElement("span");
     timer.setAttribute("data-lwr-flashcard-timer", "");
     timer.style.cssText = [
@@ -7347,14 +9827,15 @@
     input.placeholder =
       item.direction === "tg2en" ? "Type the meaning in English" : `Type it in ${languageName}`;
     input.setAttribute("data-lwr-flashcard-input", "");
+    input.setAttribute("data-lwr-input", "");
     input.style.cssText = [
       "flex: 1",
       "box-sizing: border-box",
       "padding: 14px 16px",
-      "border: 2px solid rgb(229, 229, 229)",
+      `border: 2px solid ${theme.inputBorder}`,
       "border-radius: 12px",
-      "background: rgb(247, 247, 247)",
-      "color: rgb(60, 60, 60)",
+      `background: ${theme.inputSunkenBackground}`,
+      `color: ${theme.inputText}`,
       "font-family: 'duolingo-sans', -apple-system, sans-serif",
       "font-size: 19px",
       "outline: none"
@@ -7432,22 +9913,20 @@
       setFlashcardTimerDisplay(timer, recallMs);
     }
 
+    const theme = duolingoTheme();
     elements.progress.style.width = `${Math.round((session.completed / session.total) * 100)}%`;
-    elements.footer.style.background = correct ? "rgb(215, 255, 184)" : "rgb(255, 223, 224)";
+    elements.footer.style.background = correct ? theme.correctBanner : theme.wrongBanner;
     elements.feedback.textContent = "";
+    const verdictColor = correct ? theme.correctText : theme.wrongText;
     const title = document.createElement("div");
     title.textContent =
       grade === "typo" ? "You have a typo" : correct ? "Nice!" : "Correct answer:";
-    title.style.cssText = `font-size: 19px; font-weight: 700; color: ${
-      correct ? FLASHCARD_GREEN_SHADOW : FLASHCARD_RED_SHADOW
-    }`;
+    title.style.cssText = `font-size: 19px; font-weight: 700; color: ${verdictColor}`;
     const answer = document.createElement("div");
     answer.textContent = correct
       ? `${flashcardCorrectAnswerText(item)} — ${formatFlashcardRecallMs(recallMs)}`
       : flashcardCorrectAnswerText(item);
-    answer.style.cssText = `margin-top: 4px; font-size: 15px; color: ${
-      correct ? FLASHCARD_GREEN_SHADOW : FLASHCARD_RED_SHADOW
-    }`;
+    answer.style.cssText = `margin-top: 4px; font-size: 15px; color: ${verdictColor}`;
     elements.feedback.append(title, answer);
     setFlashcardActionButton(elements.action, "Continue", { danger: !correct });
   }
@@ -7474,10 +9953,11 @@
       ? firstTryCorrect.reduce((sum, result) => sum + result.recallMs, 0) / firstTryCorrect.length
       : 0;
 
+    const theme = duolingoTheme();
     const title = document.createElement("h2");
     title.setAttribute("data-lwr-flashcard-summary", "");
     title.textContent = "Session complete!";
-    title.style.cssText = "margin: 0; font-size: 28px; font-weight: 700; color: rgb(60, 60, 60)";
+    title.style.cssText = `margin: 0; font-size: 28px; font-weight: 700; color: ${theme.surfaceText}`;
 
     const score = document.createElement("div");
     score.textContent = `${firstTryCorrect.length} / ${results.length} correct on the first try`;
@@ -7489,20 +9969,19 @@
     if (firstTryCorrect.length) {
       const speed = document.createElement("div");
       speed.textContent = `Average recall time: ${formatFlashcardRecallMs(averageRecallMs)}`;
-      speed.style.cssText = "font-size: 15px; color: rgb(120, 120, 120)";
+      speed.style.cssText = `font-size: 15px; color: ${theme.surfaceMutedText}`;
       elements.main.append(speed);
     }
 
     if (missed.length) {
       const missedTitle = document.createElement("div");
       missedTitle.textContent = "Words to review:";
-      missedTitle.style.cssText =
-        "margin-top: 10px; font-size: 15px; font-weight: 700; color: rgb(60, 60, 60)";
+      missedTitle.style.cssText = `margin-top: 10px; font-size: 15px; font-weight: 700; color: ${theme.surfaceText}`;
       elements.main.append(missedTitle);
       for (const result of missed) {
         const row = document.createElement("div");
         row.textContent = `${result.card.alternates.join(" / ")} — ${result.card.meanings.join(", ")}`;
-        row.style.cssText = "font-size: 15px; color: rgb(120, 120, 120)";
+        row.style.cssText = `font-size: 15px; color: ${theme.surfaceMutedText}`;
         elements.main.append(row);
       }
     }
@@ -7691,15 +10170,43 @@
   const DUOLINGO_SETTINGS_LINK_ID = "learned-word-replacer-duolingo-settings-link";
   const DUOLINGO_SETTINGS_ITEM_ID = "learned-word-replacer-duolingo-settings-item";
   const DUOLINGO_SETTINGS_PANEL_ID = "learned-word-replacer-duolingo-settings-panel";
-  const DUOLINGO_SETTINGS_ROWS = [
-    { key: "enabled", label: "Enable replacements", description: "Replace the words you have learned on every website" },
-    { key: "showHighlights", label: "Highlight replacements", description: "Underline replaced words on pages" },
-    { key: "structureMode", label: "Target-language sentence structure", description: "Rebuild sentences in the target language's word order" },
-    { key: "showProcessedSections", label: "Mark checked sections", description: "Mark page sections that were checked for learned words" },
-    { key: "showOriginalOnHover", label: "Show original English on hover", description: "Show the original English when hovering a replaced word" },
-    { key: "translateEnglishOnHover", label: "Translate English on hover", description: "Translate English words when hovering them" },
-    { key: "duolingoAutoContinue", label: "Skip Duolingo continue screens", description: "Press Continue for you and show the result as a brief popup" },
-    { key: "duolingoTypeAnswers", label: "Type Duolingo answers", description: "Type answers with hints on word-bank, audio-match and meaning exercises" }
+  // Grouped so the panel reads as sections instead of one long list. Every
+  // group keeps its own heading; the rows inside are the stored setting keys.
+  const DUOLINGO_SETTINGS_GROUPS = [
+    {
+      title: "Translation",
+      rows: [
+        { key: "enabled", label: "Enable replacements", description: "Replace the words you have learned on every website" },
+        { key: "fullTranslation", label: "Translate the whole page", description: "Put every sentence into the target language instead of only the words you have learned, and never swap English back in — hover a word for its English" },
+        { key: "structureMode", label: "Target-language sentence structure", description: "Rebuild sentences in the target language's word order", supersededBy: "fullTranslation" },
+        { key: "targetLanguagePages", label: "Read target-language pages", description: "On pages already in the target language, swap the words you have not learned into English", supersededBy: "fullTranslation" }
+      ]
+    },
+    {
+      title: "On the page",
+      rows: [
+        { key: "showHighlights", label: "Highlight replacements", description: "Underline replaced words on pages" },
+        { key: "hideTextUntilTranslated", label: "Hide text until translated", description: "While a page is loading, keep its sections blank until their translations are painted in" },
+        { key: "showProcessedSections", label: "Mark checked sections", description: "Show a small fox beside sections that were checked but had nothing to replace" }
+      ]
+    },
+    {
+      title: "Hovering a word",
+      rows: [
+        { key: "showOriginalOnHover", label: "Show original English on hover", description: "Show the original English when hovering a replaced word" },
+        { key: "translateEnglishOnHover", label: "Translate English on hover", description: "Translate English words when hovering them" }
+      ]
+    },
+    {
+      title: "Duolingo lessons",
+      rows: [
+        { key: "duolingoAutoContinue", label: "Skip continue screens", description: "Press Continue for you and show the result as a brief popup" },
+        { key: "duolingoTypeAnswers", label: "Type answers", description: "Type answers with hints on word-bank, audio-match and meaning exercises" },
+        { key: "duolingoCopyPhrase", label: "Copy phrases", description: "Add a copy button to the exercise phrase, and copy it with ⌘C or Ctrl+C while typing" },
+        { key: "duolingoLowercaseBank", label: "Lowercase word-bank words", description: "Take the capital off the word bank, so the first word of the sentence is not given away" },
+        { key: "duolingoDecoyWords", label: "Add misspelled decoys", description: "Slip near-miss spellings into the word bank so the right word has to be known, not spotted" }
+      ]
+    }
   ];
   let duolingoSettingsActive = false;
   let duolingoHiddenSettingsPane = null;
@@ -7944,56 +10451,83 @@
         "font-family: 'duolingo-sans', -apple-system, sans-serif; font-size: 22px; font-weight: 700; color: rgb(60, 60, 60)";
     }
     heading.textContent = "Sly Fox Translator";
-    heading.style.marginBottom = "24px";
+    heading.style.marginBottom = "8px";
     panel.append(heading);
 
-    for (const row of DUOLINGO_SETTINGS_ROWS) {
-      const label = document.createElement("label");
-      label.style.cssText = [
-        "display: flex",
-        "align-items: center",
-        "justify-content: space-between",
-        "gap: 24px",
-        "padding: 12px 0",
-        "border-bottom: 1px solid rgb(229, 229, 229)",
-        "cursor: pointer",
-        "font-family: 'duolingo-sans', -apple-system, sans-serif"
-      ].join(";");
-
-      const text = document.createElement("span");
-      const title = document.createElement("span");
-      title.textContent = row.label;
-      title.style.cssText =
-        "display: block; font-size: 17px; font-weight: 600; color: rgb(60, 60, 60)";
-      const description = document.createElement("span");
-      description.textContent = row.description;
-      description.style.cssText =
-        "display: block; margin-top: 2px; font-size: 14px; color: rgb(150, 150, 150)";
-      text.append(title, description);
-
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.setAttribute("data-lwr-setting", row.key);
-      checkbox.style.cssText =
-        "width: 22px; height: 22px; flex: none; accent-color: rgb(28, 176, 246); cursor: pointer";
-      checkbox.addEventListener("change", () => {
-        state = { ...state, [row.key]: checkbox.checked };
-        chrome.storage.local.set({ [STORAGE_KEY]: state });
-      });
-
-      label.append(text, checkbox);
-      panel.append(label);
-    }
-
-    panel.append(buildDuolingoExclusionSection(), buildDuolingoFileSection());
+    const sections = [
+      ...DUOLINGO_SETTINGS_GROUPS.map(buildDuolingoSettingsGroup),
+      buildDuolingoExclusionSection(),
+      buildDuolingoFileSection()
+    ];
+    panel.append(...sections);
     return panel;
+  }
+
+  function buildDuolingoSettingsGroup(group) {
+    const section = duolingoPanelSection(group.title);
+    for (const row of group.rows) {
+      section.append(buildDuolingoSettingsRow(row));
+    }
+    return section;
+  }
+
+  function buildDuolingoSettingsRow(row) {
+    const label = document.createElement("label");
+    label.style.cssText = [
+      "display: flex",
+      "align-items: center",
+      "justify-content: space-between",
+      "gap: 24px",
+      "padding: 12px 0",
+      "border-bottom: 1px solid rgb(229, 229, 229)",
+      "cursor: pointer",
+      "font-family: 'duolingo-sans', -apple-system, sans-serif"
+    ].join(";");
+
+    const text = document.createElement("span");
+    const title = document.createElement("span");
+    title.textContent = row.label;
+    title.style.cssText =
+      "display: block; font-size: 17px; font-weight: 600; color: rgb(60, 60, 60)";
+    const description = document.createElement("span");
+    description.textContent = row.description;
+    description.style.cssText =
+      "display: block; margin-top: 2px; font-size: 14px; color: rgb(150, 150, 150)";
+    text.append(title, description);
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.setAttribute("data-lwr-setting", row.key);
+    if (row.supersededBy) {
+      // Sync greys the row out while the setting that overrides it is on, so a
+      // toggle that currently does nothing never looks like it does.
+      checkbox.setAttribute("data-lwr-superseded-by", row.supersededBy);
+    }
+    checkbox.style.cssText =
+      "width: 22px; height: 22px; flex: none; accent-color: rgb(28, 176, 246); cursor: pointer";
+    checkbox.addEventListener("change", () => {
+      state = { ...state, [row.key]: checkbox.checked };
+      chrome.storage.local.set({ [STORAGE_KEY]: state });
+    });
+
+    label.append(text, checkbox);
+    return label;
+  }
+
+  function duolingoPanelSection(title) {
+    // Every panel section — setting groups included — is a <section> with the
+    // same heading and spacing, so the whole panel keeps one rhythm.
+    const section = document.createElement("section");
+    section.style.marginTop = "28px";
+    section.append(duolingoPanelSectionHeading(title));
+    return section;
   }
 
   function duolingoPanelSectionHeading(text) {
     const heading = document.createElement("h2");
     heading.textContent = text;
     heading.style.cssText =
-      "margin: 32px 0 4px; font-family: 'duolingo-sans', -apple-system, sans-serif; font-size: 19px; font-weight: 700; color: rgb(60, 60, 60)";
+      "margin: 0 0 4px; font-family: 'duolingo-sans', -apple-system, sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: rgb(150, 150, 150)";
     return heading;
   }
 
@@ -8019,8 +10553,7 @@
   }
 
   function buildDuolingoExclusionSection() {
-    const section = document.createElement("div");
-    section.append(duolingoPanelSectionHeading("Do not translate"));
+    const section = duolingoPanelSection("Do not translate");
 
     const list = document.createElement("div");
     list.setAttribute("data-lwr-exclusion-list", "");
@@ -8029,8 +10562,7 @@
   }
 
   function buildDuolingoFileSection() {
-    const section = document.createElement("div");
-    section.append(duolingoPanelSectionHeading("Vocabulary files"));
+    const section = duolingoPanelSection("Vocabulary files");
 
     const fileInput = document.createElement("input");
     fileInput.type = "file";
@@ -8251,6 +10783,15 @@
       if (checkbox.checked !== wanted) {
         checkbox.checked = wanted;
       }
+
+      const supersededBy = checkbox.getAttribute("data-lwr-superseded-by");
+      const superseded = Boolean(supersededBy && state[supersededBy]);
+      checkbox.disabled = superseded;
+      const row = checkbox.closest("label");
+      if (row) {
+        row.style.opacity = superseded ? "0.45" : "";
+        row.style.cursor = superseded ? "default" : "pointer";
+      }
     });
     renderDuolingoExclusionList();
   }
@@ -8276,6 +10817,7 @@
   }
 
   function loadState() {
+    holdCloak();
     chrome.storage.local.get(
       { [STORAGE_KEY]: DEFAULT_STATE, [FLASHCARDS_STORAGE_KEY]: DEFAULT_FLASHCARDS_STATE },
       (stored) => {
@@ -8286,6 +10828,8 @@
         warmContextTranslator();
         syncDuolingoAutoContinue();
         syncDuolingoTypeAnswers();
+        syncDuolingoCopyPhrase();
+        syncDuolingoBankTraps();
         syncDuolingoPageUi();
         applyToPage();
       }
@@ -8313,6 +10857,8 @@
     state = normalizeState(changes[STORAGE_KEY].newValue);
     syncDuolingoAutoContinue();
     syncDuolingoTypeAnswers();
+    syncDuolingoCopyPhrase();
+    syncDuolingoBankTraps();
     syncDuolingoSettingsPanelValues();
     ensureDuolingoWordsInfo();
     ensureDuolingoWordsTabs();
