@@ -1285,6 +1285,25 @@
     renderDuolingoFlashcardsPanel,
     toggleDuolingoFlashcardsBucket,
     runDuolingoFlashcardsQuickstart,
-    applyFlashcardOverlayTheme
+    applyFlashcardOverlayTheme,
+    // The practice engine itself, shared with the Sly Fox section's lesson
+    // player. The player draws Duolingo's challenges instead of the flashcard
+    // overlay, but the deck, the weighting, the grading and the per-word
+    // records behind it are these — one set of stats, whichever way a word is
+    // practised.
+    FLASHCARD_DIRECTIONS,
+    FLASHCARD_SESSION_SIZE,
+    buildFlashcardDeck,
+    pickFlashcardSessionCards,
+    gradeFlashcardAnswer,
+    // The answer normaliser on its own, so a lesson authored as JSON -- with no
+    // vocabulary entry behind it -- is still marked the same way.
+    flashcardAnswerKeys,
+    flashcardTypoMatch,
+    flashcardCloseMatch,
+    flashcardCorrectAnswerText,
+    flashcardWordStrength,
+    flashcardStrengthBucket,
+    updateFlashcardRecord
   });
 })();

@@ -1,0 +1,42 @@
+div._1fxa4._1Mopf [dt=challenge challenge-assist]
+  div._2n5fx._1JTA4._3B8G-.K3vbJ
+    div.U41Ye
+      h1._3EOK0 [dt=challenge-header]
+        span "Select the correct m"
+    div._2hpO2.UjFh4._3rat3
+      div._1RjNT._3v0hd
+        div._31yjb
+          div._2qg6J
+            div
+              canvas CANVAS
+          div._1tbN5._44BHt
+            div._1lWtm
+              div._20npu "pen"
+              svg._2PgN7._3tTXW._3PLLp
+                path._3q-cX
+                path._1Ps8f
+      div.PaKCO._1vQbM._3laLR._32LPr
+        div._8dMUn._2cKzl._1G3d- [dt=challenge-choice]
+          span._3zbIX._20AkF._3KL75 "1"
+          span.CwCwj._1FXPg [dt=challenge-judge-text]
+            span._2gbXD
+              span.u_TP-.fs-exclude.FMPra
+                svg
+              span.u_TP-.fs-exclude._2iWiH
+                svg
+        div._8dMUn._2cKzl._1G3d- [dt=challenge-choice]
+          span._3zbIX._20AkF._3KL75 "2"
+          span.CwCwj._1FXPg [dt=challenge-judge-text]
+            span._2gbXD
+              span.u_TP-.fs-exclude.FMPra
+                svg
+              span.u_TP-.fs-exclude._2iWiH
+                svg
+        div._8dMUn._2cKzl._1G3d- [dt=challenge-choice]
+          span._3zbIX._20AkF._3KL75 "3"
+          span.CwCwj._1FXPg [dt=challenge-judge-text]
+            span._2gbXD
+              span.u_TP-.fs-exclude.FMPra
+                svg
+              span.u_TP-.fs-exclude._2iWiH
+                svg

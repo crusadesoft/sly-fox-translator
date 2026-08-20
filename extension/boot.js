@@ -83,6 +83,7 @@
     LWR.syncDuolingoSettingsPanelValues();
     LWR.ensureDuolingoWordsInfo();
     LWR.ensureDuolingoWordsTabs();
+    LWR.ensureDuolingoSectionCard();
     LWR.ensureDuolingoLogoBadge();
     LWR.applyToPage();
   });

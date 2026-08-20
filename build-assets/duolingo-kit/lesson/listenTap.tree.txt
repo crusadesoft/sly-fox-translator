@@ -1,0 +1,37 @@
+div._1fxa4._1Mopf [dt=challenge challenge-listenTap]
+  div._2n5fx._1JTA4._3B8G-.K3vbJ
+    div.U41Ye
+      h1._3EOK0 [dt=challenge-header]
+        span "Tap what you hear"
+    div._1wDRL._1IiFg.f7WE2._3rat3
+      div._3C4MQ
+        div._3qAs-
+          span._1fdKO
+            button.yJbco._23274._3TlAm._29LnD._2sNVM._2LoNU.VzbUl._1AgKJ._1w2Ut._3wPHf._2Rt1l._1saKQ._1Lt8-._25RRr
+              span.u_TP-.fs-exclude._1OCYa
+                svg
+          div.g8o0T
+            span._1fdKO
+              button.rnwSx._23274._3TlAm._29LnD._2sNVM._2LoNU.VzbUl._1AgKJ._1w2Ut._3wPHf._2Rt1l._1saKQ._1Lt8-._25RRr._37SfF
+                span.u_TP-.fs-exclude._1OCYa
+      div.Sa7Uw
+        div.MvChQ.v1KUv
+          div.eWdJ5
+            div._32DLo
+              div._1VxfZ
+                div._1arte
+                div._2-F7v
+          div._1v1Bd
+            div.eSgkc [dt=word-bank]
+              div._1uV0Q._DVHp
+                span._3VyQa
+              div._1uV0Q._DVHp
+                span._3VyQa
+              div._1uV0Q._DVHp
+                span._3VyQa
+              div._1uV0Q._DVHp
+                span._3VyQa
+              div._1uV0Q._DVHp
+                span._3VyQa
+              div._1uV0Q._DVHp
+                span._3VyQa

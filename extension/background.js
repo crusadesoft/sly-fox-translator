@@ -35,6 +35,7 @@ const CONTENT_SCRIPT_FILES = [
   "duolingo/manual-panel.js",
   "duolingo/flashcards.js",
   "duolingo/settings-panel.js",
+  "duolingo/section-card.js",
   "duolingo/words-page-ui.js",
   "boot.js"
 ];

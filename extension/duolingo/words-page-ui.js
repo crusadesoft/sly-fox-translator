@@ -104,6 +104,7 @@
       LWR.ensureDuolingoSettingsUi();
       LWR.ensureDuolingoWordsInfo();
       LWR.ensureDuolingoWordsTabs();
+      LWR.ensureDuolingoSectionCard();
       ensureDuolingoLogoBadge();
     });
     duolingoImportObserver.observe(document.documentElement, {
@@ -118,12 +119,22 @@
     LWR.ensureDuolingoSettingsUi();
     LWR.ensureDuolingoWordsInfo();
     LWR.ensureDuolingoWordsTabs();
+    LWR.ensureDuolingoSectionCard();
     ensureDuolingoLogoBadge();
     document.addEventListener(
       "click",
       (event) => {
         const closest = (selector) =>
           event.target && event.target.closest ? event.target.closest(selector) : null;
+
+        if (closest(`[id='${LWR.DUOLINGO_SECTION_CARD_ID}']`)) {
+          // Duolingo's router owns clicks inside the sections list; keep it out
+          // of a card that is not one of its routes.
+          event.preventDefault();
+          event.stopPropagation();
+          LWR.openDuolingoSectionPage();
+          return;
+        }
 
         if (closest(`[id='${DUOLINGO_IMPORT_BUTTON_ID}']`)) {
           runDuolingoPageImport();

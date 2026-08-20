@@ -1,0 +1,37 @@
+div._2G9ED._29gfw
+  div.wqSzE
+    div._3v4ux
+      div.I-Avc._1zcW8
+        button._1gEmM._7jW2t._3X5b9 [dt=quit-button]
+          img._3X5b9._9lHjd src=4af31393cf9dee6fd35c07fc7155d404.svg
+        div.oCRfA
+          div._3yKMC
+            div._27NV6
+              div._1qzJe._27NV6
+              div._1EFTr
+            div._345XU
+              div.BR3lm
+        div._3ww7z
+          img src=0c1a523b4b5882a97e4df162f4b5c58b.svg
+          img src=8d4c5fcd9cedabfd155d3eda8af269bc.svg
+  div.RMEuZ._1GVfY
+    div._3GuWo._1cTBC._29ngr
+      div._1XNQX._3V6my
+        div._2GMvD.En_6d._2OFAQ
+          div._1UGd5._1JaQ9 [dt=session-duo]
+            span.u_TP-.fs-exclude
+              svg
+                defs
+                g
+          div
+            div._3zpnU.D0iFS._3SQBJ._1-QWt
+              div._36bu_._2GMvD._2ka0w._1K3po "Let's review the exe"
+              div._3T97b
+                div._1TMn5
+  div._3GuWo._1cTBC._1QQhE
+    div._1XNQX
+      div._3rB4d._1VTif._2HXQ9
+        div.U8jH3.jHbiF
+          div.MYehf
+            button._1rcV8._1VYyp._1ursp._7jW2t._3DbUj._38g3s._2oGJR [dt=player-next]
+              span._9lHjd "Continue"

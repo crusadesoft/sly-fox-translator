@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<!--
+  The Sly Fox section.
+
+  This is a local extension page rather than an injection into duolingo.com/learn.
+  Their path is virtualised — React mounts only the few units either side of the
+  scroll position and unmounts them underneath you — so anything grafted into it
+  has to fight for its place on every scroll. Here the markup is ours and stays
+  put.
+
+  Every class name below is Duolingo's own, and duolingo.css is extracted from
+  their stylesheets rather than written by hand. The structure mirrors a real
+  unit exactly: see build-assets/duolingo-kit/ for the harvest it came from.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sly Fox Section</title>
+    <link rel="stylesheet" href="duolingo.css" />
+  </head>
+  <body>
+    <div class="fs-unmask">
+      <!-- Left rail. Duolingo's own nav, with our own destinations: every item
+           other than the section itself hands the user back to duolingo.com. -->
+      <div class="_3P5E_ _14v8V" style="z-index: 210">
+        <div class="_3vxyy">
+          <a class="_3qEOY" href="https://www.duolingo.com/learn">
+            <img class="sOuBs" src="assets/nav/70a4be81077a8037698067f583816ff9.svg" alt="" />
+            <img class="_1C091" src="assets/nav/0cecd302cf0bcd0f73d51768feff75fe.svg" alt="" />
+          </a>
+        </div>
+        <div class="_2uLXp">
+          <div class="_3glZ0">
+            <a class="_2dvyl" aria-current="page" href="#">
+              <span class="_22Pme _33YLo p3liX YAEPa _348_2">
+                <div class="_4fxfA">
+                  <img class="_101n8" src="../icons/icon-48.png" alt="" />
+                </div>
+                <span class="_1AZJt">Sly Fox</span>
+              </span>
+            </a>
+          </div>
+          <div>
+            <a class="_2dvyl" href="https://www.duolingo.com/learn">
+              <span class="_22Pme _33YLo p3liX YAEPa _3Dchg">
+                <div class="_4fxfA">
+                  <img class="_101n8" src="assets/nav/784035717e2ff1d448c0f6cc4efc89fb.svg" alt="" />
+                </div>
+                <span class="_1AZJt">Learn</span>
+              </span>
+            </a>
+          </div>
+          <div>
+            <a class="_2dvyl" href="https://www.duolingo.com/practice-hub">
+              <span class="_22Pme _33YLo p3liX YAEPa _3Dchg">
+                <div class="_4fxfA">
+                  <img class="_101n8" src="assets/nav/5187f6694476a769d4a4e28149867e3e.svg" alt="" />
+                </div>
+                <span class="_1AZJt">Practice</span>
+              </span>
+            </a>
+          </div>
+          <div>
+            <a class="_2dvyl" href="https://www.duolingo.com/practice-hub/words">
+              <span class="_22Pme _33YLo p3liX YAEPa _3Dchg">
+                <div class="_4fxfA">
+                  <img class="_101n8" src="assets/nav/b05052818a7e6be25b105c93e13bb21d.svg" alt="" />
+                </div>
+                <span class="_1AZJt">Words</span>
+              </span>
+            </a>
+          </div>
+          <div>
+            <a class="_2dvyl" href="https://www.duolingo.com/sections">
+              <span class="_22Pme _33YLo p3liX YAEPa _3Dchg">
+                <div class="_4fxfA">
+                  <img class="_101n8" src="assets/nav/7ef36bae3f9d68fc763d3451b5167836.svg" alt="" />
+                </div>
+                <span class="_1AZJt">Sections</span>
+              </span>
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div class="_3Cy6o _2kkzG">
+        <div class="_19E80">
+          <div class="AkzqY">
+            <div class="wl71D">
+              <div class="_2HEhk">
+                <!-- Sticky unit banner. _1g8jV is Duolingo's sticky wrapper;
+                     the unit colour reaches the banner through the
+                     --path-unit-* custom properties set on the section. -->
+                <div class="_1g8jV" id="sly-fox-unit-banner"></div>
+                <div class="_41Y_n _2CoFd _2SLKP" id="sly-fox-path"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="vendor/lottie.min.js"></script>
+    <script src="section.js"></script>
+  </body>
+</html>

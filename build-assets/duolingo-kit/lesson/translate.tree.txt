@@ -1,0 +1,22 @@
+div._1fxa4._1Mopf [dt=challenge challenge-translate]
+  div._2n5fx._1JTA4._3B8G-.K3vbJ
+    div.U41Ye
+      h1._3EOK0 [dt=challenge-header]
+        span "Write this in Englis"
+    div.iPZZY.UjFh4._3rat3
+      div._2w0y3._1dtTU._35mGI
+        div._31yjb
+          div._2qg6J
+            div
+              canvas CANVAS
+          div._1tbN5._44BHt
+            div._1lWtm
+              div._20npu
+              svg._2PgN7._3tTXW._3PLLp
+      div.u5Wzl._32LPr._3hg-V
+        div.Sa7Uw
+          div.MvChQ.v1KUv.fUvcy
+            div.eWdJ5
+              div._32DLo
+            div._1v1Bd
+              div.eSgkc [dt=word-bank]

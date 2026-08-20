@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Sly Fox Translator",
-  "version": "0.11.0",
+  "version": "0.13.0",
   "description": "Replace only the words and phrases you have learned so far on every webpage.",
   "permissions": [
     "storage",
@@ -38,7 +38,9 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "icons/icon-48.png"
+        "icons/icon-48.png",
+        "icons/logo-192.png",
+        "section/*"
       ],
       "matches": [
         "https://*.duolingo.com/*"
@@ -101,6 +103,7 @@
         "duolingo/manual-panel.js",
         "duolingo/flashcards.js",
         "duolingo/settings-panel.js",
+        "duolingo/section-card.js",
         "duolingo/words-page-ui.js",
         "boot.js"
       ],

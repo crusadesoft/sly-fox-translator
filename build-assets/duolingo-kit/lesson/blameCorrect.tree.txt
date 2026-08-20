@@ -1,0 +1,13 @@
+div._1XNQX
+  div._3FB5S._1VTif._3yMvO._2HXQ9
+    div.U8jH3.jHbiF
+      div.AXBVw._2Ycbe._8wIx-
+        div._1k6eg [dt=blame blame-correct]
+          div._31ixh.HJdJI.fwpkb
+            img._3oCTd src=bed2a542bc7eddc78e75fbe85260b89e.svg
+          div.d6Xhl
+            div._3LKiy
+            div._2yBiG
+      div.MYehf
+        button._1rcV8._1VYyp._1ursp._7jW2t._3DbUj._38g3s._2oGJR [dt=player-next]
+          span._9lHjd "Continue"

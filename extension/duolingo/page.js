@@ -20,6 +20,13 @@
     );
   }
 
+  function isDuolingoSectionsPage() {
+    return (
+      /(^|\.)duolingo\.com$/i.test(globalThis.location.hostname) &&
+      globalThis.location.pathname === "/sections"
+    );
+  }
+
   // Reached for by other modules.
-  Object.assign(LWR, { isDuolingoHost, isDuolingoWordsPage });
+  Object.assign(LWR, { isDuolingoHost, isDuolingoWordsPage, isDuolingoSectionsPage });
 })();

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<!--
+  A Sly Fox lesson.
+
+  Same arrangement as section.html: Duolingo's own class names, Duolingo's own
+  rules out of duolingo.css. The challenge markup is a transcript of theirs,
+  harvested into build-assets/duolingo-kit/lesson/.
+
+  The content is the user's own vocabulary. The deck, the card weighting, the
+  grading and the per-word records all come from the extension's practice
+  engine, loaded below -- a word practised here counts exactly the same as one
+  practised in the flashcards panel, because it is the same record.
+
+  Those modules are content scripts by origin and each one starts by checking
+  whether it is on a Duolingo page. Here they are not, so the Duolingo-page half
+  of each stays inert and only the shared logic is used.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sly Fox Lesson</title>
+    <link rel="stylesheet" href="duolingo.css" />
+  </head>
+  <body>
+    <div class="fs-unmask" id="sly-fox-lesson"></div>
+
+    <script src="vendor/lottie.min.js"></script>
+    <script src="../shared/namespace.js"></script>
+    <script src="../shared/constants.js"></script>
+    <script src="../shared/state.js"></script>
+    <script src="../duolingo/page.js"></script>
+    <script src="../duolingo/theme.js"></script>
+    <script src="../duolingo/words-entries.js"></script>
+    <script src="../duolingo/flashcards.js"></script>
+    <script src="lesson.js"></script>
+  </body>
+</html>

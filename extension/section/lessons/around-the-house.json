@@ -1,0 +1,152 @@
+{
+  "title": "Around the house",
+  "xp": 10,
+  "challenges": [
+    {
+      "type": "assist",
+      "prompt": "вікно",
+      "promptLang": "uk",
+      "choiceLang": "en",
+      "choices": [
+        "window",
+        "door",
+        "floor"
+      ],
+      "answer": "window",
+      "hints": {
+        "вікно": [
+          "window",
+          "a window"
+        ]
+      },
+      "badge": "new",
+      "record": {
+        "direction": "tg2en",
+        "wordKey": "вікно"
+      }
+    },
+    {
+      "type": "translate",
+      "header": "Write this in English",
+      "prompt": "Це моє вікно.",
+      "promptLang": "uk",
+      "answerLang": "en",
+      "bank": [
+        "This",
+        "is",
+        "my",
+        "window",
+        "door",
+        "large",
+        "not"
+      ],
+      "answer": "This is my window",
+      "hints": {
+        "вікно": [
+          "window"
+        ],
+        "моє": [
+          "my"
+        ],
+        "це": [
+          "this",
+          "that",
+          "it"
+        ]
+      }
+    },
+    {
+      "type": "match",
+      "pairs": [
+        {
+          "target": "вікно",
+          "source": "window",
+          "record": {
+            "direction": "tg2en",
+            "wordKey": "вікно"
+          }
+        },
+        {
+          "target": "двері",
+          "source": "door",
+          "record": {
+            "direction": "tg2en",
+            "wordKey": "двері"
+          }
+        },
+        {
+          "target": "підлога",
+          "source": "floor",
+          "record": {
+            "direction": "tg2en",
+            "wordKey": "підлога"
+          }
+        },
+        {
+          "target": "стіл",
+          "source": "table",
+          "record": {
+            "direction": "tg2en",
+            "wordKey": "стіл"
+          }
+        },
+        {
+          "target": "стілець",
+          "source": "chair",
+          "record": {
+            "direction": "tg2en",
+            "wordKey": "стілець"
+          }
+        }
+      ]
+    },
+    {
+      "type": "assist",
+      "prompt": "door",
+      "promptLang": "en",
+      "choiceLang": "uk",
+      "choices": [
+        "двері",
+        "вікно",
+        "стіл"
+      ],
+      "answer": "двері",
+      "hints": {
+        "door": [
+          "двері"
+        ]
+      },
+      "record": {
+        "direction": "en2tg",
+        "wordKey": "двері"
+      }
+    },
+    {
+      "type": "translate",
+      "header": "Write this in Ukrainian",
+      "prompt": "The table is large.",
+      "promptLang": "en",
+      "answerLang": "uk",
+      "bank": [
+        "Стіл",
+        "великий",
+        "вікно",
+        "малий",
+        "двері"
+      ],
+      "answer": "Стіл великий",
+      "hints": {
+        "table": [
+          "стіл"
+        ],
+        "large": [
+          "великий"
+        ]
+      },
+      "record": {
+        "direction": "en2tg",
+        "wordKey": "стіл"
+      }
+    }
+  ]
+}

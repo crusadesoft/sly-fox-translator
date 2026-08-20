@@ -15,6 +15,31 @@ Until the Chrome Web Store review is complete, friends can install the beta from
 
 The Sly Fox icon will appear in Chrome's extensions menu. Pin it if you want it in the toolbar.
 
+## The Sly Fox section
+
+The extension adds its own section to duolingo.com/sections, between the last
+real section and Daily Refresh, and it opens a unit of its own.
+
+The unit does not live inside duolingo.com/learn. Their path is virtualised, so
+anything grafted into it has to survive React unmounting its neighbours on every
+scroll; ours is a page the extension serves instead (`extension/section/`).
+
+None of it is styled by hand. Duolingo's stylesheets, colour tokens, path
+artwork, typeface and character animation are harvested into
+`build-assets/duolingo-kit/`, and `scripts/build-duolingo-css.py` extracts the
+rules the page actually uses into `extension/section/duolingo.css`. The class
+names are per-build hashes, so when Duolingo redeploys the section will stop
+looking right — `build-assets/duolingo-kit/README.md` says how to re-harvest.
+
+Check it with:
+
+```sh
+node scripts/test-section.js
+```
+
+It loads the unpacked extension into Chrome, stands in for the sections page,
+and follows the card through to the unit. `--headed` to watch it happen.
+
 ## Create a beta release
 
 Pushing a version tag automatically creates a GitHub release with an installable ZIP.
