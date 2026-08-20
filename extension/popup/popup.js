@@ -1,4 +1,39 @@
 const STORAGE_KEY = "learnedWordReplacerState";
+// The content-script modules, in load order. Must match manifest.json: the
+// reinject path below replays exactly this list.
+const CONTENT_SCRIPT_FILES = [
+  "shared/namespace.js",
+  "shared/constants.js",
+  "shared/state.js",
+  "translate/constants.js",
+  "translate/runtime.js",
+  "translate/text-utils.js",
+  "translate/styles.js",
+  "translate/vocabulary.js",
+  "translate/translator-bridge.js",
+  "translate/translator.js",
+  "translate/cloak.js",
+  "translate/collect.js",
+  "translate/replacement-dom.js",
+  "translate/alignment.js",
+  "translate/structured.js",
+  "translate/passes.js",
+  "translate/hover.js",
+  "translate/apply.js",
+  "duolingo/page.js",
+  "duolingo/theme.js",
+  "duolingo/lesson-flow.js",
+  "duolingo/word-bank.js",
+  "duolingo/typing.js",
+  "duolingo/copy-phrase.js",
+  "duolingo/words-scrape.js",
+  "duolingo/words-entries.js",
+  "duolingo/manual-panel.js",
+  "duolingo/flashcards.js",
+  "duolingo/settings-panel.js",
+  "duolingo/words-page-ui.js",
+  "boot.js"
+];
 // Parsing and entry-merge logic shared with the background service worker
 // (which runs imports triggered from the button on Duolingo's Words page).
 const { createId, dedupeJoinedText, getEntryOrigin, isInvalidDuolingoSource } =
@@ -6,7 +41,6 @@ const { createId, dedupeJoinedText, getEntryOrigin, isInvalidDuolingoSource } =
 const LEGACY_DEFAULT_PROFILE_ID = "default";
 const LEGACY_DEFAULT_PROFILE_NAME = "Default";
 const BUILT_IN_PROFILES_VERSION = 5;
-const DICTIONARIES = globalThis.LEARNED_WORD_DICTIONARIES || {};
 // Current Duolingo target courses that Chrome's Translator API supports from English.
 // English itself is omitted because this extension replaces English page text.
 const BUILT_IN_LANGUAGES = [
@@ -38,11 +72,11 @@ const LANGUAGE_OPTIONS = [
   ...BUILT_IN_LANGUAGES.map(({ code, name }) => ({ code, name }))
 ];
 const LANGUAGE_ICON_PATHS = Object.fromEntries(
-  BUILT_IN_LANGUAGES.map(({ code, flag }) => [code, `icons/languages/flags/${flag}.svg`])
+  BUILT_IN_LANGUAGES.map(({ code, flag }) => [code, `../icons/languages/flags/${flag}.svg`])
 );
 Object.assign(LANGUAGE_ICON_PATHS, {
-  la: "icons/languages/flags/va.svg",
-  unknown: "icons/languages/flags/va.svg"
+  la: "../icons/languages/flags/va.svg",
+  unknown: "../icons/languages/flags/va.svg"
 });
 const RETIRED_BUILT_IN_PROFILE_IDS = new Set(["builtin-la"]);
 const BUILT_IN_PROFILES = BUILT_IN_LANGUAGES.map(({ code, name }) => ({
@@ -155,7 +189,7 @@ function inferLanguageCode(name) {
 }
 
 function getLanguageName(languageCode) {
-  return LANGUAGE_BY_CODE.get(languageCode)?.name || DICTIONARIES[languageCode]?.name || languageCode;
+  return LANGUAGE_BY_CODE.get(languageCode)?.name || languageCode;
 }
 
 function inferLanguageCodeFromEntries(entries) {
@@ -793,11 +827,11 @@ async function injectContentScripts(tab, options = {}) {
     await chrome.scripting.executeScript({
       target,
       world: "MAIN",
-      files: ["page-translator-bridge.js"]
+      files: ["translate/page-translator-bridge.js"]
     });
     await chrome.scripting.executeScript({
       target,
-      files: ["content.js"]
+      files: CONTENT_SCRIPT_FILES
     });
     return true;
   } catch (error) {
@@ -1038,7 +1072,7 @@ function getLanguageDisplayName(languageCode) {
     return "target language";
   }
 
-  return DICTIONARIES[code]?.name || code.toUpperCase();
+  return LANGUAGE_BY_CODE.get(code)?.name || code.toUpperCase();
 }
 
 function getRuntimeRetryTone(status, displayState) {

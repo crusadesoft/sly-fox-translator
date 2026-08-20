@@ -228,41 +228,41 @@ button.icon-button.settings-button {
 }
 
 .lucide-icon-check {
-  --lucide-icon: url("icons/lucide/check.svg");
+  --lucide-icon: url("../icons/lucide/check.svg");
 }
 
 .lucide-icon-pencil {
-  --lucide-icon: url("icons/lucide/pencil.svg");
+  --lucide-icon: url("../icons/lucide/pencil.svg");
 }
 
 .lucide-icon-trash {
-  --lucide-icon: url("icons/lucide/trash-2.svg");
+  --lucide-icon: url("../icons/lucide/trash-2.svg");
 }
 
 .lucide-icon-arrow-up-a-z {
-  --lucide-icon: url("icons/lucide/arrow-up-a-z.svg");
+  --lucide-icon: url("../icons/lucide/arrow-up-a-z.svg");
 }
 
 .lucide-icon-square-arrow-out-up-right {
-  --lucide-icon: url("icons/lucide/square-arrow-out-up-right.svg");
+  --lucide-icon: url("../icons/lucide/square-arrow-out-up-right.svg");
 }
 
 .lucide-icon-rotate-ccw {
-  --lucide-icon: url("icons/lucide/rotate-ccw.svg");
+  --lucide-icon: url("../icons/lucide/rotate-ccw.svg");
 }
 
 .lucide-icon-import {
-  --lucide-icon: url("icons/lucide/import.svg");
+  --lucide-icon: url("../icons/lucide/import.svg");
 }
 
 .lucide-icon-settings {
-  --lucide-icon: url("icons/lucide/settings.svg");
+  --lucide-icon: url("../icons/lucide/settings.svg");
   height: 18px;
   width: 18px;
 }
 
 .lucide-icon-power {
-  --lucide-icon: url("icons/lucide/power.svg");
+  --lucide-icon: url("../icons/lucide/power.svg");
   height: 18px;
   width: 18px;
 }

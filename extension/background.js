@@ -1,8 +1,43 @@
 import "./vendor/ukrainian-morphology.js";
-import "./import-core.js";
+import "./shared/import-core.js";
 
 const STORAGE_KEY = "learnedWordReplacerState";
 const UKRAINIAN_MORPHOLOGY_PATH = "vendor/ukrainian-morphology/ukrainian.dict";
+// The content-script modules, in load order. Must match manifest.json: an
+// extension reload replays exactly this list into every open tab.
+const CONTENT_SCRIPT_FILES = [
+  "shared/namespace.js",
+  "shared/constants.js",
+  "shared/state.js",
+  "translate/constants.js",
+  "translate/runtime.js",
+  "translate/text-utils.js",
+  "translate/styles.js",
+  "translate/vocabulary.js",
+  "translate/translator-bridge.js",
+  "translate/translator.js",
+  "translate/cloak.js",
+  "translate/collect.js",
+  "translate/replacement-dom.js",
+  "translate/alignment.js",
+  "translate/structured.js",
+  "translate/passes.js",
+  "translate/hover.js",
+  "translate/apply.js",
+  "duolingo/page.js",
+  "duolingo/theme.js",
+  "duolingo/lesson-flow.js",
+  "duolingo/word-bank.js",
+  "duolingo/typing.js",
+  "duolingo/copy-phrase.js",
+  "duolingo/words-scrape.js",
+  "duolingo/words-entries.js",
+  "duolingo/manual-panel.js",
+  "duolingo/flashcards.js",
+  "duolingo/settings-panel.js",
+  "duolingo/words-page-ui.js",
+  "boot.js"
+];
 const UKRAINIAN_LEMMA_REQUEST = "LWR_LOOKUP_UK_LEMMAS";
 const DUOLINGO_PAGE_IMPORT_REQUEST = "LWR_IMPORT_DUOLINGO_WORDS";
 const TEXT_IMPORT_REQUEST = "LWR_IMPORT_TEXT";
@@ -186,7 +221,7 @@ async function ensureOffscreenDocument() {
   if (!offscreenDocumentPromise) {
     offscreenDocumentPromise = chrome.offscreen
       .createDocument({
-        url: "offscreen.html",
+        url: "translate/offscreen.html",
         reasons: ["WORKERS"],
         justification:
           "Runs the on-device word-alignment model; service workers cannot host onnxruntime."
@@ -264,11 +299,11 @@ async function injectScripts(tabId) {
     await chrome.scripting.executeScript({
       target,
       world: "MAIN",
-      files: ["page-translator-bridge.js"]
+      files: ["translate/page-translator-bridge.js"]
     });
     await chrome.scripting.executeScript({
       target,
-      files: ["content.js"]
+      files: CONTENT_SCRIPT_FILES
     });
   } catch (error) {
     // Tabs can navigate or close while an extension reload is restoring scripts.

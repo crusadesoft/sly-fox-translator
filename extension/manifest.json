@@ -3,8 +3,15 @@
   "name": "Sly Fox Translator",
   "version": "0.11.0",
   "description": "Replace only the words and phrases you have learned so far on every webpage.",
-  "permissions": ["storage", "scripting", "tabs", "offscreen"],
-  "host_permissions": ["<all_urls>"],
+  "permissions": [
+    "storage",
+    "scripting",
+    "tabs",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
@@ -20,7 +27,7 @@
   },
   "action": {
     "default_title": "Sly Fox Translator",
-    "default_popup": "popup.html",
+    "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png",
@@ -30,27 +37,73 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["icons/icon-48.png"],
-      "matches": ["https://*.duolingo.com/*"]
+      "resources": [
+        "icons/icon-48.png"
+      ],
+      "matches": [
+        "https://*.duolingo.com/*"
+      ]
     }
   ],
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["page-translator-bridge.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "translate/page-translator-bridge.js"
+      ],
       "run_at": "document_start",
       "all_frames": true,
       "world": "MAIN"
     },
     {
-      "matches": ["<all_urls>"],
-      "js": ["page-cloak.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "translate/page-cloak.js"
+      ],
       "run_at": "document_start",
       "all_frames": true
     },
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "shared/namespace.js",
+        "shared/constants.js",
+        "shared/state.js",
+        "translate/constants.js",
+        "translate/runtime.js",
+        "translate/text-utils.js",
+        "translate/styles.js",
+        "translate/vocabulary.js",
+        "translate/translator-bridge.js",
+        "translate/translator.js",
+        "translate/cloak.js",
+        "translate/collect.js",
+        "translate/replacement-dom.js",
+        "translate/alignment.js",
+        "translate/structured.js",
+        "translate/passes.js",
+        "translate/hover.js",
+        "translate/apply.js",
+        "duolingo/page.js",
+        "duolingo/theme.js",
+        "duolingo/lesson-flow.js",
+        "duolingo/word-bank.js",
+        "duolingo/typing.js",
+        "duolingo/copy-phrase.js",
+        "duolingo/words-scrape.js",
+        "duolingo/words-entries.js",
+        "duolingo/manual-panel.js",
+        "duolingo/flashcards.js",
+        "duolingo/settings-panel.js",
+        "duolingo/words-page-ui.js",
+        "boot.js"
+      ],
       "run_at": "document_idle",
       "all_frames": true
     }

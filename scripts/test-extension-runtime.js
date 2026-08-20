@@ -3,10 +3,47 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 
-const CONTENT_SCRIPT = path.resolve(__dirname, "../extension/content.js");
-const POPUP_PAGE = `file://${path.resolve(__dirname, "../extension/popup.html")}`;
+// The content-script modules, in the order manifest.json loads them.
+const CONTENT_SCRIPT_FILES = [
+  "shared/namespace.js",
+  "shared/constants.js",
+  "shared/state.js",
+  "translate/constants.js",
+  "translate/runtime.js",
+  "translate/text-utils.js",
+  "translate/styles.js",
+  "translate/vocabulary.js",
+  "translate/translator-bridge.js",
+  "translate/translator.js",
+  "translate/cloak.js",
+  "translate/collect.js",
+  "translate/replacement-dom.js",
+  "translate/alignment.js",
+  "translate/structured.js",
+  "translate/passes.js",
+  "translate/hover.js",
+  "translate/apply.js",
+  "duolingo/page.js",
+  "duolingo/theme.js",
+  "duolingo/lesson-flow.js",
+  "duolingo/word-bank.js",
+  "duolingo/typing.js",
+  "duolingo/copy-phrase.js",
+  "duolingo/words-scrape.js",
+  "duolingo/words-entries.js",
+  "duolingo/manual-panel.js",
+  "duolingo/flashcards.js",
+  "duolingo/settings-panel.js",
+  "duolingo/words-page-ui.js",
+  "boot.js"
+];
+const CONTENT_SCRIPT_PATHS = CONTENT_SCRIPT_FILES.map((file) =>
+  path.resolve(__dirname, `../extension/${file}`)
+);
+const SETTINGS_PANEL_SCRIPT = path.resolve(__dirname, "../extension/duolingo/settings-panel.js");
+const POPUP_PAGE = `file://${path.resolve(__dirname, "../extension/popup/popup.html")}`;
 const BACKGROUND_SCRIPT = path.resolve(__dirname, "../extension/background.js");
-const TRANSLATOR_BRIDGE_SCRIPT = path.resolve(__dirname, "../extension/page-translator-bridge.js");
+const TRANSLATOR_BRIDGE_SCRIPT = path.resolve(__dirname, "../extension/translate/page-translator-bridge.js");
 const TRANSLATOR_BRIDGE_CONTENT = fs.readFileSync(TRANSLATOR_BRIDGE_SCRIPT, "utf8");
 const UKRAINIAN_MORPHOLOGY_SCRIPT = path.resolve(
   __dirname,
@@ -16,10 +53,10 @@ const UKRAINIAN_MORPHOLOGY_DICTIONARY = path.resolve(
   __dirname,
   "../extension/vendor/ukrainian-morphology/ukrainian.dict"
 );
-const CLOAK_SCRIPT = path.resolve(__dirname, "../extension/page-cloak.js");
-const POPUP_SCRIPT = path.resolve(__dirname, "../extension/popup.js");
-const IMPORT_CORE_SCRIPT = path.resolve(__dirname, "../extension/import-core.js");
-const POPUP_STYLES = path.resolve(__dirname, "../extension/popup.css");
+const CLOAK_SCRIPT = path.resolve(__dirname, "../extension/translate/page-cloak.js");
+const POPUP_SCRIPT = path.resolve(__dirname, "../extension/popup/popup.js");
+const IMPORT_CORE_SCRIPT = path.resolve(__dirname, "../extension/shared/import-core.js");
+const POPUP_STYLES = path.resolve(__dirname, "../extension/popup/popup.css");
 const LUCIDE_ICON_DIR = path.resolve(__dirname, "../extension/icons/lucide");
 
 function createState(entries) {
@@ -191,10 +228,10 @@ function testUkrainianMorphologyDictionary() {
 }
 
 function testFullExportDoesNotUseClickEventAsFilter() {
-  // Export now lives in the Duolingo settings panel (content.js) on top of
-  // the shared import-core; the origin filter must still never receive a
-  // click event or arbitrary values.
-  const contentScript = fs.readFileSync(CONTENT_SCRIPT, "utf8");
+  // Export lives in the Duolingo settings panel on top of the shared
+  // import-core; the origin filter must still never receive a click event or
+  // arbitrary values.
+  const contentScript = fs.readFileSync(SETTINGS_PANEL_SCRIPT, "utf8");
   const coreScript = fs.readFileSync(IMPORT_CORE_SCRIPT, "utf8");
   assert(
     contentScript.includes(`exportAll.addEventListener("click", () => runDuolingoPanelExport(""));`),
@@ -319,7 +356,11 @@ async function installHarness(
     });
   }
 
-  await page.addScriptTag({ path: CONTENT_SCRIPT });
+  // The modules share one namespace object, so they have to be injected in
+  // the same order the manifest lists them.
+  for (const file of CONTENT_SCRIPT_PATHS) {
+    await page.addScriptTag({ path: file });
+  }
 }
 
 function createBatchAwareTranslate(translator) {
@@ -2980,14 +3021,16 @@ function testCloakRunsBeforeThePagePaints() {
   const manifest = JSON.parse(
     fs.readFileSync(path.resolve(__dirname, "../extension/manifest.json"), "utf8")
   );
-  const cloak = manifest.content_scripts.find((entry) => entry.js.includes("page-cloak.js"));
-  assert(cloak, "page-cloak.js is not registered as a content script");
+  const cloak = manifest.content_scripts.find((entry) =>
+    entry.js.includes("translate/page-cloak.js")
+  );
+  assert(cloak, "translate/page-cloak.js is not registered as a content script");
   assert(
     cloak.run_at === "document_start",
     `the cloak must run before the page paints, not at ${cloak.run_at}`
   );
   assert(cloak.all_frames === true, "the cloak must cover frames too");
-  assert(!cloak.world, "the cloak has to share content.js's world so it can be lifted");
+  assert(!cloak.world, "the cloak has to share the content scripts' world so it can be lifted");
 }
 
 async function testPendingBlocksStayHiddenUntilTheirTranslationLands(browser) {
@@ -8452,8 +8495,8 @@ async function testPopupStatusPanel(browser) {
   assert(
     JSON.stringify(recoveredScripts) ===
       JSON.stringify([
-        { files: ["page-translator-bridge.js"], world: "MAIN" },
-        { files: ["content.js"], world: "ISOLATED" }
+        { files: ["translate/page-translator-bridge.js"], world: "MAIN" },
+        { files: CONTENT_SCRIPT_FILES, world: "ISOLATED" }
       ]),
     "popup did not restore missing content scripts before reading page status"
   );
@@ -8539,7 +8582,7 @@ async function testPopupStatusPanel(browser) {
   );
   assert(await page.isVisible("#vocabulary-view"), "vocabulary view should stay visible");
   assert(
-    Boolean(await page.evaluate(() => document.querySelector("#open-duolingo-words img[src='icons/duolingo-bird.png']"))),
+    Boolean(await page.evaluate(() => document.querySelector("#open-duolingo-words img[src='../icons/duolingo-bird.png']"))),
     "Duolingo words button is missing the bird icon"
   );
   await page.click("#open-duolingo-words");
@@ -8774,11 +8817,11 @@ async function testBackgroundRestoresOpenTabContentScripts() {
         {
           target: { tabId: 3, allFrames: true },
           world: "MAIN",
-          files: ["page-translator-bridge.js"]
+          files: ["translate/page-translator-bridge.js"]
         },
         {
           target: { tabId: 3, allFrames: true },
-          files: ["content.js"]
+          files: CONTENT_SCRIPT_FILES
         }
       ]),
     "background did not restore the bridge and content script into existing web tabs"
@@ -8846,7 +8889,7 @@ function testToolbarOpensPopup() {
     fs.readFileSync(path.resolve(__dirname, "../extension/manifest.json"), "utf8")
   );
   assert(
-    manifest.action?.default_popup === "popup.html",
+    manifest.action?.default_popup === "popup/popup.html",
     "toolbar action does not open the popup"
   );
   assert(!manifest.side_panel, "side panel is still configured");
