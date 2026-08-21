@@ -1,0 +1,1304 @@
+title: Something in the dark
+sectionLabel: SLY FOX SECTION, UNIT 2
+# The words come from the learner's own saved list -- an LLN export off a
+# Ukrainian-dubbed series, where the biggest single cluster is an episode set in
+# an old dark house. That cluster is the unit: темрява, льох, скрип, нагору,
+# моторошний, зачиняти, гість, дух, істота, шепотіти, страшний, хоробрий.
+#
+# It sits on top of "Moving in", which already built the rooms. The only word
+# taken from that unit rather than from Duolingo is двері -- everything else
+# here is either introduced below or already on their Duolingo list, so the
+# house can be furnished without teaching the furniture twice.
+pucks:
+  # Puck 1 and 2 teach. Lessons 1-3 introduce; lesson 4 introduces nothing and
+  # is the same words asked harder.
+  - kind: skill
+    label: The old house
+    art: star
+    lessons:
+      - xp: 10
+        challenges:
+          - type: assist
+            direction: [uk, en]
+            prompt: темрява
+            choices: [the darkness, the night, the light]
+            answers: [the darkness]
+            hints: {темрява: [darkness, the dark]}
+            word: темрява
+            newWords: [темрява]
+          - type: assist
+            direction: [uk, en]
+            prompt: льох
+            choices: [the cellar, the kitchen, the garden]
+            answers: [the cellar]
+            hints: {льох: [cellar, a cellar]}
+            word: льох
+            newWords: [льох]
+          - type: translate
+            direction: [en, uk]
+            prompt: It is dark and cold in the cellar
+            bank: [У, льоху, темно, і, холодно, тепло, темрява]
+            answers:
+              - У льоху темно і холодно
+            hints: {dark: [темно], cold: [холодно], cellar: [льоху]}
+            word: льох
+            newWords: [льоху]
+          - type: translate
+            direction: [en, uk]
+            prompt: I do not like the darkness
+            bank: [Я, не, люблю, темряву, ніч, дуже]
+            answers:
+              - Я не люблю темряву
+            hints: {I: [я], not: [не], like: [люблю], darkness: [темряву]}
+            word: темрява
+            newWords: [темряву]
+          - type: translate
+            direction: [en, uk]
+            prompt: There is no window in the cellar
+            bank: [У, льоху, немає, вікна, двері, світла]
+            answers:
+              - У льоху немає вікна
+            hints: {window: [вікна], cellar: [льоху]}
+            word: льох
+          - type: translate
+            direction: [uk, en]
+            prompt: Уночі в домі темрява.
+            bank: [At, night, there, is, darkness, in, the, house, cellar, dark]
+            answers:
+              - At night there is darkness in the house
+            hints: {уночі: [at night], домі: [house, home], темрява: [darkness]}
+            word: темрява
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Хтось у льоху.
+            bank: [Хтось, у, льоху, темряві, там]
+            answers:
+              - Хтось у льоху
+            meaning: Someone is in the cellar
+            word: льох
+          - type: translate
+            direction: [en, uk]
+            prompt: What is there in the darkness
+            bank: [Що, там, у, темряві, льоху, темно]
+            answers:
+              - Що там у темряві
+            hints: {what: [що], there: [там], darkness: [темряві]}
+            word: темрява
+            newWords: [темряві]
+          - type: translate
+            direction: [en, uk]
+            prompt: The key is somewhere in the darkness
+            bank: [Ключ, десь, у, темряві, льоху, темно]
+            answers:
+              - Ключ десь у темряві
+            hints: {key: [ключ], somewhere: [десь], darkness: [темряві]}
+            word: темрява
+      - xp: 10
+        challenges:
+          - type: assist
+            direction: [uk, en]
+            prompt: скрип
+            choices: [a creak, a key, a room]
+            answers: [a creak]
+            hints: {скрип: [creak, a creak]}
+            word: скрип
+            newWords: [скрип]
+          - type: assist
+            direction: [uk, en]
+            prompt: нагору
+            choices: [upstairs, outside, tomorrow]
+            answers: [upstairs]
+            hints: {нагору: [upstairs, up]}
+            word: нагору
+            newWords: [нагору]
+          - type: translate
+            direction: [en, uk]
+            prompt: At night there is a creak in the house
+            bank: [Уночі, в, домі, скрип, темно, льоху]
+            answers:
+              - Уночі в домі скрип
+            hints: {night: [уночі], house: [домі], creak: [скрип]}
+            word: скрип
+          - type: match
+            direction: [uk, en]
+            pairs:
+              - target: темрява
+                source: darkness
+              - target: льох
+                source: cellar
+              - target: скрип
+                source: creak
+              - target: сходи
+                source: stairs
+              - target: ключ
+                source: key
+          - type: translate
+            direction: [en, uk]
+            prompt: I do not want to go upstairs
+            bank: [Я, не, хочу, іти, нагору, льох, там]
+            answers:
+              - Я не хочу іти нагору
+            hints: {I: [я], not: [не], want: [хочу], go: [іти], upstairs: [нагору]}
+            word: нагору
+          - type: translate
+            direction: [uk, en]
+            prompt: Іди нагору, там світло.
+            bank: [Go, "upstairs,", there, is, light, there, dark, stairs]
+            answers:
+              - Go upstairs, there is light there
+            hints: {іди: [go], нагору: [upstairs], там: [there], світло: [light]}
+            word: нагору
+          - type: translate
+            direction: [en, uk]
+            prompt: At night there is a creak on the stairs and I do not sleep
+            bank: [Уночі, на, сходах, "скрип,", і, я, не, сплю, темно]
+            answers:
+              - Уночі на сходах скрип, і я не сплю
+            hints: {night: [уночі], creak: [скрип], stairs: [сходах], sleep: [сплю]}
+            word: скрип
+          - type: translate
+            direction: [en, uk]
+            prompt: The key is somewhere on the stairs
+            bank: [Ключ, десь, на, сходах, льоху, темряві]
+            answers:
+              - Ключ десь на сходах
+              - На сходах десь ключ
+            hints: {key: [ключ], somewhere: [десь], stairs: [сходах]}
+            word: сходи
+          - type: listenTap
+            direction: [uk, uk]
+            audio: На сходах скрип.
+            bank: [На, сходах, скрип, темряві, льоху]
+            answers:
+              - На сходах скрип
+            meaning: There is a creak on the stairs
+            word: скрип
+      - xp: 10
+        challenges:
+          - type: assist
+            direction: [uk, en]
+            prompt: моторошний
+            choices: [creepy, warm, cheap]
+            answers: [creepy]
+            hints: {моторошний: [creepy, eerie]}
+            word: моторошний
+            newWords: [моторошний]
+          - type: assist
+            direction: [uk, en]
+            prompt: зачиняти
+            choices: [to shut, to sleep, to buy]
+            answers: [to shut]
+            hints: {зачиняти: [to shut, to close]}
+            word: зачиняти
+            newWords: [зачиняти]
+          - type: translate
+            direction: [en, uk]
+            prompt: This old house is very creepy
+            bank: [Цей, старий, дім, дуже, моторошний, льох, темний]
+            answers:
+              - Цей старий дім дуже моторошний
+            hints: {this: [цей], old: [старий], house: [дім], very: [дуже], creepy: [моторошний]}
+            word: моторошний
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Зачиняй вікно, будь ласка.
+            bank: [Зачиняй, "вікно,", "будь", ласка, двері]
+            answers:
+              - Зачиняй вікно, будь ласка
+            meaning: Shut the window please
+            word: зачиняти
+            newWords: [зачиняй]
+          - type: translate
+            direction: [en, uk]
+            prompt: At night I shut the door and the window
+            bank: [Уночі, я, зачиняю, двері, і, вікно, льох]
+            answers:
+              - Уночі я зачиняю двері і вікно
+            hints: {night: [уночі], shut: [зачиняю], door: [двері], window: [вікно]}
+            word: зачиняти
+            newWords: [зачиняю]
+          - type: translate
+            direction: [en, uk]
+            prompt: It is creepy and dark in the cellar
+            bank: [У, льоху, моторошно, і, темно, страшно, нагору]
+            answers:
+              - У льоху моторошно і темно
+            hints: {creepy: [моторошно], dark: [темно], cellar: [льоху]}
+            word: моторошний
+            newWords: [моторошно]
+          - type: translate
+            direction: [uk, en]
+            prompt: Зачиняй двері, у льоху хтось є.
+            bank: [Shut, the, "door,", there, is, someone, in, the, cellar, window]
+            answers:
+              - Shut the door, there is someone in the cellar
+            hints: {зачиняй: [shut], двері: [door], льоху: [cellar], хтось: [someone]}
+            word: зачиняти
+          - type: match
+            direction: [uk, en]
+            pairs:
+              - target: моторошний
+                source: creepy
+              - target: скрип
+                source: creak
+              - target: нагору
+                source: upstairs
+              - target: темрява
+                source: darkness
+              - target: ніч
+                source: night
+          - type: translate
+            direction: [en, uk]
+            prompt: The stairs in this house are creepy
+            bank: [Сходи, в, цьому, домі, моторошні, старі, льоху]
+            answers:
+              - Сходи в цьому домі моторошні
+            hints: {stairs: [сходи], house: [домі], creepy: [моторошні]}
+            word: моторошний
+            newWords: [моторошні]
+      # Lesson 4 introduces nothing. The same six words, in longer sentences and
+      # in the forms the first three lessons did not use.
+      - xp: 10
+        challenges:
+          - type: translate
+            direction: [en, uk]
+            prompt: At night the darkness in the cellar is very creepy
+            bank: [Уночі, темрява, в, льоху, дуже, моторошна, старий, скрип]
+            answers:
+              - Уночі темрява в льоху дуже моторошна
+              - Темрява в льоху уночі дуже моторошна
+            hints: {night: [уночі], darkness: [темрява], cellar: [льоху], very: [дуже], creepy: [моторошна]}
+            word: темрява
+            newWords: [моторошна]
+          - type: translate
+            direction: [en, uk]
+            prompt: It is dark upstairs, and I do not want to go there
+            bank: [Нагорі, "темно,", і, я, не, хочу, іти, туди, льох]
+            answers:
+              - Нагорі темно, і я не хочу іти туди
+            hints: {dark: [темно], upstairs: [нагорі], want: [хочу], go: [іти], there: [туди]}
+            word: нагору
+            newWords: [нагорі]
+          - type: listenMatch
+            direction: [uk, en]
+            pairs:
+              - target: льох
+                source: cellar
+              - target: скрип
+                source: creak
+              - target: темрява
+                source: darkness
+              - target: моторошний
+                source: creepy
+              - target: зачиняти
+                source: to shut
+          - type: translate
+            direction: [en, uk]
+            prompt: Shut the cellar door, it is creepy there
+            bank: [Зачиняй, двері, в, "льох,", там, моторошно, темно, нагору]
+            answers:
+              - Зачиняй двері в льох, там моторошно
+            hints: {shut: [зачиняй], door: [двері], cellar: [льох], creepy: [моторошно]}
+            word: льох
+          - type: gapFill
+            direction: [uk, uk]
+            prompt: Уночі я ___ двері і вікно.
+            choices: [зачиняю, читаю, люблю]
+            answers: [зачиняю]
+            hints: {уночі: [at night], двері: [door], вікно: [window]}
+            word: зачиняти
+          - type: translate
+            direction: [en, uk]
+            prompt: This old cellar is very creepy at night
+            bank: [Цей, старий, льох, уночі, дуже, моторошний, темрява, нагору]
+            answers:
+              - Цей старий льох уночі дуже моторошний
+              - Уночі цей старий льох дуже моторошний
+            hints: {this: [цей], old: [старий], cellar: [льох], night: [уночі], very: [дуже], creepy: [моторошний]}
+            word: моторошний
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Іди нагору і зачиняй двері.
+            bank: [Іди, нагору, і, зачиняй, двері, льох, вікно]
+            answers:
+              - Іди нагору і зачиняй двері
+            meaning: Go upstairs and shut the door
+            word: зачиняти
+          - type: speak
+            direction: [uk, uk]
+            prompt: У темряві на сходах скрип, і мій кіт не спить.
+            answers:
+              - У темряві на сходах скрип, і мій кіт не спить
+            hints: {темряві: [darkness, the dark], сходах: [stairs], скрип: [creak], кіт: [cat], спить: [sleeps, is sleeping]}
+            word: скрип
+          - type: translate
+            direction: [en, uk]
+            prompt: Shut the windows, it is cold in the house at night
+            bank: [Зачиняй, "вікна,", уночі, в, домі, холодно, двері, темно]
+            answers:
+              - Зачиняй вікна, уночі в домі холодно
+            hints: {shut: [зачиняй], windows: [вікна], cold: [холодно], house: [домі], night: [уночі]}
+            word: зачиняти
+  - kind: chest
+  - kind: skill
+    label: Who else is here
+    art: star
+    lessons:
+      - xp: 10
+        challenges:
+          - type: assist
+            direction: [uk, en]
+            prompt: гість
+            choices: [a guest, a doctor, a driver]
+            answers: [a guest]
+            hints: {гість: [guest, a guest]}
+            word: гість
+            newWords: [гість]
+          - type: assist
+            direction: [uk, en]
+            prompt: дух
+            choices: [a ghost, a bird, a key]
+            answers: [a ghost]
+            hints: {дух: [ghost, spirit]}
+            word: дух
+            newWords: [дух]
+          - type: translate
+            direction: [en, uk]
+            prompt: Tonight there is a guest in the house
+            bank: [Сьогодні, уночі, в, домі, є, гість, дух, кімнаті]
+            answers:
+              - Сьогодні уночі в домі є гість
+            hints: {tonight: [сьогодні, уночі], house: [домі], guest: [гість]}
+            word: гість
+          - type: translate
+            direction: [uk, en]
+            prompt: У цьому домі живе дух.
+            bank: [A, ghost, lives, in, this, house, guest, room]
+            answers:
+              - A ghost lives in this house
+            hints: {цьому: [this], домі: [house], живе: [lives], дух: [ghost, spirit]}
+            word: дух
+          - type: translate
+            direction: [en, uk]
+            prompt: I do not know who this guest is
+            bank: [Я, не, "знаю,", хто, цей, гість, дух]
+            answers:
+              - Я не знаю, хто цей гість
+            hints: {I: [я], not: [не], know: [знаю], who: [хто], guest: [гість]}
+            word: гість
+          - type: translate
+            direction: [en, uk]
+            prompt: The ghost is somewhere in the cellar, in the darkness
+            bank: [Дух, десь, у, "льоху,", в, темряві, гість, нагору]
+            answers:
+              - Дух десь у льоху, в темряві
+            hints: {ghost: [дух], somewhere: [десь], cellar: [льоху], darkness: [темряві]}
+            word: дух
+          - type: translate
+            direction: [en, uk]
+            prompt: Our guest does not want to go upstairs
+            bank: [Наш, гість, не, хоче, іти, нагору, дух, льох]
+            answers:
+              - Наш гість не хоче іти нагору
+            hints: {our: [наш], guest: [гість], want: [хоче], go: [іти], upstairs: [нагору]}
+            word: гість
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Наш гість не спить уночі.
+            bank: [Наш, гість, не, спить, уночі, дух, там]
+            answers:
+              - Наш гість не спить уночі
+            meaning: Our guest does not sleep at night
+            word: гість
+          - type: translate
+            direction: [uk, en]
+            prompt: Уночі в домі дух, а не гість.
+            bank: [At, night, there, is, a, ghost, in, the, "house,", not, a, guest, cellar]
+            answers:
+              - At night there is a ghost in the house, not a guest
+            hints: {уночі: [at night], домі: [house], дух: [ghost, spirit], гість: [guest]}
+            word: дух
+      - xp: 10
+        challenges:
+          - type: assist
+            direction: [uk, en]
+            prompt: істота
+            choices: [a creature, a shop, a month]
+            answers: [a creature]
+            hints: {істота: [creature, being]}
+            word: істота
+            newWords: [істота]
+          - type: assist
+            direction: [uk, en]
+            prompt: шепотіти
+            choices: [to whisper, to swim, to cook]
+            answers: [to whisper]
+            hints: {шепотіти: [to whisper, whisper]}
+            word: шепотіти
+            newWords: [шепотіти]
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Ця істота не спить уночі.
+            bank: [Ця, істота, не, спить, уночі, шепоче, дух]
+            answers:
+              - Ця істота не спить уночі
+            meaning: This creature does not sleep at night
+            word: істота
+          - type: translate
+            direction: [en, uk]
+            prompt: Someone is whispering in the darkness
+            bank: [Хтось, шепоче, в, темряві, льоху, спить]
+            answers:
+              - Хтось шепоче в темряві
+              - У темряві хтось шепоче
+            hints: {someone: [хтось], whispering: [шепоче], darkness: [темряві]}
+            word: шепотіти
+            newWords: [шепоче]
+          - type: translate
+            direction: [en, uk]
+            prompt: I do not know what creature this is
+            bank: [Я, не, "знаю,", що, це, за, істота, дух]
+            answers:
+              - Я не знаю, що це за істота
+            hints: {I: [я], know: [знаю], what: [що], creature: [істота]}
+            word: істота
+          - type: translate
+            direction: [en, uk]
+            prompt: At night the creature in the cellar whispers
+            bank: [Уночі, істота, в, льоху, шепоче, дух, спить]
+            answers:
+              - Уночі істота в льоху шепоче
+            hints: {night: [уночі], creature: [істота], cellar: [льоху], whispers: [шепоче]}
+            word: істота
+          - type: match
+            direction: [uk, en]
+            pairs:
+              - target: гість
+                source: guest
+              - target: дух
+                source: ghost
+              - target: істота
+                source: creature
+              - target: темрява
+                source: darkness
+              - target: льох
+                source: cellar
+          - type: translate
+            direction: [uk, en]
+            prompt: Я не розумію, що шепоче ця істота.
+            bank: [I, do, not, understand, what, this, creature, is, whispering, says, ghost]
+            answers:
+              - I do not understand what this creature is whispering
+            hints: {розумію: [understand], шепоче: [whispers, is whispering], істота: [creature]}
+            word: шепотіти
+          - type: translate
+            direction: [en, uk]
+            prompt: The ghost whispers, but I do not understand
+            bank: [Дух, "шепоче,", але, я, не, розумію, істота]
+            answers:
+              - Дух шепоче, але я не розумію
+            hints: {ghost: [дух], whispers: [шепоче], but: [але], understand: [розумію]}
+            word: шепотіти
+      - xp: 10
+        challenges:
+          - type: assist
+            direction: [uk, en]
+            prompt: страшний
+            choices: [scary, cheap, modern]
+            answers: [scary]
+            hints: {страшний: [scary, terrible]}
+            word: страшний
+            newWords: [страшний]
+          - type: assist
+            direction: [uk, en]
+            prompt: хоробрий
+            choices: [brave, young, hungry]
+            answers: [brave]
+            hints: {хоробрий: [brave, courageous]}
+            word: хоробрий
+            newWords: [хоробрий]
+          - type: speak
+            direction: [uk, uk]
+            prompt: Мені страшно, тут дуже темно.
+            answers:
+              - Мені страшно, тут дуже темно
+            hints: {мені: [I, to me], страшно: [scared, scary], тут: [here], темно: [dark]}
+            word: страшний
+            newWords: [страшно]
+          - type: translate
+            direction: [en, uk]
+            prompt: This creature in the cellar is very scary
+            bank: [Ця, істота, в, льоху, дуже, страшна, хоробра, дух]
+            answers:
+              - Ця істота в льоху дуже страшна
+            hints: {creature: [істота], cellar: [льоху], very: [дуже], scary: [страшна]}
+            word: страшний
+            newWords: [страшна]
+          - type: translate
+            direction: [en, uk]
+            prompt: You are very brave, but I am scared
+            bank: [Ти, дуже, "хоробрий,", але, мені, страшно, істота]
+            answers:
+              - Ти дуже хоробрий, але мені страшно
+            hints: {you: [ти], very: [дуже], brave: [хоробрий], but: [але], scared: [страшно]}
+            word: хоробрий
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Мій кіт дуже хоробрий.
+            bank: [Мій, кіт, дуже, хоробрий, страшний, спить]
+            answers:
+              - Мій кіт дуже хоробрий
+            meaning: My cat is very brave
+            word: хоробрий
+          - type: translate
+            direction: [en, uk]
+            prompt: It is scary in this house at night
+            bank: [Уночі, в, цьому, домі, страшно, моторошно, льоху]
+            answers:
+              - Уночі в цьому домі страшно
+              - У цьому домі уночі страшно
+            hints: {scary: [страшно], this: [цьому], house: [домі], night: [уночі]}
+            word: страшний
+          - type: translate
+            direction: [en, uk]
+            prompt: Our guest is not brave, he does not want to go into the cellar
+            bank: [Наш, гість, не, "хоробрий,", він, не, хоче, іти, в, льох, дух]
+            answers:
+              - Наш гість не хоробрий, він не хоче іти в льох
+            hints: {our: [наш], guest: [гість], brave: [хоробрий], want: [хоче], cellar: [льох]}
+            word: хоробрий
+          - type: match
+            direction: [uk, en]
+            pairs:
+              - target: істота
+                source: creature
+              - target: шепотіти
+                source: to whisper
+              - target: страшний
+                source: scary
+              - target: гість
+                source: guest
+              - target: дух
+                source: ghost
+      # Lesson 4 introduces nothing.
+      - xp: 10
+        challenges:
+          - type: translate
+            direction: [en, uk]
+            prompt: Our guest says that a ghost lives in this house
+            bank: [Наш, гість, "говорить,", що, в, цьому, домі, живе, дух, істота]
+            answers:
+              - Наш гість говорить, що в цьому домі живе дух
+            hints: {our: [наш], guest: [гість], says: [говорить], ghost: [дух], lives: [живе], house: [домі]}
+            word: дух
+          - type: translate
+            direction: [en, uk]
+            prompt: This creature is whispering, and I am very scared
+            bank: [Ця, істота, "шепоче,", і, мені, дуже, страшно, хоробрий]
+            answers:
+              - Ця істота шепоче, і мені дуже страшно
+            hints: {creature: [істота], whispering: [шепоче], very: [дуже], scared: [страшно]}
+            word: істота
+          - type: listenMatch
+            direction: [uk, en]
+            pairs:
+              - target: гість
+                source: guest
+              - target: дух
+                source: ghost
+              - target: істота
+                source: creature
+              - target: хоробрий
+                source: brave
+              - target: страшний
+                source: scary
+          - type: gapFill
+            direction: [uk, uk]
+            prompt: Мені ___, тому що хтось шепоче в темряві.
+            choices: [страшно, тепло, весело]
+            answers: [страшно]
+            hints: {мені: [I, to me], хтось: [someone], шепоче: [whispers], темряві: [darkness, the dark]}
+            word: страшний
+          - type: translate
+            direction: [en, uk]
+            prompt: Our guest is brave, but I am not
+            bank: [Наш, гість, "хоробрий,", а, я, ні, страшно, дух]
+            answers:
+              - Наш гість хоробрий, а я ні
+            hints: {our: [наш], guest: [гість], brave: [хоробрий], but: [а], not: [ні]}
+            word: хоробрий
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Хто шепоче в темряві?
+            bank: [Хто, шепоче, в, темряві, льоху, істота, спить]
+            answers:
+              - Хто шепоче в темряві
+            meaning: Who is whispering in the darkness
+            word: шепотіти
+          - type: translate
+            direction: [en, uk]
+            prompt: The guest is brave, but the creature in the cellar is very scary
+            bank: [Гість, "хоробрий,", але, істота, в, льоху, дуже, страшна, дух]
+            answers:
+              - Гість хоробрий, але істота в льоху дуже страшна
+            hints: {guest: [гість], brave: [хоробрий], creature: [істота], cellar: [льоху], scary: [страшна]}
+            word: страшний
+          - type: translate
+            direction: [en, uk]
+            prompt: At night I do not want to go upstairs, it is scary there
+            bank: [Уночі, я, не, хочу, іти, "нагору,", там, страшно, льох]
+            answers:
+              - Уночі я не хочу іти нагору, там страшно
+            hints: {night: [уночі], want: [хочу], go: [іти], upstairs: [нагору], there: [там], scary: [страшно]}
+            word: страшний
+          - type: speak
+            direction: [uk, uk]
+            prompt: Мій кіт хоробрий, він спить у льоху.
+            answers:
+              - Мій кіт хоробрий, він спить у льоху
+            hints: {кіт: [cat], хоробрий: [brave], спить: [sleeps], льоху: [cellar]}
+            word: хоробрий
+  - kind: chest
+  # Puck 3 refreshes older vocabulary and deliberately uses NOTHING from this
+  # unit -- a break from the dark house, not more of it. Unit 1's puck 3 did
+  # greetings, ordering and directions, so this one takes different ground:
+  # people, the week, and getting somewhere. Phrases are ones people say.
+  - kind: practice
+    label: In the daylight
+    art: dumbbell
+    lessons:
+      - xp: 10
+        challenges:
+          - type: assist
+            direction: [uk, en]
+            prompt: Це моя сестра.
+            choices: [This is my sister, This is my brother, This is my friend]
+            answers: [This is my sister]
+            hints: {це: [this is], моя: [my], сестра: [sister]}
+            word: сестра
+          - type: translate
+            direction: [uk, en]
+            prompt: Мій брат лікар.
+            bank: [My, brother, is, a, doctor, sister, teacher]
+            answers:
+              - My brother is a doctor
+            hints: {брат: [brother], лікар: [doctor]}
+            word: лікар
+          - type: translate
+            direction: [en, uk]
+            prompt: My sister works at a hospital
+            bank: [Моя, сестра, працює, в, лікарні, брат, школі]
+            answers:
+              - Моя сестра працює в лікарні
+            hints: {my: [моя], sister: [сестра], works: [працює], hospital: [лікарні]}
+            word: лікарня
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Мій батько працює в банку.
+            bank: [Мій, батько, працює, в, банку, офісі, брат]
+            answers:
+              - Мій батько працює в банку
+            meaning: My father works at a bank
+            word: батько
+          - type: translate
+            direction: [en, uk]
+            prompt: How old is your sister
+            bank: [Скільки, років, вашій, сестрі, брату, дуже]
+            answers:
+              - Скільки років вашій сестрі
+            hints: {how: [скільки], old: [років], your: [вашій], sister: [сестрі]}
+            word: сестра
+          - type: translate
+            direction: [en, uk]
+            prompt: I have a brother and a sister
+            bank: [У, мене, є, брат, і, сестра, син, донька]
+            answers:
+              - У мене є брат і сестра
+            hints: {I: [мене], have: [є], brother: [брат], sister: [сестра]}
+            word: брат
+          - type: translate
+            direction: [en, uk]
+            prompt: My friend is a teacher at a school
+            bank: [Мій, друг, учитель, у, школі, лікар, банку]
+            answers:
+              - Мій друг учитель у школі
+            hints: {my: [мій], friend: [друг], teacher: [учитель], school: [школі]}
+            word: учитель
+          - type: match
+            direction: [uk, en]
+            pairs:
+              - target: сестра
+                source: sister
+              - target: брат
+                source: brother
+              - target: лікар
+                source: doctor
+              - target: учитель
+                source: teacher
+              - target: друг
+                source: friend
+          - type: translate
+            direction: [uk, en]
+            prompt: Моя мама учитель, а тато лікар.
+            bank: [My, mother, is, a, "teacher,", and, my, father, is, a, doctor, sister]
+            answers:
+              - My mother is a teacher, and my father is a doctor
+            hints: {мама: [mother, mom], учитель: [teacher], тато: [father, dad], лікар: [doctor]}
+            word: мама
+      - xp: 10
+        challenges:
+          - type: speak
+            direction: [uk, uk]
+            prompt: Що ви робите в суботу?
+            answers:
+              - Що ви робите в суботу
+            hints: {що: [what], робите: [are doing, do], суботу: [Saturday]}
+            word: субота
+          - type: translate
+            direction: [en, uk]
+            prompt: On Monday I work, and on Sunday I sleep
+            bank: [У, понеділок, я, "працюю,", а, в, неділю, я, сплю, суботу]
+            answers:
+              - У понеділок я працюю, а в неділю я сплю
+            hints: {monday: [понеділок], work: [працюю], sunday: [неділю], sleep: [сплю]}
+            word: понеділок
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Завтра в мене зустріч.
+            bank: [Завтра, в, мене, зустріч, сьогодні, робота]
+            answers:
+              - Завтра в мене зустріч
+            meaning: I have a meeting tomorrow
+            word: зустріч
+          - type: translate
+            direction: [en, uk]
+            prompt: I am not working today, I am at home
+            bank: [Сьогодні, я, не, "працюю,", я, вдома, завтра, сплю]
+            answers:
+              - Сьогодні я не працюю, я вдома
+            hints: {working: [працюю], today: [сьогодні], home: [вдома]}
+            word: працювати
+          - type: translate
+            direction: [en, uk]
+            prompt: Excuse me, what time is it now
+            bank: ["Вибачте,", котра, зараз, година, час, день]
+            answers:
+              - Вибачте, котра зараз година
+            hints: {excuse: [вибачте], what: [котра], time: [година], now: [зараз]}
+            word: година
+          - type: translate
+            direction: [uk, en]
+            prompt: Я працюю щодня, але не в неділю.
+            bank: [I, work, every, "day,", but, not, on, Sunday, Saturday]
+            answers:
+              - I work every day, but not on Sunday
+            hints: {працюю: [work], щодня: [every day], але: [but], неділю: [Sunday]}
+            word: щодня
+          - type: match
+            direction: [uk, en]
+            pairs:
+              - target: понеділок
+                source: Monday
+              - target: субота
+                source: Saturday
+              - target: неділя
+                source: Sunday
+              - target: завтра
+                source: tomorrow
+              - target: сьогодні
+                source: today
+          - type: translate
+            direction: [en, uk]
+            prompt: Tomorrow I want to go to the cinema with a friend
+            bank: [Завтра, я, хочу, іти, в, кіно, з, другом, театр]
+            answers:
+              - Завтра я хочу іти в кіно з другом
+            hints: {tomorrow: [завтра], want: [хочу], go: [іти], cinema: [кіно], friend: [другом]}
+            word: кіно
+          - type: translate
+            direction: [en, uk]
+            prompt: I have an exam on Thursday
+            bank: [У, четвер, у, мене, екзамен, урок, завтра]
+            answers:
+              - У четвер у мене екзамен
+            hints: {exam: [екзамен], thursday: [четвер], I: [мене]}
+            word: екзамен
+      - xp: 10
+        challenges:
+          - type: translate
+            direction: [en, uk]
+            prompt: One ticket to Odesa please
+            bank: [Один, квиток, до, "Одеси,", "будь", ласка, два]
+            answers:
+              - Один квиток до Одеси, будь ласка
+            hints: {one: [один], ticket: [квиток], odesa: [одеси], please: [будь, ласка]}
+            word: квиток
+          - type: speak
+            direction: [uk, uk]
+            prompt: Коли наступний поїзд?
+            answers:
+              - Коли наступний поїзд
+            hints: {коли: [when], наступний: [next], поїзд: [train]}
+            word: поїзд
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Де тут зупинка автобуса?
+            bank: [Де, тут, зупинка, автобуса, метро, вокзал]
+            answers:
+              - Де тут зупинка автобуса
+            meaning: Where is the bus stop here
+            word: зупинка
+          - type: translate
+            direction: [en, uk]
+            prompt: I want to go to the airport by taxi
+            bank: [Я, хочу, їхати, в, аеропорт, на, таксі, метро]
+            answers:
+              - Я хочу їхати в аеропорт на таксі
+            hints: {want: [хочу], go: [їхати], airport: [аеропорт], taxi: [таксі]}
+            word: таксі
+          - type: translate
+            direction: [en, uk]
+            prompt: My luggage is in the carriage
+            bank: [Мій, багаж, у, вагоні, валіза, поїзді]
+            answers:
+              - Мій багаж у вагоні
+            hints: {my: [мій], luggage: [багаж], carriage: [вагоні]}
+            word: багаж
+          - type: match
+            direction: [uk, en]
+            pairs:
+              - target: поїзд
+                source: train
+              - target: автобус
+                source: bus
+              - target: квиток
+                source: ticket
+              - target: вокзал
+                source: station
+              - target: таксі
+                source: taxi
+          - type: translate
+            direction: [en, uk]
+            prompt: Excuse me, where is the ticket office at the station
+            bank: ["Вибачте,", де, каса, на, вокзалі, довідка, аеропорт]
+            answers:
+              - Вибачте, де каса на вокзалі
+            hints: {excuse: [вибачте], ticket: [каса], office: [каса], station: [вокзалі]}
+            word: каса
+          - type: translate
+            direction: [en, uk]
+            prompt: How much does a ticket to Odesa cost
+            bank: [Скільки, коштує, квиток, до, Одеси, поїзд, каса]
+            answers:
+              - Скільки коштує квиток до Одеси
+            hints: {how: [скільки], much: [скільки], cost: [коштує], ticket: [квиток], odesa: [одеси]}
+            word: квиток
+          - type: gapFill
+            direction: [uk, uk]
+            prompt: Мені треба ___ до Одеси.
+            choices: [квиток, каса, поїзд]
+            answers: [квиток]
+            hints: {мені: [I], треба: [need], одеси: [Odesa]}
+            word: квиток
+  # Puck 4 is pucks 1 and 2 again, harder: two clauses, and the words put to
+  # work in things you would actually say. Nothing new.
+  - kind: practice
+    label: The second night
+    art: star
+    lessons:
+      - xp: 10
+        challenges:
+          - type: match
+            direction: [uk, en]
+            pairs:
+              - target: темрява
+                source: darkness
+              - target: льох
+                source: cellar
+              - target: скрип
+                source: creak
+              - target: істота
+                source: creature
+              - target: дух
+                source: ghost
+          - type: translate
+            direction: [en, uk]
+            prompt: At night I shut the doors, because it is creepy in this house
+            bank: [Уночі, я, зачиняю, "двері,", тому, що, в, цьому, домі, моторошно, страшно]
+            answers:
+              - Уночі я зачиняю двері, тому що в цьому домі моторошно
+            hints: {night: [уночі], shut: [зачиняю], doors: [двері], because: [тому, що], creepy: [моторошно], house: [домі]}
+            word: зачиняти
+          - type: speak
+            direction: [uk, uk]
+            prompt: Наш гість говорить, що в льоху живе істота.
+            answers:
+              - Наш гість говорить, що в льоху живе істота
+            hints: {гість: [guest], говорить: [says], льоху: [cellar], живе: [lives], істота: [creature]}
+            word: істота
+          - type: listenTap
+            direction: [uk, uk]
+            audio: У темряві хтось шепоче, і мені страшно.
+            bank: [У, темряві, хтось, "шепоче,", і, мені, страшно, льоху, спить]
+            answers:
+              - У темряві хтось шепоче, і мені страшно
+            meaning: Someone is whispering in the darkness, and I am scared
+            word: шепотіти
+          - type: translate
+            direction: [en, uk]
+            prompt: At night there is a creak on the stairs, but my cat sleeps
+            bank: [Уночі, на, сходах, "скрип,", але, мій, кіт, спить, темряві]
+            answers:
+              - Уночі на сходах скрип, але мій кіт спить
+            hints: {night: [уночі], creak: [скрип], stairs: [сходах], but: [але], cat: [кіт], sleeps: [спить]}
+            word: скрип
+          - type: gapFill
+            direction: [uk, uk]
+            prompt: Уночі я не хочу іти ___, там дуже темно.
+            choices: [нагору, тут, дуже]
+            answers: [нагору]
+            hints: {уночі: [at night], хочу: [want], іти: [to go], темно: [dark]}
+            word: нагору
+          - type: translate
+            direction: [en, uk]
+            prompt: I am scared, because someone is whispering in the house
+            bank: [Мені, "страшно,", тому, що, в, домі, хтось, шепоче, істота]
+            answers:
+              - Мені страшно, тому що в домі хтось шепоче
+            hints: {scared: [страшно], because: [тому, що], someone: [хтось], whispering: [шепоче], house: [домі]}
+            word: страшний
+          - type: translate
+            direction: [en, uk]
+            prompt: Our guest is brave, but he does not want to go into the cellar at night
+            bank: [Наш, гість, "хоробрий,", але, він, не, хоче, іти, в, льох, уночі, дух]
+            answers:
+              - Наш гість хоробрий, але він не хоче іти в льох уночі
+              - Уночі наш гість хоробрий, але він не хоче іти в льох
+            hints: {our: [наш], guest: [гість], brave: [хоробрий], want: [хоче], cellar: [льох], night: [уночі]}
+            word: хоробрий
+          - type: translate
+            direction: [en, uk]
+            prompt: At night the darkness in the house is very scary
+            bank: [Уночі, темрява, в, домі, дуже, страшна, моторошна, льоху]
+            answers:
+              - Уночі темрява в домі дуже страшна
+              - Темрява в домі уночі дуже страшна
+            hints: {night: [уночі], darkness: [темрява], house: [домі], very: [дуже], scary: [страшна]}
+            word: темрява
+      - xp: 10
+        challenges:
+          - type: listenMatch
+            direction: [uk, en]
+            pairs:
+              - target: нагору
+                source: upstairs
+              - target: зачиняти
+                source: to shut
+              - target: шепотіти
+                source: to whisper
+              - target: хоробрий
+                source: brave
+              - target: гість
+                source: guest
+          - type: translate
+            direction: [en, uk]
+            prompt: I do not know what is whispering in the cellar, and I am scared
+            bank: [Я, не, "знаю,", що, шепоче, в, "льоху,", і, мені, страшно, істота]
+            answers:
+              - Я не знаю, що шепоче в льоху, і мені страшно
+            hints: {I: [я], know: [знаю], what: [що], whispering: [шепоче], cellar: [льоху], scared: [страшно]}
+            word: шепотіти
+          - type: translate
+            direction: [uk, en]
+            prompt: Наш гість хоробрий, він спить у льоху.
+            bank: [Our, guest, is, "brave,", he, sleeps, in, the, cellar, scared, upstairs]
+            answers:
+              - Our guest is brave, he sleeps in the cellar
+            hints: {гість: [guest], хоробрий: [brave], спить: [sleeps], льоху: [cellar]}
+            word: хоробрий
+          - type: translate
+            direction: [en, uk]
+            prompt: Go upstairs and shut the window, it is cold in this house
+            bank: [Іди, нагору, і, зачиняй, "вікно,", в, цьому, домі, холодно, льох]
+            answers:
+              - Іди нагору і зачиняй вікно, в цьому домі холодно
+            hints: {go: [іди], upstairs: [нагору], shut: [зачиняй], window: [вікно], house: [домі], cold: [холодно]}
+            word: зачиняти
+          - type: translate
+            direction: [en, uk]
+            prompt: This creature is very scary, but my cat is brave
+            bank: [Ця, істота, дуже, "страшна,", але, мій, кіт, хоробрий, дух]
+            answers:
+              - Ця істота дуже страшна, але мій кіт хоробрий
+            hints: {creature: [істота], very: [дуже], scary: [страшна], but: [але], cat: [кіт], brave: [хоробрий]}
+            word: хоробрий
+          - type: gapFill
+            direction: [uk, uk]
+            prompt: У ___ на сходах скрип, і я не сплю.
+            choices: [темряві, льох, ніч]
+            answers: [темряві]
+            hints: {сходах: [stairs], скрип: [creak], сплю: [I sleep]}
+            word: темрява
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Зачиняй двері, у льоху моторошно.
+            bank: [Зачиняй, "двері,", у, льоху, моторошно, темно, нагору]
+            answers:
+              - Зачиняй двері, у льоху моторошно
+            meaning: Shut the door, it is creepy in the cellar
+            word: зачиняти
+          - type: translate
+            direction: [en, uk]
+            prompt: A ghost lives in this old house, and at night it whispers
+            bank: [У, цьому, старому, домі, живе, "дух,", і, уночі, він, шепоче, істота]
+            answers:
+              - У цьому старому домі живе дух, і уночі він шепоче
+            hints: {ghost: [дух], lives: [живе], old: [старому], house: [домі], night: [уночі], whispers: [шепоче]}
+            word: дух
+          - type: translate
+            direction: [en, uk]
+            prompt: I do not want to go into the cellar, it is very creepy there
+            bank: [Я, не, хочу, іти, в, "льох,", там, дуже, моторошно, страшно]
+            answers:
+              - Я не хочу іти в льох, там дуже моторошно
+            hints: {want: [хочу], go: [іти], cellar: [льох], very: [дуже], creepy: [моторошно], there: [там]}
+            word: льох
+      - xp: 10
+        challenges:
+          - type: match
+            direction: [uk, en]
+            pairs:
+              - target: моторошний
+                source: creepy
+              - target: страшний
+                source: scary
+              - target: темрява
+                source: darkness
+              - target: скрип
+                source: creak
+              - target: істота
+                source: creature
+          - type: translate
+            direction: [en, uk]
+            prompt: At night someone whispers upstairs, and I do not sleep
+            bank: [Уночі, хтось, шепоче, "нагорі,", і, я, не, сплю, льоху]
+            answers:
+              - Уночі хтось шепоче нагорі, і я не сплю
+            hints: {night: [уночі], someone: [хтось], whispers: [шепоче], upstairs: [нагорі], sleep: [сплю]}
+            word: шепотіти
+          - type: translate
+            direction: [en, uk]
+            prompt: The guest says that the creature in the cellar is not scary
+            bank: [Гість, "говорить,", що, істота, в, льоху, не, страшна, а, хоробра]
+            answers:
+              - Гість говорить, що істота в льоху не страшна
+            hints: {guest: [гість], says: [говорить], creature: [істота], cellar: [льоху], scary: [страшна]}
+            word: істота
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Мені страшно, тут дуже темно.
+            bank: [Мені, "страшно,", тут, дуже, темно, моторошно, льоху]
+            answers:
+              - Мені страшно, тут дуже темно
+            meaning: I am scared, it is very dark here
+            word: страшний
+          - type: translate
+            direction: [uk, en]
+            prompt: Дух у льоху шепоче, але я не розумію, що він говорить.
+            bank: [The, ghost, in, the, cellar, "whispers,", but, I, do, not, understand, what, it, says, creature]
+            answers:
+              - The ghost in the cellar whispers, but I do not understand what it says
+            hints: {дух: [ghost, spirit], льоху: [cellar], шепоче: [whispers], розумію: [understand], говорить: [says]}
+            word: дух
+          - type: gapFill
+            direction: [uk, uk]
+            prompt: Зачиняй ___, уночі в домі холодно.
+            choices: [вікно, скрип, темрява]
+            answers: [вікно]
+            hints: {зачиняй: [shut], уночі: [at night], домі: [house, home], холодно: [cold]}
+            word: зачиняти
+          - type: translate
+            direction: [en, uk]
+            prompt: My cat is brave, he sleeps in the cellar in the darkness
+            bank: [Мій, кіт, "хоробрий,", він, спить, у, льоху, в, темряві, страшний]
+            answers:
+              - Мій кіт хоробрий, він спить у льоху в темряві
+            hints: {my: [мій], cat: [кіт], brave: [хоробрий], sleeps: [спить], cellar: [льоху], darkness: [темряві]}
+            word: хоробрий
+          - type: translate
+            direction: [en, uk]
+            prompt: This house is very creepy, but our guest wants to sleep here
+            bank: [Цей, дім, дуже, "моторошний,", але, наш, гість, хоче, спати, тут, льох]
+            answers:
+              - Цей дім дуже моторошний, але наш гість хоче спати тут
+            hints: {house: [дім], very: [дуже], creepy: [моторошний], guest: [гість], wants: [хоче], sleep: [спати]}
+            word: моторошний
+          - type: translate
+            direction: [en, uk]
+            prompt: Go upstairs, it is very scary in the cellar
+            bank: [Іди, "нагору,", у, льоху, дуже, страшно, моторошно, темно]
+            answers:
+              - Іди нагору, у льоху дуже страшно
+            hints: {go: [іди], upstairs: [нагору], very: [дуже], scary: [страшно], cellar: [льоху]}
+            word: нагору
+  - kind: chest
+  # Puck 5 mixes everything: the new words from pucks 1 and 2, and the older
+  # vocabulary puck 3 refreshed, in the same sentences.
+  - kind: unit_review
+    label: Until morning
+    art: trophy
+    lessons:
+      - xp: 20
+        challenges:
+          - type: match
+            direction: [uk, en]
+            pairs:
+              - target: льох
+                source: cellar
+              - target: істота
+                source: creature
+              - target: хоробрий
+                source: brave
+              - target: поїзд
+                source: train
+              - target: сестра
+                source: sister
+          - type: translate
+            direction: [en, uk]
+            prompt: My sister is a doctor, but she is scared of the darkness
+            bank: [Моя, сестра, "лікар,", але, їй, страшно, в, темряві, хоробра]
+            answers:
+              - Моя сестра лікар, але їй страшно в темряві
+            hints: {my: [моя], sister: [сестра], doctor: [лікар], scared: [страшно], darkness: [темряві]}
+            word: страшний
+          - type: speak
+            direction: [uk, uk]
+            prompt: Завтра наш гість хоче їхати в Одесу.
+            answers:
+              - Завтра наш гість хоче їхати в Одесу
+            hints: {завтра: [tomorrow], гість: [guest], хоче: [wants], їхати: [to go], одесу: [Odesa]}
+            word: гість
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Уночі в льоху хтось шепоче.
+            bank: [Уночі, в, льоху, хтось, шепоче, спить, темряві]
+            answers:
+              - Уночі в льоху хтось шепоче
+            meaning: At night someone is whispering in the cellar
+            word: шепотіти
+          - type: translate
+            direction: [en, uk]
+            prompt: On Monday I work, but at night I do not sleep, because of the creak on the stairs
+            bank: [У, понеділок, я, "працюю,", але, уночі, я, не, "сплю,", тому, що, на, сходах, скрип, льоху]
+            answers:
+              - У понеділок я працюю, але уночі я не сплю, тому що на сходах скрип
+            hints: {monday: [понеділок], work: [працюю], night: [уночі], sleep: [сплю], creak: [скрип], stairs: [сходах]}
+            word: скрип
+          - type: translate
+            direction: [en, uk]
+            prompt: My brother is brave, but he does not want to sleep in this house
+            bank: [Мій, брат, "хоробрий,", але, він, не, хоче, спати, в, цьому, домі, льоху]
+            answers:
+              - Мій брат хоробрий, але він не хоче спати в цьому домі
+            hints: {my: [мій], brother: [брат], brave: [хоробрий], want: [хоче], sleep: [спати], house: [домі]}
+            word: хоробрий
+          - type: translate
+            direction: [en, uk]
+            prompt: Excuse me, is there a guest in this house
+            bank: ["Вибачте,", в, цьому, домі, є, гість, дух, льох]
+            answers:
+              - Вибачте, в цьому домі є гість
+            hints: {excuse: [вибачте], house: [домі], guest: [гість]}
+            word: гість
+          - type: translate
+            direction: [en, uk]
+            prompt: I am not working today, because there is a guest in the house
+            bank: [Сьогодні, я, не, "працюю,", тому, що, в, домі, гість, дух]
+            answers:
+              - Сьогодні я не працюю, тому що в домі гість
+            hints: {working: [працюю], today: [сьогодні], because: [тому, що], guest: [гість], house: [домі]}
+            word: гість
+          - type: gapFill
+            direction: [uk, uk]
+            prompt: Мені ___, тому що в льоху дуже темно.
+            choices: [страшно, тепло, нудно]
+            answers: [страшно]
+            hints: {мені: [I, to me], льоху: [cellar], темно: [dark]}
+            word: страшний
+      - xp: 20
+        challenges:
+          - type: translate
+            direction: [en, uk]
+            prompt: Our guest is a teacher, but he is very creepy
+            bank: [Наш, гість, "учитель,", але, він, дуже, моторошний, лікар]
+            answers:
+              - Наш гість учитель, але він дуже моторошний
+            hints: {our: [наш], guest: [гість], teacher: [учитель], very: [дуже], creepy: [моторошний]}
+            word: моторошний
+          - type: listenMatch
+            direction: [uk, en]
+            pairs:
+              - target: темрява
+                source: darkness
+              - target: дух
+                source: ghost
+              - target: моторошний
+                source: creepy
+              - target: квиток
+                source: ticket
+              - target: учитель
+                source: teacher
+          - type: translate
+            direction: [en, uk]
+            prompt: Tomorrow I want to go to Odesa, because this house is very scary
+            bank: [Завтра, я, хочу, їхати, в, "Одесу,", тому, що, цей, дім, дуже, страшний, льох]
+            answers:
+              - Завтра я хочу їхати в Одесу, тому що цей дім дуже страшний
+            hints: {tomorrow: [завтра], want: [хочу], go: [їхати], odesa: [одесу], house: [дім], scary: [страшний]}
+            word: страшний
+          - type: translate
+            direction: [en, uk]
+            prompt: On Saturday my father is at home, and I shut the doors and the windows
+            bank: [У, суботу, мій, батько, "вдома,", а, я, зачиняю, двері, і, вікна, неділю]
+            answers:
+              - У суботу мій батько вдома, а я зачиняю двері і вікна
+            hints: {saturday: [суботу], father: [батько], home: [вдома], shut: [зачиняю], doors: [двері], windows: [вікна]}
+            word: зачиняти
+          - type: translate
+            direction: [en, uk]
+            prompt: My friend is brave, he does not want to go to the hospital
+            bank: [Мій, друг, "хоробрий,", він, не, хоче, іти, в, лікарню, льох]
+            answers:
+              - Мій друг хоробрий, він не хоче іти в лікарню
+            hints: {my: [мій], friend: [друг], brave: [хоробрий], want: [хоче], hospital: [лікарню]}
+            word: хоробрий
+          - type: speak
+            direction: [uk, uk]
+            prompt: Уночі в цьому домі темрява, скрип і моторошна істота.
+            answers:
+              - Уночі в цьому домі темрява, скрип і моторошна істота
+            hints: {уночі: [at night], домі: [house, home], темрява: [darkness], скрип: [creak], моторошна: [creepy], істота: [creature]}
+            word: істота
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Іди нагору, мені тут страшно.
+            bank: [Іди, "нагору,", мені, тут, страшно, темно, льоху]
+            answers:
+              - Іди нагору, мені тут страшно
+            meaning: Go upstairs, I am scared here
+            word: страшний
+          - type: translate
+            direction: [en, uk]
+            prompt: I have a ticket for Thursday, and tomorrow I am not working
+            bank: [У, мене, є, квиток, на, "четвер,", а, завтра, я, не, працюю, поїзд]
+            answers:
+              - У мене є квиток на четвер, а завтра я не працюю
+            hints: {ticket: [квиток], thursday: [четвер], tomorrow: [завтра], working: [працюю]}
+            word: квиток
+          - type: gapFill
+            direction: [uk, uk]
+            prompt: У домі ___, тому що уночі там живе дух.
+            choices: [моторошно, тепло, дешево]
+            answers: [моторошно]
+            hints: {домі: [house, home], уночі: [at night], живе: [lives], дух: [ghost]}
+            word: моторошний
