@@ -109,6 +109,14 @@
     matchChoice: null,
     matched: 0,
     graded: false,
+    // The word being dragged along the line, and a one-shot flag so the click
+    // that ends a drag does not also count as a tap.
+    drag: null,
+    dragged: false,
+    // One near miss per showing earns a second try. Reset with the challenge,
+    // not with the lesson: being one word out twice on the same card is an
+    // answer, not a slip.
+    retryUsed: false,
     deck: [],
     lesson: null,
     // Challenges answered wrong and owed a second showing, plus the count of
@@ -982,28 +990,41 @@
     disabled,
     hideSkip,
     skipText,
-    toggle
+    toggle,
+    wrote,
+    wroteWrong,
+    wroteMisspelled
   }) {
+    // "retry" is ours rather than theirs -- Duolingo has no second chance to
+    // copy -- so it borrows the wrong banner's shell and repaints it bee
+    // yellow, which is the colour their own "almost" states use.
+    const blaming = mode === "correct" || mode === "incorrect" || mode === "retry";
     const shell = el(
       "div",
       mode === "correct"
         ? "_3FB5S _1VTif _3yMvO _2HXQ9"
-        : mode === "incorrect"
+        : mode === "incorrect" || mode === "retry"
           ? "_3FB5S _1VTif _2cfV0 _2HXQ9"
           : "_3rB4d _1VTif _2HXQ9"
     );
+    if (mode === "retry") {
+      shell.style.background = "rgb(var(--color-bee-always-dark), 0.12)";
+    }
     const row = el("div", "U8jH3 jHbiF");
 
-    if (mode === "correct" || mode === "incorrect") {
+    if (blaming) {
       const blameWrap = el("div", "AXBVw _2Ycbe _8wIx-");
       const blame = el("div", "_1k6eg", { "data-test": `blame blame-${mode}` });
       const iconHolder = el("div", "_31ixh HJdJI fwpkb");
-      iconHolder.append(
-        el("img", mode === "correct" ? "_3oCTd" : "_1gpzD", {
-          src: mode === "correct" ? ASSET.correct : ASSET.incorrect,
-          alt: ""
-        })
-      );
+      // A near miss is not a verdict, so it shows no tick and no cross.
+      if (mode !== "retry") {
+        iconHolder.append(
+          el("img", mode === "correct" ? "_3oCTd" : "_1gpzD", {
+            src: mode === "correct" ? ASSET.correct : ASSET.incorrect,
+            alt: ""
+          })
+        );
+      }
       const text = el("div", "d6Xhl");
       const textInner = el("div", "_3LKiy");
       const block = el("div", "_1D3fo");
@@ -1013,11 +1034,42 @@
       const tone = mode === "correct" ? "WXwlk" : "o-3Ru";
       const heading = el("h2", `_2U7Gm ${tone}`);
       heading.textContent = title;
+      if (mode === "retry") {
+        heading.style.color = "rgb(var(--color-bee-always-dark))";
+      }
       block.append(heading);
       if (detail) {
         const value = el("div", `_2jz5U ${tone}`, { dir: "ltr" });
         value.textContent = detail;
+        if (mode === "retry") {
+          value.style.color = "rgb(var(--color-bee-always-dark))";
+        }
         block.append(value);
+      }
+      // A typed answer has no tiles to paint, so it is echoed back here with
+      // the offending word in red -- the same information the word bank shows
+      // in place.
+      if (wrote && wrote.length) {
+        const line = el("div", `_2jz5U ${tone}`, { dir: "ltr" });
+        const wrong = new Set(wroteWrong || []);
+        const misspelled = new Set(wroteMisspelled || []);
+        wrote.forEach((word, index) => {
+          const part = el("span");
+          part.textContent = index ? ` ${word}` : word;
+          if (wrong.has(index) || misspelled.has(index)) {
+            part.style.color = wrong.has(index)
+              ? "rgb(var(--color-cardinal))"
+              : "rgb(var(--color-bee-always-dark))";
+            part.style.fontWeight = "700";
+          } else if (mode === "retry") {
+            // Plain eel, not the banner's amber: amber is the spelling mark
+            // now, and colouring the words that are RIGHT with it said the
+            // whole sentence was misspelt.
+            part.style.color = "rgb(var(--color-eel))";
+          }
+          line.append(part);
+        });
+        block.append(line);
       }
       // A listening challenge withholds the meaning until it has been answered,
       // then shows it under the solution: as a second heading when you got it
@@ -1085,7 +1137,7 @@
       [
         disabled ? "_2wryV" : "",
         "_1rcV8 _1VYyp _1ursp _7jW2t _3DbUj",
-        mode === "incorrect" ? "_2VWgj _3S8jJ" : "_38g3s _2oGJR"
+        mode === "incorrect" || mode === "retry" ? "_2VWgj _3S8jJ" : "_38g3s _2oGJR"
       ]
         .filter(Boolean)
         .join(" "),
@@ -1122,18 +1174,60 @@
   //
   // See lessons/README.md for the format.
 
+  // `direction: [uk, en]` is the whole of it: the language the challenge shows
+  // you, then the language you answer in. Everything else about which way round
+  // a challenge runs follows from those two -- which side the choices are on,
+  // which way the header reads, whether the voice speaks target or source, and
+  // which direction the practice record is written in. Spelling those out
+  // separately meant four fields that could disagree with each other, and one
+  // of them (the record) that nobody could check by eye.
+  //
+  // The long forms still win where a file sets them, so nothing that used them
+  // has to be rewritten to keep working.
+  function directionOf(raw) {
+    const pair = Array.isArray(raw.direction)
+      ? raw.direction
+      : String(raw.direction || "").split(/[\s,>-]+/);
+    return {
+      shown: String(pair[0] || "").trim(),
+      answered: String(pair[1] || "").trim()
+    };
+  }
+
+  // Which way a practice record goes is not a separate decision from which way
+  // the challenge goes: answering in English is recognising the word, answering
+  // in the target language is producing it. So `word: вікно` is the whole
+  // record, and the direction comes from the challenge it sits in.
+  function recordFor(raw, answeredLang, fallbackWord) {
+    if (raw.record) {
+      return raw.record;
+    }
+    const wordKey = String(raw.word || fallbackWord || "").trim();
+    if (!wordKey) {
+      return null;
+    }
+    return { wordKey, direction: answeredLang === "en" ? "tg2en" : "en2tg" };
+  }
+
   function normalizeChallenge(raw, index) {
     const challenge = { ...raw, index };
     challenge.type = String(raw.type || "").trim();
+    const direction = directionOf(raw);
     // Keep the authored form. Re-queueing a mistake normalises it again rather
     // than re-showing the object, so the bank and the choices come back in a
     // different order the second time -- which is what theirs does.
     challenge.source = raw;
 
     if (challenge.type === "match" || challenge.type === "listenMatch") {
+      const answeredLang = raw.sourceLang || direction.answered || "en";
       const pairs = (raw.pairs || []).map((pair, at) => ({
         target: String(pair.target || ""),
         source: String(pair.source || ""),
+        // Carried through, which it was not before: completeMatch reads
+        // pair.record, and building the pairs without it meant every match in
+        // every lesson scored nothing. A `direction` on the challenge lets each
+        // pair default to recording its own target.
+        record: recordFor(pair, answeredLang, direction.shown ? pair.target : ""),
         pair: at
       }));
       challenge.pairs = pairs;
@@ -1143,17 +1237,17 @@
       // Which language the tiles speak in. Without this the voice check below
       // has nothing to look up and drops every listenMatch on any machine that
       // does have voices installed -- which is most of them.
-      challenge.audioLang = raw.targetLang || targetLang();
+      challenge.audioLang = raw.targetLang || direction.shown || targetLang();
       const left = shuffle(pairs).map((entry) => ({
         text: entry.target,
-        lang: raw.targetLang || targetLang(),
+        lang: raw.targetLang || direction.shown || targetLang(),
         pair: entry.pair,
         side: 0,
         audio
       }));
       const right = shuffle(pairs).map((entry) => ({
         text: entry.source,
-        lang: raw.sourceLang || "en",
+        lang: raw.sourceLang || direction.answered || "en",
         pair: entry.pair,
         side: 1
       }));
@@ -1168,7 +1262,7 @@
       .map(String);
     challenge.answer = String(raw.answer || challenge.answers[0] || "");
     challenge.hints = raw.hints || {};
-    challenge.promptLang = raw.promptLang || targetLang();
+    challenge.promptLang = raw.promptLang || direction.shown || targetLang();
     // Words the learner is meeting for the first time, which render purple.
     // A lesson may name them outright; otherwise a "new" badge means the whole
     // prompt is the new word, which is what the generated lessons produce.
@@ -1190,11 +1284,12 @@
     if (LISTEN_TYPES.includes(challenge.type)) {
       // What is spoken is the answer itself -- you are being asked to write
       // down what you heard -- so the prompt is never shown before grading.
-      challenge.answerLang = raw.answerLang || targetLang();
+      challenge.answerLang = raw.answerLang || direction.answered || targetLang();
       challenge.audio = String(raw.audio || challenge.answer);
-      challenge.audioLang = raw.audioLang || challenge.answerLang;
+      challenge.audioLang = raw.audioLang || direction.shown || challenge.answerLang;
       challenge.meaning = String(raw.meaning || raw.prompt || "");
       challenge.header = raw.header || "Tap what you hear";
+      challenge.record = recordFor(raw, challenge.answerLang);
       const words = challenge.audio.split(/\s+/).filter(Boolean);
       challenge.bank = raw.bank
         ? raw.shuffle === false
@@ -1206,13 +1301,15 @@
 
     if (challenge.type === "assist") {
       challenge.header = raw.header || "Select the correct meaning";
-      challenge.choiceLang = raw.choiceLang || "en";
+      challenge.choiceLang = raw.choiceLang || direction.answered || "en";
       challenge.choices = raw.shuffle === false ? raw.choices.slice() : shuffle(raw.choices);
       challenge.answerIndex = challenge.choices.indexOf(challenge.answer);
+      challenge.record = recordFor(raw, challenge.choiceLang);
     } else {
-      challenge.header = raw.header || "Write this in English";
-      challenge.answerLang = raw.answerLang || "en";
+      challenge.answerLang = raw.answerLang || direction.answered || "en";
+      challenge.header = raw.header || `Write this in ${languageName(challenge.answerLang)}`;
       challenge.bank = raw.shuffle === false ? raw.bank.slice() : shuffle(raw.bank);
+      challenge.record = recordFor(raw, challenge.answerLang);
     }
     return challenge;
   }
@@ -1378,6 +1475,175 @@
     return normalizeLesson({ challenges, xp: XP_PER_LESSON });
   }
 
+  // Differences a learner cannot see on the page, normalised away before
+  // anything is compared.
+  //
+  // These are not alternative answers -- they are the same answer written the
+  // way people actually write it: with or without the comma Ukrainian wants
+  // before "а", "isn't" for "is not", "в" for "у" (Ukrainian picks between
+  // those two for how they sound next to their neighbours, never for meaning,
+  // and the same goes for і/й). Listing every combination of them in every
+  // lesson file would be hundreds of lines restating four rules, so they live
+  // here once and every lesson gets them.
+  const CONTRACTIONS = [
+    [/\bisn't\b/g, "is not"],
+    [/\baren't\b/g, "are not"],
+    [/\bdon't\b/g, "do not"],
+    [/\bdoesn't\b/g, "does not"],
+    [/\bdidn't\b/g, "did not"],
+    [/\bit's\b/g, "it is"],
+    [/\bthat's\b/g, "that is"],
+    [/\bthere's\b/g, "there is"],
+    [/\bwhere's\b/g, "where is"],
+    [/\bwho's\b/g, "who is"],
+    [/\bwhat's\b/g, "what is"],
+    [/\bi'm\b/g, "i am"],
+    [/\byou're\b/g, "you are"],
+    [/\bwe're\b/g, "we are"],
+    [/\bthey're\b/g, "they are"]
+  ];
+
+  function normalizeAnswerText(text, english) {
+    let value = String(text || "")
+      .replace(/[\u2019\u02bc]/g, "'")
+      .normalize("NFC")
+      .toLocaleLowerCase()
+      .replace(/[.,!?;:\u2026"\u00ab\u00bb\u201e\u201c\u201d]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (english) {
+      for (const [pattern, replacement] of CONTRACTIONS) {
+        value = value.replace(pattern, replacement);
+      }
+    } else {
+      value = value.replace(/(^|\s)\u0432(?=\s|$)/g, "$1\u0443");
+      value = value.replace(/(^|\s)\u0439(?=\s|$)/g, "$1\u0456");
+    }
+
+    return value.replace(/\s+/g, " ").trim();
+  }
+
+  function answerWords(text, english) {
+    return normalizeAnswerText(text, english).split(" ").filter(Boolean);
+  }
+
+  function characterDistance(a, b, limit) {
+    if (a === b) {
+      return 0;
+    }
+    if (Math.abs(a.length - b.length) > limit) {
+      return limit + 1;
+    }
+
+    let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+    for (let i = 1; i <= a.length; i += 1) {
+      const current = [i];
+      for (let j = 1; j <= b.length; j += 1) {
+        current[j] = Math.min(
+          previous[j] + 1,
+          current[j - 1] + 1,
+          previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+        );
+      }
+      previous = current;
+    }
+    return previous[b.length];
+  }
+
+  // Two words near enough that the learner clearly reached for the right one
+  // and mistyped it. Short words are excluded: чай and чаї are a letter apart
+  // and are different words, and so are the and they.
+  function wordsAreClose(a, b) {
+    if (a === b) {
+      return true;
+    }
+    const longest = Math.max(a.length, b.length);
+    if (longest < 4) {
+      return false;
+    }
+    return characterDistance(a, b, 2) <= Math.max(1, Math.floor(longest / 3));
+  }
+
+  // Word-level edit distance with a backtrace, so a near miss can say WHICH
+  // word is wrong rather than only that something is. A substituted or extra
+  // word has a position in what was given, which is what gets marked on the
+  // page; a missing word has no position there, so it is counted instead.
+  //
+  // A mistyped word costs nothing. Spelling is not the thing these challenges
+  // are asking about, and charging for it meant one slip plus one real mistake
+  // read the same as two real mistakes and lost the second chance entirely.
+  // It is still reported, so it can be pointed at in a different colour.
+  function diffWords(given, target) {
+    const cost = [];
+    for (let i = 0; i <= given.length; i += 1) {
+      cost.push(new Array(target.length + 1).fill(0));
+      cost[i][0] = i;
+    }
+    for (let j = 0; j <= target.length; j += 1) {
+      cost[0][j] = j;
+    }
+    const swapCost = (i, j) => (wordsAreClose(given[i - 1], target[j - 1]) ? 0 : 1);
+
+    for (let i = 1; i <= given.length; i += 1) {
+      for (let j = 1; j <= target.length; j += 1) {
+        cost[i][j] = Math.min(
+          cost[i - 1][j] + 1,
+          cost[i][j - 1] + 1,
+          cost[i - 1][j - 1] + swapCost(i, j)
+        );
+      }
+    }
+
+    const wrong = [];
+    const misspelled = [];
+    let missing = 0;
+    let i = given.length;
+    let j = target.length;
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && cost[i][j] === cost[i - 1][j - 1] + swapCost(i, j)) {
+        if (given[i - 1] !== target[j - 1]) {
+          (swapCost(i, j) ? wrong : misspelled).push(i - 1);
+        }
+        i -= 1;
+        j -= 1;
+      } else if (i > 0 && cost[i][j] === cost[i - 1][j] + 1) {
+        wrong.push(i - 1);
+        i -= 1;
+      } else {
+        missing += 1;
+        j -= 1;
+      }
+    }
+
+    return {
+      distance: cost[given.length][target.length],
+      wrong: wrong.reverse(),
+      misspelled: misspelled.reverse(),
+      missing,
+      // How much slack this answer gets. A three-word answer that is two words
+      // out is a different answer; a twelve-word one is a sentence with two
+      // slips in it, and holding both to "exactly one word" punishes the long
+      // sentences this unit exists to teach.
+      allowance: Math.max(1, Math.round(target.length / 5))
+    };
+  }
+
+  // Measured against whichever accepted answer they came closest to, so being
+  // one word off an alternate counts as being one word off.
+  function nearestAnswer(challenge, value) {
+    const english = (challenge.answerLang || "en") === "en";
+    const given = answerWords(value, english);
+    let best = null;
+    for (const answer of challenge.answers) {
+      const diff = diffWords(given, answerWords(answer, english));
+      if (!best || diff.distance < best.distance) {
+        best = diff;
+      }
+    }
+    return best || { distance: Infinity, wrong: [], misspelled: [], missing: 0, allowance: 1 };
+  }
+
   // Grading works off the challenge's own accepted answers, so a JSON lesson
   // with no vocabulary behind it is marked exactly like a generated one.
   function gradeAnswer(challenge, value) {
@@ -1387,11 +1653,11 @@
     const english = (challenge.answerLang || "en") === "en";
     const accepted = new Set();
     for (const answer of challenge.answers) {
-      for (const key of LWR.flashcardAnswerKeys(answer, english)) {
+      for (const key of LWR.flashcardAnswerKeys(normalizeAnswerText(answer, english), english)) {
         accepted.add(key);
       }
     }
-    const inputKeys = [...LWR.flashcardAnswerKeys(value, english)];
+    const inputKeys = [...LWR.flashcardAnswerKeys(normalizeAnswerText(value, english), english)];
     if (inputKeys.some((key) => accepted.has(key))) {
       return "correct";
     }
@@ -1419,6 +1685,7 @@
     state.matchChoice = null;
     state.matched = 0;
     state.graded = false;
+    state.retryUsed = false;
     state.shownAt = Date.now();
     stopSpeaking();
 
@@ -1463,6 +1730,44 @@
 
   // What the footer looks like before an answer is checked. Listening
   // challenges swap Skip's wording and add the keyboard toggle beside it.
+  function nearMissDetail(diff) {
+    const parts = [];
+    if (diff.wrong.length) {
+      parts.push(diff.wrong.length === 1 ? "one word in red is wrong" : "the words in red are wrong");
+    }
+    if (diff.misspelled.length) {
+      parts.push(
+        diff.misspelled.length === 1 ? "one in amber is spelt wrong" : "the ones in amber are spelt wrong"
+      );
+    }
+    if (diff.missing) {
+      parts.push(diff.missing === 1 ? "a word is missing" : `${diff.missing} words are missing`);
+    }
+    if (!parts.length) {
+      return "Something is not quite right.";
+    }
+
+    const sentence =
+      parts.length === 1
+        ? parts[0]
+        : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+    return `${sentence.charAt(0).toLocaleUpperCase()}${sentence.slice(1)}.`;
+  }
+
+  // Back to answering after a near miss. The answer stays exactly as it was --
+  // the point is to change the one marked word, not to build the sentence
+  // again -- so only the footer goes back to Check.
+  function resumeAfterNearMiss() {
+    const challenge = state.queue[state.position];
+    if (challenge && challenge.typed) {
+      const input = document.querySelector("[data-test='challenge-translate-input']");
+      if (input) {
+        input.focus();
+      }
+    }
+    refreshFooter();
+  }
+
   function refreshFooter() {
     const challenge = state.queue[state.position];
     if (!challenge) {
@@ -1520,6 +1825,40 @@
     return state.picked.join(" ");
   }
 
+  // Red on the words that are actually wrong, so a miss says where it went
+  // wrong rather than only that it did. Word-bank answers carry their own
+  // tiles and get marked in place; a typed answer has no tiles, so the words
+  // are echoed under the banner instead (see buildFooter's `wrote`).
+  function markWrongWords(indices, misspelledIndices) {
+    const placed = document.querySelector("[data-sly-fox-placed]");
+    if (!placed) {
+      return;
+    }
+
+    const wrong = new Set(indices);
+    const misspelled = new Set(misspelledIndices || []);
+    [...placed.children].forEach((holder, index) => {
+      const button = holder.querySelector("button");
+      if (!button) {
+        return;
+      }
+      if (wrong.has(index) || misspelled.has(index)) {
+        const colour = wrong.has(index)
+          ? "rgb(var(--color-cardinal))"
+          : "rgb(var(--color-bee-always-dark))";
+        button.style.setProperty("--web-ui_button-color", colour);
+        button.style.setProperty("--web-ui_button-border-color", colour);
+        button.style.setProperty("--__internal__switchable__border-color", colour);
+        button.dataset.slyFoxWrongWord = wrong.has(index) ? "true" : "spelling";
+      } else {
+        button.style.removeProperty("--web-ui_button-color");
+        button.style.removeProperty("--web-ui_button-border-color");
+        button.style.removeProperty("--__internal__switchable__border-color");
+        delete button.dataset.slyFoxWrongWord;
+      }
+    });
+  }
+
   function resolveChoices(correctIndex, pickedIndex) {
     document.querySelectorAll("[data-sly-fox-choice]").forEach((node) => {
       const index = Number(node.dataset.slyFoxChoice);
@@ -1570,6 +1909,36 @@
       const verdict = gradeAnswer(challenge, answer);
       correct = verdict === "correct" || verdict === "typo";
       solution = challenge.answers.join(" / ");
+
+      // One word out is a slip, not a wrong answer -- so it buys a second look
+      // at your own sentence with the offending word marked, once per showing.
+      // Nothing is recorded and no mistake is noted: as far as the lesson is
+      // concerned this attempt did not happen.
+      if (!correct && !state.retryUsed && answer !== null) {
+        const diff = nearestAnswer(challenge, answer);
+        if (diff.distance <= diff.allowance) {
+          state.retryUsed = true;
+          state.graded = false;
+          markWrongWords(diff.wrong, diff.misspelled);
+          const onlySpelling = !diff.wrong.length && !diff.missing;
+          renderFooter({
+            mode: "retry",
+            title: onlySpelling ? "Almost -- check the spelling" : "Almost -- nearly there",
+            // Say every kind of problem there is, not just the first. A missing
+            // word cannot be pointed at -- there is nothing on the line to
+            // colour -- so if it is not named here it is never mentioned at
+            // all, and the answer comes back marked wrong for something the
+            // learner was never shown.
+            detail: nearMissDetail(diff),
+            wrote: challenge.typed ? answerWords(answer, (challenge.answerLang || "en") === "en") : null,
+            wroteWrong: diff.wrong,
+            wroteMisspelled: diff.misspelled,
+            actionLabel: "Try again",
+            onAction: resumeAfterNearMiss
+          });
+          return;
+        }
+      }
     }
 
     recordResult(challenge.record, correct, recallMs);
@@ -1588,6 +1957,11 @@
       noteMistake(challenge);
     }
     setProgress();
+
+    if (!correct && answer !== null && challenge.type !== "assist") {
+      const diff = nearestAnswer(challenge, answer);
+      markWrongWords(diff.wrong, diff.misspelled);
+    }
 
     renderFooter({
       mode: correct ? "correct" : "incorrect",
@@ -1813,6 +2187,8 @@
   // ---------------------------------------------------------------- events --
 
   function wireEvents() {
+    installDragging();
+
     // A speaker is live whether or not the challenge has been graded -- hearing
     // it again after getting it wrong is the point.
     document.addEventListener("click", (event) => {
@@ -1924,6 +2300,23 @@
     );
   }
 
+  // The line itself is the answer. Keeping a parallel array of the words and
+  // editing it alongside the DOM meant the two could disagree, and they did:
+  // removing a word searched the array by its TEXT, so taking the second "the"
+  // off the line deleted the first one from the answer. Nothing looked wrong --
+  // the line read correctly and graded as something else. Read the words off
+  // the line after every change instead, and they cannot drift.
+  function syncPickedFromLine() {
+    const placed = document.querySelector("[data-sly-fox-placed]");
+    state.picked = placed
+      ? [...placed.children].map((holder) => {
+          const text = holder.querySelector("[data-test='challenge-tap-token-text']");
+          return text ? text.textContent : "";
+        })
+      : [];
+    refreshCheckButton();
+  }
+
   function handleTokenTap(token) {
     const holder = token.closest("._1uV0Q");
     const placed = document.querySelector("[data-sly-fox-placed]");
@@ -1941,11 +2334,7 @@
       origin.style.visibility = "";
       origin.querySelector("button").setAttribute("aria-disabled", "false");
       flyToken(origin, from);
-      const at = state.picked.indexOf(word);
-      if (at !== -1) {
-        state.picked.splice(at, 1);
-      }
-      refreshCheckButton();
+      syncPickedFromLine();
       return;
     }
 
@@ -1960,10 +2349,149 @@
 
     const copy = buildTapToken(word, token.getAttribute("lang"));
     copy.dataset.slyFoxFrom = String(index);
+    // Dragging a placed word needs the pointer, not the page's scroll gesture.
+    copy.style.touchAction = "none";
     placed.append(copy);
     flyToken(copy, from);
-    state.picked.push(word);
-    refreshCheckButton();
+    syncPickedFromLine();
+  }
+
+  // --- Dragging a word to a different place on the line ---
+  //
+  // Tapping a word off the line and tapping it back on only ever appends, so
+  // one wrong word early meant taking apart everything after it. A word can be
+  // picked up and dropped where it belongs instead.
+  //
+  // The tile follows the pointer by measuring where it actually sits on each
+  // move rather than accumulating a delta: it is being re-inserted into the
+  // line as the pointer passes its neighbours, so its layout position keeps
+  // changing underneath, and an accumulated offset would drift away from the
+  // cursor with every reorder.
+  const DRAG_THRESHOLD = 6;
+
+  function placedHolderFrom(target) {
+    const holder = target && target.closest ? target.closest("._1uV0Q") : null;
+    return holder && holder.dataset.slyFoxFrom !== undefined && holder.parentElement
+      && holder.parentElement.hasAttribute("data-sly-fox-placed")
+      ? holder
+      : null;
+  }
+
+  function dropTargetFor(line, dragged, x, y) {
+    let best = null;
+    let bestDistance = Infinity;
+    for (const item of line.children) {
+      if (item === dragged) {
+        continue;
+      }
+      const rect = item.getBoundingClientRect();
+      const centreX = rect.left + rect.width / 2;
+      const centreY = rect.top + rect.height / 2;
+      // Rows matter more than columns: the line wraps, and the nearest tile by
+      // straight-line distance can be the one above.
+      const distance = Math.abs(y - centreY) * 4 + Math.abs(x - centreX);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = { item, after: x > centreX };
+      }
+    }
+    return best;
+  }
+
+  function moveDraggedTo(event) {
+    const drag = state.drag;
+    drag.holder.style.transform = "";
+    const rect = drag.holder.getBoundingClientRect();
+    drag.holder.style.transform =
+      `translate(${event.clientX - (rect.left + rect.width / 2)}px, ` +
+      `${event.clientY - (rect.top + rect.height / 2)}px)`;
+
+    const target = dropTargetFor(drag.line, drag.holder, event.clientX, event.clientY);
+    if (target) {
+      drag.line.insertBefore(
+        drag.holder,
+        target.after ? target.item.nextSibling : target.item
+      );
+    }
+  }
+
+  function endDrag() {
+    const drag = state.drag;
+    if (!drag) {
+      return;
+    }
+    state.drag = null;
+    drag.holder.style.transform = "";
+    drag.holder.style.zIndex = "";
+    drag.holder.style.opacity = "";
+    if (drag.moved) {
+      state.dragged = true;
+      syncPickedFromLine();
+    }
+  }
+
+  function installDragging() {
+    document.addEventListener("pointerdown", (event) => {
+      // Any new press starts a new interaction, so a drag's leftover
+      // "swallow the click" flag dies here. Without this the flag outlives its
+      // drag whenever the drag ends without a click -- a pointerup off the
+      // tile, or any touch -- and eats the next thing pressed, which in
+      // practice was the CHECK button.
+      state.dragged = false;
+      if (state.graded || event.button > 0) {
+        return;
+      }
+      const holder = placedHolderFrom(event.target);
+      if (!holder) {
+        return;
+      }
+      state.drag = {
+        holder,
+        line: holder.parentElement,
+        startX: event.clientX,
+        startY: event.clientY,
+        moved: false
+      };
+    });
+
+    document.addEventListener("pointermove", (event) => {
+      const drag = state.drag;
+      if (!drag) {
+        return;
+      }
+      if (!drag.moved) {
+        const far =
+          Math.abs(event.clientX - drag.startX) > DRAG_THRESHOLD ||
+          Math.abs(event.clientY - drag.startY) > DRAG_THRESHOLD;
+        if (!far) {
+          return;
+        }
+        drag.moved = true;
+        drag.holder.style.zIndex = "20";
+        drag.holder.style.opacity = "0.9";
+        drag.holder.setPointerCapture?.(event.pointerId);
+      }
+      event.preventDefault();
+      moveDraggedTo(event);
+    });
+
+    document.addEventListener("pointerup", endDrag);
+    document.addEventListener("pointercancel", endDrag);
+
+    // A drag ends with a click on the tile it started from. Without this the
+    // word is dropped where it belongs and then immediately sent back to the
+    // bank by the tap handler.
+    document.addEventListener(
+      "click",
+      (event) => {
+        if (state.dragged) {
+          state.dragged = false;
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      },
+      true
+    );
   }
 
   function handleMatchTap(button) {

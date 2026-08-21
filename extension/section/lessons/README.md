@@ -31,6 +31,9 @@ challenges:
 | `xp` | no | Awarded on the summary screen. Defaults to 10. |
 | `challenges` | yes | Played in order. Anything with an unknown `type` is dropped. |
 
+`answer` (singular) still works and still wins where a file sets it, but there is
+no reason to write it: it said the same thing as the head of `answers`.
+
 Quoting is optional but not free: `xp: 10` is a number, not the string `"10"`,
 so an answer or word that reads as a number, as `true`/`false`, or as
 `null`/`~` has to be quoted — `answer: "10"`. (`yes` and `no` are plain strings
@@ -41,54 +44,111 @@ quoting too.
 
 ## Challenges
 
-Five types. Every one of them takes an optional `record` (see below) and an
-optional `badge`.
+Five types. Every one of them takes a `direction`, an optional `word` (see
+below) and an optional `badge`.
+
+### `direction`
+
+```yaml
+direction: [uk, en]
+```
+
+The language the challenge **shows** you, then the language you **answer** in.
+Everything else about which way a challenge runs follows from those two, so this
+is the only place it is written down:
+
+| Derived | From |
+| --- | --- |
+| `promptLang`, `audioLang` | the first entry |
+| `choiceLang`, `answerLang` | the second |
+| the header — "Write this in English" / "…in Ukrainian" | the second |
+| a `word`'s record direction — `tg2en` answering in English, `en2tg` otherwise | the second |
+
+`[uk, en]` is recognising a word; `[en, uk]` is producing one; `[uk, uk]` is a
+listening challenge, where you hear the target language and write it back.
+
+The old spelling — `promptLang`, `choiceLang`, `answerLang`, `audioLang`,
+`targetLang`, `sourceLang`, an explicit `header`, a full `record` — still works
+and still wins where a file sets it. It was four fields that could disagree with
+each other, and one of them (the record's direction) that no one could check by
+eye, which is why it is one field now.
 
 ### `assist` — "Select the correct meaning"
 
 ```yaml
 - type: assist
+  direction: [uk, en]
   prompt: вікно
-  promptLang: uk
   choices: [window, door, floor]
-  answer: window
-  choiceLang: en
+  answers: [window]
   hints: {вікно: [window, a window]}
+  word: вікно
   badge: new
 ```
 
-`choices` are shuffled unless you set `shuffle: false`. `answer` must appear in
-`choices` exactly.
+`choices` are shuffled unless you set `shuffle: false`. The first of `answers`
+must appear in `choices` exactly.
 
 ### `translate` — "Write this in …"
 
 ```yaml
 - type: translate
-  header: Write this in English
+  direction: [uk, en]
   prompt: Це моє вікно.
-  promptLang: uk
   bank: [This, is, my, window, door, large]
-  answer: This is my window
   answers:
     - This is my window
     - That is my window
-  answerLang: en
   hints: {вікно: [window]}
+  word: вікно
 ```
 
 The learner taps words out of `bank` onto the line. `answers` is every accepted
-wording; `answer` alone is fine if there is only one. Marking ignores case,
-surrounding punctuation and a leading article, and forgives a single-character
-typo on answers of four characters or more — the same rules the flashcard
-trainer uses, because it is the same code.
+wording and **the first one is definitive** — it is what the banner shows as the
+solution, what the tiles have to be able to spell, and what the "new word" audit
+reads. One accepted wording is written `answers: [This is my window]`.
 
-Put every word of the answer in `bank`, plus a few wrong ones. `bank` is
+Marking ignores case, punctuation anywhere in the sentence, and a leading
+article; forgives a single-character typo on answers of four characters or more;
+expands English contractions (`isn't` reads as `is not`); and treats Ukrainian's
+`у`/`в` and `і`/`й` as the same word, because they are — the language picks
+between them for how they sound next to their neighbours, never for meaning.
+None of that needs listing in `answers`. What does: word orders the target
+language allows, and places where a hint offers two English words for one
+Ukrainian one (`диван` is a sofa or a couch, so both are right, in any
+combination).
+
+A near miss is not marked wrong the first time. CHECK becomes TRY AGAIN, the
+answer stays put, and the words at fault are coloured — on the tile, or echoed
+under the banner if the answer was typed. **Red** is the wrong word; **amber**
+is the right word spelt wrong. One retry per showing: missing twice is an
+answer, not a slip.
+
+How near is near enough scales with the sentence, `max(1, round(words / 5))`
+words out — a three-word answer two words out is a different answer, but a
+nine-word one is a sentence with two slips in it, and holding both to "exactly
+one word" punishes the long sentences a unit exists to teach. A **misspelt word
+costs nothing at all** against that: spelling is not what these challenges ask
+about, and charging for it meant one typo plus one real mistake read the same as
+two real mistakes and lost the second chance. Words shorter than four letters
+are never read as misspellings — `чай` and `чаї` are a letter apart and are
+different words, and so are `the` and `they`.
+
+A word already on the line can be **dragged** to a different place in it, so
+one wrong word early does not mean dismantling everything after it; tapping it
+still sends it back to the bank. Nothing to author -- it applies to every
+word-bank challenge.
+
+Put every word of the first answer in `bank`, counted: a sentence needing two `is` needs
+two `is` tiles, because a tapped tile is spent. The other `answers` do not have
+to be buildable from the tiles — they are there for someone typing. `bank` is
 shuffled unless you set `shuffle: false`.
 
 ### `match` — "Select the matching pairs"
 
 ```yaml
 - type: match
+  direction: [uk, en]
   pairs:
     - {target: вікно, source: window}
     - {target: двері, source: door}
@@ -99,7 +159,8 @@ shuffled unless you set `shuffle: false`.
 match — it is a different, easier exercise wearing the same clothes.
 
 Both columns are shuffled. There is no wrong answer to record — a mismatch just
-flashes and lets the learner try again.
+flashes and lets the learner try again. Completing one records every pair as
+correct.
 
 **A match may only use words something earlier has already taught.** Matching
 recognises; it does not teach. Five pairs put five words in front of someone at
@@ -121,12 +182,12 @@ cards in, and why a session shorter than five cards gets no match at all.
 
 ```yaml
 - type: listenTap
+  direction: [uk, uk]
   audio: Це моя кімната
-  audioLang: uk
-  answer: Це моя кімната
-  answerLang: uk
+  answers: [Це моя кімната]
   meaning: This is my room.
   bank: [Це, моя, кімната, вікно, твоя, велика]
+  word: кімната
 ```
 
 `audio` is spoken aloud and nothing is printed — working out what was said *is*
@@ -153,7 +214,7 @@ changes, and the heading with it.
 
 ```yaml
 - type: listenMatch
-  targetLang: uk
+  direction: [uk, en]
   pairs:
     - {target: вікно, source: window}
     - {target: двері, source: door}
@@ -208,23 +269,32 @@ Hovering a hinted word also **says** it, as long as the prompt is in the languag
 being learned. That is half of why the underline is worth having, so fill hints
 in for target-language prompts.
 
-## `record`
+## `word`
 
 ```yaml
-record: {direction: tg2en, wordKey: вікно}
+word: вікно
 ```
 
 Optional. When present, the answer is written into the same practice records the
 flashcard trainer keeps, so a word met here counts towards its strength and
-comes up again when it is due. `direction` is `tg2en` (shown the target
-language, answering in English) or `en2tg`. `wordKey` is the word text,
-lowercased and trimmed.
+comes up again when it is due. The direction it is recorded in comes from
+`direction`: answering in English is recognising the word, answering in the
+target language is producing it, and those are the two things the trainer tracks
+separately.
 
-Leave it out for anything that is not a single vocabulary word — a sentence
-drill, say — and the challenge is played but not scored against any word.
+A sentence names the word it is really drilling — `Кіт спить на дивані.` is a
+sentence about `диван` — so `word` is not always a word in the answer. Leave it
+out and the challenge is played but scored against nothing.
 
-On `match` and `listenMatch`, `record` goes on the individual pair rather than
-the challenge.
+On `match` and `listenMatch` each pair records its own `target`, so nothing has
+to be written per pair; give a pair its own `word` only when the form shown is
+not the form to score (a match tile reading `велика` drilling `великий`).
+
+The long form still works:
+
+```yaml
+record: {direction: tg2en, wordKey: вікно}
+```
 
 ## `badge` and `newWords`
 
