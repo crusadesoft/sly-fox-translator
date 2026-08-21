@@ -26,7 +26,11 @@ const UNITS = path.resolve(__dirname, "../extension/section/units");
 const KNOWN = path.resolve(__dirname, "fixtures/known-words-uk.txt");
 // Forms belonging to those words that the stemmer cannot derive, listed by hand.
 const KNOWN_FORMS = path.resolve(__dirname, "fixtures/known-forms-uk.txt");
-const TYPES = ["assist", "translate", "match", "listenTap", "listenMatch"];
+const TYPES = ["assist", "gapFill", "translate", "match", "listenTap", "listenMatch"];
+// Both are answered by picking one of a few choices.
+const CHOICE_TYPES = ["assist", "gapFill"];
+// What a lesson file writes where the missing word goes.
+const GAP = "___";
 // The two that are spoken rather than printed. They carry no prompt: what is
 // said IS the answer, so there is nothing to show before it has been given.
 // Typing is not a type -- it is the other way to answer a word-bank question.
@@ -98,7 +102,11 @@ function checkChallenge(file, prefix, index, challenge) {
     : [challenge.answer]
   ).filter(Boolean);
 
-  if (challenge.type === "assist") {
+  if (challenge.type === "gapFill" && !String(challenge.prompt || "").includes(GAP)) {
+    fail(file, where, `prompt has no ${GAP} for the missing word`);
+  }
+
+  if (CHOICE_TYPES.includes(challenge.type)) {
     const choices = challenge.choices || [];
     if (choices.length < 2) {
       fail(file, where, `needs at least 2 choices, has ${choices.length}`);
@@ -391,7 +399,7 @@ function directionOf(challenge) {
   const matching = MATCH_TYPES.includes(challenge.type);
   const answered =
     challenge.answerLang ||
-    (challenge.type === "assist" ? challenge.choiceLang : null) ||
+    (CHOICE_TYPES.includes(challenge.type) ? challenge.choiceLang : null) ||
     (matching ? challenge.sourceLang : null) ||
     String(pair[1] || "").trim() ||
     (listening ? TARGET_LANG : "en");
@@ -441,6 +449,7 @@ function taughtWordsOf(challenge) {
   // says which side the answer is on.
   if (answered !== "en") {
     add(challenge.answer);
+    add((challenge.answers || [])[0]);
     // Only the answer on show teaches. The rest of `answers` are other ways of
     // replying, which the learner never sees.
     if (!challenge.answer) {

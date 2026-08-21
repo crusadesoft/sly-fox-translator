@@ -89,6 +89,28 @@ eye, which is why it is one field now.
 `choices` are shuffled unless you set `shuffle: false`. The first of `answers`
 must appear in `choices` exactly.
 
+### `gapFill` — "Fill in the blank"
+
+```yaml
+- type: gapFill
+  direction: [uk, uk]
+  prompt: У ванній ___ вікна.
+  choices: [немає, є, не]
+  answers: [немає]
+  hints: {ванній: [bathroom], вікна: [window]}
+  word: ванна
+```
+
+One word is missing from a sentence you can otherwise read, and you pick it.
+`___` in the prompt marks the gap — `check-lessons.js` fails a `gapFill`
+without one. The chosen word drops into the blank as soon as it is picked and
+changes if you change your mind; grading puts the right word there either way,
+so the sentence can be read back complete.
+
+Answered like `assist` — `choices` shuffle unless `shuffle: false`, and the
+first of `answers` must be among them. The step between recognising a word and
+building a whole sentence: the grammar is given, one slot is not.
+
 ### `translate` — "Write this in …"
 
 ```yaml

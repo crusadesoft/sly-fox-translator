@@ -52,7 +52,12 @@
   const LEGENDARY_SIZE = 14;
 
   // Types the renderer knows. Anything else in a lesson file is dropped.
-  const CHALLENGE_TYPES = ["assist", "translate", "match", "listenTap", "listenMatch"];
+  const CHALLENGE_TYPES = ["assist", "gapFill", "translate", "match", "listenTap", "listenMatch"];
+  // gapFill answers the way assist does -- one of a few choices -- so
+  // everything from selecting to grading treats the two together.
+  const CHOICE_TYPES = ["assist", "gapFill"];
+  // What a lesson file writes where the missing word goes.
+  const GAP = "___";
   const LISTEN_TYPES = ["listenTap", "listenMatch"];
   // The sentence-construction pair. Typing is not a question type of its own --
   // it is the other way of answering these two, which is what their keyboard
@@ -433,6 +438,28 @@
   // carries the dotted underline and is what you hover. Reproducing it means
   // measuring each word after layout and placing an overlay on it.
 
+  // Their prompt is one span per character, which is what the hint underline
+  // is laid over. Repainting it is how a gapFill puts the chosen word into the
+  // blank.
+  function paintSentence(sentence, text) {
+    sentence.textContent = "";
+    for (const glyphText of text) {
+      const glyph = el("span", "_2IGwo XxgPa", { "aria-hidden": "true" });
+      glyph.style.background = "none";
+      glyph.textContent = glyphText;
+      sentence.append(glyph);
+    }
+  }
+
+  function fillGap(word) {
+    const challenge = state.queue[state.position];
+    const sentence = document.querySelector("[data-sly-fox-hints] ._5HFLU");
+    if (!challenge || challenge.type !== "gapFill" || !sentence) {
+      return;
+    }
+    paintSentence(sentence, challenge.prompt.replace(GAP, word === null ? GAP : word));
+  }
+
   function buildPrompt(text, lang, characterIndex, options = {}) {
     const row = el("div", "_31yjb");
 
@@ -449,12 +476,7 @@
     const bubbleInner = el("div", "_1lWtm");
     const line = el("div", "_20npu", { dir: "ltr", lang });
     const sentence = el("span", "_5HFLU", { lang });
-    for (const glyphText of text) {
-      const glyph = el("span", "_2IGwo XxgPa", { "aria-hidden": "true" });
-      glyph.style.background = "none";
-      glyph.textContent = glyphText;
-      sentence.append(glyph);
-    }
+    paintSentence(sentence, text);
     const wrapper = el("span");
     wrapper.append(sentence);
     line.append(wrapper);
@@ -740,7 +762,7 @@
   // ------------------------------------------------------------ challenges --
 
   function buildAssist(spec) {
-    const root = el("div", "_1fxa4 _1Mopf", { "data-test": "challenge challenge-assist" });
+    const root = el("div", "_1fxa4 _1Mopf", { "data-test": `challenge challenge-${spec.type}` });
     const body = el("div", "_2n5fx _1JTA4 _3B8G- K3vbJ");
 
     const content = el("div", "_2hpO2 UjFh4 _3rat3");
@@ -1299,8 +1321,10 @@
       return challenge;
     }
 
-    if (challenge.type === "assist") {
-      challenge.header = raw.header || "Select the correct meaning";
+    if (CHOICE_TYPES.includes(challenge.type)) {
+      challenge.header =
+        raw.header ||
+        (challenge.type === "gapFill" ? "Fill in the blank" : "Select the correct meaning");
       challenge.choiceLang = raw.choiceLang || direction.answered || "en";
       challenge.choices = raw.shuffle === false ? raw.choices.slice() : shuffle(raw.choices);
       challenge.answerIndex = challenge.choices.indexOf(challenge.answer);
@@ -1702,7 +1726,7 @@
     }
     challenge.keepTyped = false;
 
-    if (challenge.type === "assist") {
+    if (CHOICE_TYPES.includes(challenge.type)) {
       slot.append(buildAssist(challenge));
     } else if (challenge.type === "translate") {
       slot.append(buildTranslate(challenge));
@@ -1801,7 +1825,7 @@
   }
 
   function hasAnswer(challenge) {
-    if (challenge.type === "assist") {
+    if (CHOICE_TYPES.includes(challenge.type)) {
       return state.selection !== null;
     }
     if (challenge.typed) {
@@ -1816,7 +1840,7 @@
 
   function currentAnswer() {
     const challenge = state.queue[state.position];
-    if (challenge.type === "assist") {
+    if (CHOICE_TYPES.includes(challenge.type)) {
       return state.selection === null ? null : challenge.choices[state.selection];
     }
     if (challenge.typed) {
@@ -1902,9 +1926,13 @@
     let correct = false;
     let solution = challenge.answer;
 
-    if (challenge.type === "assist") {
+    if (CHOICE_TYPES.includes(challenge.type)) {
       correct = answer !== null && state.selection === challenge.answerIndex;
       resolveChoices(challenge.answerIndex, state.selection);
+      if (challenge.type === "gapFill") {
+        // Show the sentence as it should have read, whichever way it went.
+        fillGap(challenge.answers[0]);
+      }
     } else {
       const verdict = gradeAnswer(challenge, answer);
       correct = verdict === "correct" || verdict === "typo";
@@ -1958,7 +1986,7 @@
     }
     setProgress();
 
-    if (!correct && answer !== null && challenge.type !== "assist") {
+    if (!correct && answer !== null && !CHOICE_TYPES.includes(challenge.type)) {
       const diff = nearestAnswer(challenge, answer);
       markWrongWords(diff.wrong, diff.misspelled);
     }
@@ -2224,6 +2252,9 @@
         choice.setAttribute("aria-checked", "true");
         choice.classList.add(CHOICE_CHECKED);
         state.selection = Number(choice.dataset.slyFoxChoice);
+        // On a gapFill the point is to read the finished sentence, so the word
+        // goes into the blank as soon as it is picked.
+        fillGap(challenge.choices[state.selection]);
         refreshCheckButton();
         return;
       }
