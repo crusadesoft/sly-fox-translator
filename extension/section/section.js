@@ -54,20 +54,35 @@
     character: "assets/characters/bea_smores_012.json"
   };
 
-  // Duolingo themes a unit by class, not by a colour value: the class sets
+  // Duolingo themes a unit by class, not by a colour value: the unit class sets
   // --path-unit-{background,foreground,character}-color and everything from the
-  // banner to the progress ring reads those. _2wsIu is their beetle purple and
-  // M7Jo3 is the matching banner. Swapping these two swaps the whole unit.
-  const UNIT_THEME_CLASS = "_2wsIu";
-  const BANNER_THEME_CLASS = "M7Jo3";
+  // path to the progress ring reads those, while the banner carries a matching
+  // background-color of its own. Their path cycles a palette as it runs down a
+  // section -- unit 4 owl green, unit 5 fox orange -- so this cycles too. Every
+  // class here is theirs, read off duolingo.css; the pairs have to be kept
+  // together or the banner stops matching the path under it.
+  const THEMES = [
+    { unit: "_2wsIu", banner: "M7Jo3" },
+    { unit: "Q_oEI", banner: "_2Iw0k" },
+    { unit: "_1cX5c", banner: "LJB6r" },
+    { unit: "_3gcXg", banner: "_3JOb1" },
+    { unit: "_1hrxW", banner: "_2bAvg" },
+    { unit: "_2yUGi", banner: "_1g6lo" }
+  ];
+
+  // A unit may name its own theme by its unit class; otherwise it takes the
+  // next colour along, which is what keeps two neighbours from matching.
+  function themeFor(index, named) {
+    return (named && THEMES.find((theme) => theme.unit === named)) || THEMES[index % THEMES.length];
+  }
 
   const SECTION_STORAGE_KEY = "learnedWordReplacerSection";
 
-  // Which unit this page shows. A unit is one file in units/ holding its name,
-  // its pucks and every lesson in them -- so a whole unit is one thing to write
-  // and one thing to check, rather than a folder of loose lessons plus a list
-  // saying how they go together.
-  const DEFAULT_UNIT = "at-home";
+  // The units on the path, in order. A unit is one file in units/ holding its
+  // name, its pucks and every lesson in them. Duolingo stacks a whole section
+  // into one scroll rather than showing a unit at a time, so this is the
+  // section; ?unit=<slug> still narrows the page to a single one.
+  const UNITS = ["at-home", "in-the-dark"];
 
   // Used when a unit file cannot be read, so the page still draws something
   // rather than sitting blank.
@@ -88,6 +103,19 @@
 
   let unit = FALLBACK_UNIT;
 
+  // Every unit on the page, in path order, each with its own theme and its own
+  // pucks. The builders below work on one unit at a time -- `unit` for its name
+  // and slug, `nodes` for its pucks -- so `use` says which one that is. Drawing
+  // walks the stack; a click resolves back to the unit it landed in.
+  let stack = [];
+  let current = null;
+
+  function use(record) {
+    current = record;
+    unit = record.unit;
+    nodes = record.nodes;
+  }
+
   // The path geometry is fixed at seven stops, so a unit's pucks are dropped
   // into the five non-chest slots in order. A unit with fewer pucks simply
   // leaves the later ones out.
@@ -107,7 +135,7 @@
 
   // Lay the unit's pucks along the seven path stops, then fold in saved
   // progress. Chests sit between pucks and are never "done"; they ride along.
-  function applyProgress(saved) {
+  function applyProgress(saved, source) {
     const counts = (saved && saved.nodes) || {};
     const list = [];
     for (const slot of CHEST_SLOTS) {
@@ -115,7 +143,7 @@
     }
 
     let currentFound = false;
-    unit.pucks
+    source.pucks
       .filter((puck) => puck.kind !== "chest")
       .slice(0, PUCK_SLOTS.length)
       .forEach((puck, order) => {
@@ -144,28 +172,29 @@
     return list.filter(Boolean);
   }
 
-  // Where the whole unit comes from.
-  async function loadUnit() {
-    const slug = new URLSearchParams(globalThis.location.search).get("unit") || DEFAULT_UNIT;
+  // Where one unit comes from. A unit that cannot be read is left out of the
+  // path rather than replaced by the fallback, which would otherwise appear
+  // once per broken file; render() falls back only if nothing loads at all.
+  async function loadUnit(slug) {
     if (!/^[a-z0-9-]+$/i.test(slug)) {
-      return FALLBACK_UNIT;
+      return null;
     }
     // YAML, read by the vendored js-yaml. A missing file rejects the fetch on
     // chrome-extension:// rather than answering 404, and a broken one throws
     // out of the parser; either way the built-in unit stands in.
     const response = await fetch(`units/${slug}.yaml`).catch(() => null);
     if (!response || !response.ok) {
-      return FALLBACK_UNIT;
+      return null;
     }
     let raw;
     try {
       raw = jsyaml.load(await response.text());
     } catch (error) {
       console.warn(`[sly-fox] units/${slug}.yaml is not valid YAML:`, error.message);
-      return FALLBACK_UNIT;
+      return null;
     }
     if (!raw || typeof raw !== "object") {
-      return FALLBACK_UNIT;
+      return null;
     }
     const pucks = (raw.pucks || []).map((puck) => ({
       ...puck,
@@ -347,17 +376,22 @@
     wrap.style.marginBottom = `${layout.marginBottom || 0}px`;
   }
 
+  // Their banner is sticky and names whichever unit the path has scrolled to,
+  // taking that unit's colour with it -- scrolling from unit 4 into unit 5
+  // turns it from owl green to fox orange mid-scroll. So there is one banner
+  // that gets re-dressed, not one per unit, even though each unit has its own
+  // title and its own hr-flanked header further down the path.
+  let banner = null;
+
   function buildBanner() {
-    const banner = el("div", `PsNCe ${BANNER_THEME_CLASS}`);
+    const root = el("div", "PsNCe");
 
     const back = el("a", "_3HqVu", { href: "https://www.duolingo.com/sections" });
     back.append(el("img", null, { src: ASSET.back, alt: "" }));
     const label = el("h1", "_3WYpp");
-    label.textContent = unit.sectionLabel;
     back.append(label);
 
     const name = el("span", "U_xpg");
-    name.textContent = unit.title;
 
     const guidebook = el("a", "_1ORKS _1yhVg _2V6ug _1ursp _7jW2t", {
       href: "https://www.duolingo.com/practice-hub/words",
@@ -368,16 +402,56 @@
     guidebookLabel.textContent = "Guidebook";
     guidebook.append(guidebookLabel);
 
-    banner.append(back, name, guidebook);
-    return banner;
+    root.append(back, name, guidebook);
+    banner = { root, label, name, showing: null };
+    return root;
+  }
+
+  function syncBanner(record) {
+    if (!banner || !record || banner.showing === record) {
+      return;
+    }
+    banner.showing = record;
+    banner.root.className = `PsNCe ${record.theme.banner}`;
+    banner.label.textContent = record.unit.sectionLabel;
+    banner.name.textContent = record.unit.title;
+  }
+
+  // The unit the banner names is the one the path is actually showing: the last
+  // one whose section has reached the middle of the viewport. Measured off
+  // their own path -- with three units sitting at -862, -95 and +598 in an
+  // 843px window, theirs named the one at -95, which is the last to have
+  // crossed the middle. Using the banner's own bottom edge instead reads a unit
+  // late: you can be centred on a puck with its header plainly on screen while
+  // the banner still names the unit above it. Scroll is listened for in the
+  // capture phase because the page may scroll in an inner element rather than
+  // the window.
+  function trackBanner() {
+    const update = () => {
+      const line = (globalThis.innerHeight || 0) / 2;
+      let showing = stack[0];
+      for (const record of stack) {
+        if (record.section && record.section.getBoundingClientRect().top <= line) {
+          showing = record;
+        }
+      }
+      syncBanner(showing);
+    };
+    document.addEventListener("scroll", update, { capture: true, passive: true });
+    globalThis.addEventListener("resize", update, { passive: true });
+    update();
   }
 
   let nodes = [];
 
-  function buildUnit() {
-    const section = el("section", `${UNIT_THEME_CLASS} _2eIKy`, {
+  function buildUnit(withCharacter) {
+    const section = el("section", `${current.theme.unit} _2eIKy`, {
       "data-test": "sly-fox-unit"
     });
+    // Which unit a click landed in. The page holds several now, so a popover
+    // and the lesson it starts resolve against the unit actually clicked rather
+    // than whichever happened to be drawn last.
+    section.dataset.slyFoxUnitSlug = unit.slug;
 
     const header = el("header", "_10Xfk");
     const title = el("h2", "_3qGKs");
@@ -387,13 +461,18 @@
     const body = el("div", "_2QaYj");
 
     // Their walking character sits absolutely against the path, offset from the
-    // centre line. The measurements are the reference unit's.
-    const character = el("div", "_3jOjF");
-    character.style.cssText =
-      "height: 260.765px; left: calc(50% - 19px); top: 314.736px; transform: translateY(-50%); width: calc(50% + 3px);";
-    const characterMount = el("span", "u_TP- fs-exclude _1bppN");
-    character.append(characterMount);
-    body.append(character);
+    // centre line. The measurements are the reference unit's. There is one of
+    // her on their whole section, standing on the unit you are on, so only that
+    // unit builds her.
+    let characterMount = null;
+    if (withCharacter) {
+      const character = el("div", "_3jOjF");
+      character.style.cssText =
+        "height: 260.765px; left: calc(50% - 19px); top: 314.736px; transform: translateY(-50%); width: calc(50% + 3px);";
+      characterMount = el("span", "u_TP- fs-exclude _1bppN");
+      character.append(characterMount);
+      body.append(character);
+    }
 
     nodes.forEach((node, index) => {
       const layout = LAYOUT[index];
@@ -566,15 +645,52 @@
   }
 
   function render() {
-    loadUnit().then((loaded) => {
-      unit = loaded;
+    const only = new URLSearchParams(globalThis.location.search).get("unit");
+    Promise.all((only ? [only] : UNITS).map(loadUnit)).then((loaded) => {
+      const found = loaded.filter(Boolean);
+      const list = found.length ? found : [FALLBACK_UNIT];
       chrome.storage.local.get({ [SECTION_STORAGE_KEY]: null }, (stored) => {
         const saved = stored[SECTION_STORAGE_KEY];
-        const forUnit = saved && saved.units ? saved.units[unit.slug] : saved;
-        nodes = applyProgress(forUnit);
+        stack = list.map((loadedUnit, index) => ({
+          unit: loadedUnit,
+          theme: themeFor(index, loadedUnit.theme),
+          // Progress has always been stored per slug, so stacking the units
+          // changes nothing about where each one's is read from -- and no unit
+          // is locked behind another, since each works out its own pucks.
+          nodes: applyProgress(
+            saved && saved.units ? saved.units[loadedUnit.slug] : saved,
+            loadedUnit
+          )
+        }));
         draw();
       });
     });
+  }
+
+  // Coming back from a lesson. `at` names the unit to scroll to and `node` the
+  // puck within it, so finishing a lesson puts the learner back where they were
+  // rather than at the top of the first unit. Deliberately not `unit`, which
+  // narrows the page to a single unit and would hide the rest of the path.
+  function restoreScroll() {
+    const params = new URLSearchParams(globalThis.location.search);
+    const at = params.get("at");
+    if (!at) {
+      return;
+    }
+    const host = document.querySelector(`[data-sly-fox-unit-slug="${CSS.escape(at)}"]`);
+    if (!host) {
+      return;
+    }
+    const node = params.get("node");
+    const puck = node === null ? null : host.querySelector(`[data-sly-fox-node="${CSS.escape(node)}"]`);
+    (puck || host).scrollIntoView({ block: "center" });
+
+    // Consume them. Otherwise a later refresh -- or the back button -- yanks
+    // the learner back to this puck instead of leaving them where they scrolled.
+    params.delete("at");
+    params.delete("node");
+    const query = params.toString();
+    history.replaceState(null, "", query ? `?${query}` : globalThis.location.pathname);
   }
 
   function draw() {
@@ -586,14 +702,38 @@
 
     bannerHost.append(buildBanner());
 
-    const { section, characterMount } = buildUnit();
-    // Duolingo positions each unit absolutely because it virtualises the path.
-    // One unit needs none of that, so it stays in normal flow.
-    section.style.width = "100%";
-    pathHost.append(section);
-    mountCharacter(characterMount);
+    // The character stands on the unit you are actually on -- the first with a
+    // puck still to play, or the last once the section is finished.
+    const standingOn =
+      stack.find((record) => record.nodes.some((node) => node.state === "active")) ||
+      stack[stack.length - 1];
+
+    for (const record of stack) {
+      use(record);
+      const built = buildUnit(record === standingOn);
+      // Duolingo positions each unit absolutely because it virtualises the
+      // path, mounting only the units either side of the scroll. Ours are all
+      // present at once, so they stay in normal flow and simply stack.
+      built.section.style.width = "100%";
+      record.section = built.section;
+      pathHost.append(built.section);
+      if (built.characterMount) {
+        mountCharacter(built.characterMount);
+      }
+    }
+
+    restoreScroll();
+    trackBanner();
 
     document.addEventListener("click", (event) => {
+      // Resolve the unit this click landed in before anything reads its pucks
+      // or starts a lesson from them.
+      const host = event.target.closest("[data-sly-fox-unit-slug]");
+      const clicked =
+        host && stack.find((record) => record.unit.slug === host.dataset.slyFoxUnitSlug);
+      if (clicked) {
+        use(clicked);
+      }
       const reset = event.target.closest("[data-sly-fox-reset]");
       if (reset) {
         event.preventDefault();
