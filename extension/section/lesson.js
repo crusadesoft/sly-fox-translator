@@ -2077,7 +2077,18 @@
     renderFooter({ mode: "idle", actionLabel: "Back", hideSkip: true, onAction: backToSection });
   }
 
-  // Where a lesson comes from. `?lesson=<name>` loads lessons/<name>.json;
+  // Reading a lesson or unit file off disk. They are YAML, parsed by the
+  // vendored js-yaml. On chrome-extension:// a missing file rejects the fetch
+  // outright rather than answering 404, so both have to mean the same thing.
+  async function loadYaml(url) {
+    const response = await fetch(url).catch(() => null);
+    if (!response || !response.ok) {
+      return null;
+    }
+    return jsyaml.load(await response.text());
+  }
+
+  // Where a lesson comes from. `?lesson=<name>` loads lessons/<name>.yaml;
   // without it the words the user has learned are dealt into one. Both arrive
   // as the same object, so nothing downstream knows or cares which it was.
   async function loadLesson() {
@@ -2090,15 +2101,14 @@
       if (!/^[a-z0-9-]+$/i.test(unitSlug)) {
         throw new Error(`"${unitSlug}" is not a valid unit name.`);
       }
-      const response = await fetch(`units/${unitSlug}.json`).catch(() => null);
-      if (!response || !response.ok) {
-        throw new Error(`No unit file called ${unitSlug}.json.`);
+      const unit = await loadYaml(`units/${unitSlug}.yaml`);
+      if (!unit) {
+        throw new Error(`No unit file called ${unitSlug}.yaml.`);
       }
-      const unit = await response.json();
       const pucks = (unit.pucks || []).filter((puck) => puck.kind !== "chest");
       const puck = pucks[Number(params.get("puck")) || 0];
       if (!puck || !Array.isArray(puck.lessons) || !puck.lessons.length) {
-        throw new Error(`That puck has no lessons in ${unitSlug}.json.`);
+        throw new Error(`That puck has no lessons in ${unitSlug}.yaml.`);
       }
       // Legendary is the whole puck at once: every lesson in it shuffled
       // together and stripped of hints. It is not a lesson in the file, so it
@@ -2130,15 +2140,13 @@
       if (!/^[a-z0-9-]+$/i.test(name)) {
         throw new Error(`"${name}" is not a valid lesson name.`);
       }
-      // On chrome-extension:// a missing file rejects the fetch outright rather
-      // than answering 404, so both have to mean the same thing here.
-      const response = await fetch(`lessons/${name}.json`).catch(() => null);
-      if (!response || !response.ok) {
-        throw new Error(`No lesson file called ${name}.json.`);
+      const file = await loadYaml(`lessons/${name}.yaml`);
+      if (!file) {
+        throw new Error(`No lesson file called ${name}.yaml.`);
       }
-      const lesson = normalizeLesson(await response.json());
+      const lesson = normalizeLesson(file);
       if (!lesson.challenges.length) {
-        throw new Error(`${name}.json has no usable challenges in it.`);
+        throw new Error(`${name}.yaml has no usable challenges in it.`);
       }
       return lesson;
     }

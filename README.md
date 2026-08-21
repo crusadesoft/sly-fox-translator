@@ -91,13 +91,18 @@ The extension source is in `extension/`. For local development, open `chrome://e
 
 The extension cannot run on browser-internal pages such as `chrome://settings`, but it will run on normal webpages.
 
-### Runtime tests
+### Checking the content
 
-The translation runtime has a Playwright harness with a fake Translator API, so behavior can be tested without waiting for Chrome to download a real language pack:
+The lesson and unit files are YAML, read by the same js-yaml the player uses:
 
 ```sh
-NODE_PATH=/Users/gfelter/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules /Users/gfelter/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node scripts/test-extension-runtime.js
+node scripts/check-lessons.js
 ```
+
+It reports anything a lesson page would silently drop — a bad answer, a hint
+keyed to a word that is not in the prompt, a match placed before anything
+teaches its words — and a YAML mistake with the line it is on. `scripts/shoot.js`
+above is the other half: run it to look at the page the file produces.
 
 ## Android prototype
 

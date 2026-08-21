@@ -13,6 +13,9 @@
 
 const fs = require("fs");
 const path = require("path");
+// The same reader the player uses, so nothing can pass here and then fail to
+// load in a lesson.
+const yaml = require("../extension/section/vendor/js-yaml.min.js");
 
 const DIR = path.resolve(__dirname, "../extension/section/lessons");
 const UNITS = path.resolve(__dirname, "../extension/section/units");
@@ -312,22 +315,30 @@ function checkTeachingOrder(file, where, lessons) {
   });
 }
 
-function readJson(dir, file) {
+function readYaml(dir, file) {
+  let data;
   try {
-    return JSON.parse(fs.readFileSync(path.join(dir, file), "utf8"));
+    data = yaml.load(fs.readFileSync(path.join(dir, file), "utf8"));
   } catch (error) {
-    fail(file, "", `is not valid JSON -- ${error.message}`);
+    // js-yaml puts the line and column in the message, which is the whole
+    // reason for reading these here rather than only in the player.
+    fail(file, "", `is not valid YAML -- ${error.message}`);
     return null;
   }
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    fail(file, "", "is empty, or is not a mapping of fields");
+    return null;
+  }
+  return data;
 }
 
 function main() {
   if (fs.existsSync(UNITS)) {
-    for (const file of fs.readdirSync(UNITS).filter((n) => n.endsWith(".json"))) {
-      if (!/^[a-z0-9-]+\.json$/.test(file)) {
+    for (const file of fs.readdirSync(UNITS).filter((n) => n.endsWith(".yaml"))) {
+      if (!/^[a-z0-9-]+\.yaml$/.test(file)) {
         fail(file, "", "name must be lowercase letters, digits and dashes");
       }
-      const unit = readJson(UNITS, file);
+      const unit = readYaml(UNITS, file);
       if (!unit) {
         continue;
       }
@@ -356,18 +367,15 @@ function main() {
     process.exit(problems ? 1 : 0);
   }
 
-  const files = fs.readdirSync(DIR).filter((name) => name.endsWith(".json"));
+  const files = fs.readdirSync(DIR).filter((name) => name.endsWith(".yaml"));
 
   for (const file of files) {
-    let lesson;
-    try {
-      lesson = JSON.parse(fs.readFileSync(path.join(DIR, file), "utf8"));
-    } catch (error) {
-      fail(file, "", `is not valid JSON -- ${error.message}`);
+    const lesson = readYaml(DIR, file);
+    if (!lesson) {
       continue;
     }
 
-    if (!/^[a-z0-9-]+\.json$/.test(file)) {
+    if (!/^[a-z0-9-]+\.yaml$/.test(file)) {
       fail(file, "", "name must be lowercase letters, digits and dashes -- the player will not load it");
     }
     const challenges = lesson.challenges || [];

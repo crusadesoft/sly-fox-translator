@@ -1,6 +1,6 @@
 # Lesson files
 
-A lesson is a JSON file in this folder. Drop `greetings.json` here and it is
+A lesson is a YAML file in this folder. Drop `greetings.yaml` here and it is
 playable at `lesson.html?lesson=greetings`; point a puck at it by giving that
 puck a `lesson` in `section.js` and it becomes part of the path.
 
@@ -9,14 +9,20 @@ files *are* that shape — the deck-dealt lessons the extension generates from t
 user's own vocabulary are built by emitting the very same objects. A hand-written
 or machine-written lesson is not a second path through the code.
 
+These were JSON until the files got long enough to hurt: a unit is a couple of
+thousand lines of it, every Ukrainian word doubly quoted, and nowhere to leave a
+note saying why a challenge sits where it does. YAML is the same data — the
+player reads it with [js-yaml](https://github.com/nodeca/js-yaml), vendored at
+`../vendor/js-yaml.min.js` and loaded by `lesson.html` and `section.html` — with
+a third of the lines, no quotes around ordinary words, and `#` comments.
+
 ## The file
 
-```json
-{
-  "title": "Around the house",
-  "xp": 10,
-  "challenges": [ ... ]
-}
+```yaml
+title: Around the house
+xp: 10
+challenges:
+  - ...
 ```
 
 | Field | Required | Meaning |
@@ -25,6 +31,14 @@ or machine-written lesson is not a second path through the code.
 | `xp` | no | Awarded on the summary screen. Defaults to 10. |
 | `challenges` | yes | Played in order. Anything with an unknown `type` is dropped. |
 
+Quoting is optional but not free: `xp: 10` is a number, not the string `"10"`,
+so an answer or word that reads as a number, as `true`/`false`, or as
+`null`/`~` has to be quoted — `answer: "10"`. (`yes` and `no` are plain strings
+here: js-yaml 4 follows YAML 1.2, where they are not booleans.) Everything else
+can be written bare, Cyrillic included. Text holding a colon-space, or starting
+with an indicator character (`- ? : , [ ] { } # & * ! | > % @ \``), needs
+quoting too.
+
 ## Challenges
 
 Five types. Every one of them takes an optional `record` (see below) and an
@@ -32,36 +46,34 @@ optional `badge`.
 
 ### `assist` — "Select the correct meaning"
 
-```json
-{
-  "type": "assist",
-  "prompt": "вікно",
-  "promptLang": "uk",
-  "choices": ["window", "door", "floor"],
-  "answer": "window",
-  "choiceLang": "en",
-  "hints": { "вікно": ["window", "a window"] },
-  "badge": "new"
-}
+```yaml
+- type: assist
+  prompt: вікно
+  promptLang: uk
+  choices: [window, door, floor]
+  answer: window
+  choiceLang: en
+  hints: {вікно: [window, a window]}
+  badge: new
 ```
 
-`choices` are shuffled unless you set `"shuffle": false`. `answer` must appear in
+`choices` are shuffled unless you set `shuffle: false`. `answer` must appear in
 `choices` exactly.
 
 ### `translate` — "Write this in …"
 
-```json
-{
-  "type": "translate",
-  "header": "Write this in English",
-  "prompt": "Це моє вікно.",
-  "promptLang": "uk",
-  "bank": ["This", "is", "my", "window", "door", "large"],
-  "answer": "This is my window",
-  "answers": ["This is my window", "That is my window"],
-  "answerLang": "en",
-  "hints": { "вікно": ["window"] }
-}
+```yaml
+- type: translate
+  header: Write this in English
+  prompt: Це моє вікно.
+  promptLang: uk
+  bank: [This, is, my, window, door, large]
+  answer: This is my window
+  answers:
+    - This is my window
+    - That is my window
+  answerLang: en
+  hints: {вікно: [window]}
 ```
 
 The learner taps words out of `bank` onto the line. `answers` is every accepted
@@ -71,18 +83,15 @@ typo on answers of four characters or more — the same rules the flashcard
 trainer uses, because it is the same code.
 
 Put every word of the answer in `bank`, plus a few wrong ones. `bank` is
-shuffled unless you set `"shuffle": false`.
+shuffled unless you set `shuffle: false`.
 
 ### `match` — "Select the matching pairs"
 
-```json
-{
-  "type": "match",
-  "pairs": [
-    { "target": "вікно", "source": "window" },
-    { "target": "двері", "source": "door" }
-  ]
-}
+```yaml
+- type: match
+  pairs:
+    - {target: вікно, source: window}
+    - {target: двері, source: door}
 ```
 
 **Always five pairs.** That is what Duolingo shows, every time, and
@@ -110,16 +119,14 @@ cards in, and why a session shorter than five cards gets no match at all.
 
 ### `listenTap` — "Tap what you hear"
 
-```json
-{
-  "type": "listenTap",
-  "audio": "Це моя кімната",
-  "audioLang": "uk",
-  "answer": "Це моя кімната",
-  "answerLang": "uk",
-  "meaning": "This is my room.",
-  "bank": ["Це", "моя", "кімната", "вікно", "твоя", "велика"]
-}
+```yaml
+- type: listenTap
+  audio: Це моя кімната
+  audioLang: uk
+  answer: Це моя кімната
+  answerLang: uk
+  meaning: This is my room.
+  bank: [Це, моя, кімната, вікно, твоя, велика]
 ```
 
 `audio` is spoken aloud and nothing is printed — working out what was said *is*
@@ -144,15 +151,12 @@ changes, and the heading with it.
 
 ### `listenMatch` — "Select the matching pairs", spoken
 
-```json
-{
-  "type": "listenMatch",
-  "targetLang": "uk",
-  "pairs": [
-    { "target": "вікно", "source": "window" },
-    { "target": "двері", "source": "door" }
-  ]
-}
+```yaml
+- type: listenMatch
+  targetLang: uk
+  pairs:
+    - {target: вікно, source: window}
+    - {target: двері, source: door}
 ```
 
 `match` with the target column played rather than printed: each left-hand tile
@@ -180,13 +184,21 @@ vanishing, that is why.
 
 ## `hints`
 
-```json
-"hints": { "вікно": ["window", "a window"] }
+```yaml
+hints: {вікно: [window, a window]}
 ```
 
 Keyed by a word **as it appears in the prompt**, lowercased. That word gets the
 dotted underline, and hovering it shows the list. This is the part learners
 actually use, so it is worth filling in for any word that is new.
+
+Longer sets read better as a block:
+
+```yaml
+hints:
+  вікно: [window, a window]
+  велике: [large, big]
+```
 
 Words in the prompt with no entry here get no underline and no hint.
 
@@ -198,8 +210,8 @@ in for target-language prompts.
 
 ## `record`
 
-```json
-"record": { "direction": "tg2en", "wordKey": "вікно" }
+```yaml
+record: {direction: tg2en, wordKey: вікно}
 ```
 
 Optional. When present, the answer is written into the same practice records the
@@ -216,21 +228,21 @@ the challenge.
 
 ## `badge` and `newWords`
 
-`"new"` puts the purple **NEW WORD** flag above the header, and renders the
+`new` puts the purple **NEW WORD** flag above the header, and renders the
 prompt word itself in Duolingo's beetle purple, bold, over a purple dotted
 underline, with their sparkle burst. Omit it otherwise.
 
-`"hard"` is the red **HARD EXERCISE** flag. `"mistake"` is the orange
+`hard` is the red **HARD EXERCISE** flag. `mistake` is the orange
 **PREVIOUS MISTAKE** flag — you will not normally author that one, because the
 player sets it itself on a re-queued challenge (see below).
 
 To colour some words but not the whole prompt, name them:
 
-```json
-"newWords": ["вікно"]
+```yaml
+newWords: [вікно]
 ```
 
-Without `newWords`, `"badge": "new"` treats the whole `prompt` as the new word.
+Without `newWords`, `badge: new` treats the whole `prompt` as the new word.
 
 ## Mistakes come back
 
@@ -255,6 +267,9 @@ It is reached at `lesson.html?unit=<slug>&puck=<n>&legendary=1`.
 node scripts/check-lessons.js
 ```
 
-Reads every file in this folder and reports anything the player would silently
-drop or choke on — an `answer` missing from its `choices`, an answer word that
-is not in the `bank`, a hint keyed to a word the prompt does not contain.
+Reads every file in this folder and in `../units/` and reports anything the
+player would silently drop or choke on — an `answer` missing from its `choices`,
+an answer word that is not in the `bank`, a hint keyed to a word the prompt does
+not contain. It parses with the same js-yaml the player uses, so a YAML mistake
+is reported here with its line number rather than turning into a lesson that
+will not load.

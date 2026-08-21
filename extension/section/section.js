@@ -150,11 +150,23 @@
     if (!/^[a-z0-9-]+$/i.test(slug)) {
       return FALLBACK_UNIT;
     }
-    const response = await fetch(`units/${slug}.json`).catch(() => null);
+    // YAML, read by the vendored js-yaml. A missing file rejects the fetch on
+    // chrome-extension:// rather than answering 404, and a broken one throws
+    // out of the parser; either way the built-in unit stands in.
+    const response = await fetch(`units/${slug}.yaml`).catch(() => null);
     if (!response || !response.ok) {
       return FALLBACK_UNIT;
     }
-    const raw = await response.json();
+    let raw;
+    try {
+      raw = jsyaml.load(await response.text());
+    } catch (error) {
+      console.warn(`[sly-fox] units/${slug}.yaml is not valid YAML:`, error.message);
+      return FALLBACK_UNIT;
+    }
+    if (!raw || typeof raw !== "object") {
+      return FALLBACK_UNIT;
+    }
     const pucks = (raw.pucks || []).map((puck) => ({
       ...puck,
       lessonList: puck.lessons && Array.isArray(puck.lessons) ? puck.lessons : null,
