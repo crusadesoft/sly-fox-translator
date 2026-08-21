@@ -167,6 +167,7 @@
       count: records.length,
       expectedCount,
       languageName: getDuolingoLanguageName(),
+      records,
       text: records.map((record) => `${record.word} - ${record.meanings}`).join("\n")
     };
   }

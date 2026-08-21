@@ -16,12 +16,15 @@
   }
 
   const DUOLINGO_IMPORT_BUTTON_ID = "learned-word-replacer-duolingo-import-button";
+  const DUOLINGO_EXPORT_BUTTON_ID = "learned-word-replacer-duolingo-export-button";
+  const DUOLINGO_EXPORT_BUTTON_LABEL = "Export word list";
   const DUOLINGO_WORDS_DELETE_ID = "learned-word-replacer-duolingo-words-delete";
   const DUOLINGO_IMPORT_STATUS_ID = "learned-word-replacer-duolingo-import-status";
   const DUOLINGO_IMPORT_WRAP_ID = "learned-word-replacer-duolingo-import-wrap";
   const DUOLINGO_LOGO_BADGE_ID = "learned-word-replacer-duolingo-logo-badge";
   let duolingoImportObserver = null;
   let duolingoImportInProgress = false;
+  let duolingoExportInProgress = false;
 
   // The wordmark link at the top of the desktop sidebar: an /learn anchor
   // holding only the logo images. Duolingo's own Home nav item also links to
@@ -138,6 +141,11 @@
 
         if (closest(`[id='${DUOLINGO_IMPORT_BUTTON_ID}']`)) {
           runDuolingoPageImport();
+          return;
+        }
+
+        if (closest(`[id='${DUOLINGO_EXPORT_BUTTON_ID}']`)) {
+          runDuolingoWordListExport();
           return;
         }
 
@@ -265,6 +273,15 @@
       "cursor: pointer"
     ].join(";");
 
+    const exportButton = document.createElement("button");
+    exportButton.id = DUOLINGO_EXPORT_BUTTON_ID;
+    exportButton.type = "button";
+    exportButton.textContent = DUOLINGO_EXPORT_BUTTON_LABEL;
+    exportButton.title =
+      "Download every learned word on this page as a text file you can read or share";
+    exportButton.style.cssText = button.style.cssText
+      .replaceAll("rgb(28, 176, 246)", "rgb(165, 96, 232)");
+
     const deleteButton = document.createElement("button");
     deleteButton.id = DUOLINGO_WORDS_DELETE_ID;
     deleteButton.type = "button";
@@ -295,13 +312,14 @@
     wrap.id = DUOLINGO_IMPORT_WRAP_ID;
     wrap.style.cssText =
       "display: flex; align-items: center; gap: 12px; margin: 10px 0 4px";
-    wrap.append(button, deleteButton, flashcardsButton, status);
+    wrap.append(button, exportButton, deleteButton, flashcardsButton, status);
     heading.insertAdjacentElement("afterend", wrap);
 
     if (duolingoImportInProgress) {
       button.disabled = true;
       button.textContent = "Importing…";
     }
+    syncDuolingoExportButton();
   }
 
   function setDuolingoImportStatus(text, color) {
@@ -366,6 +384,83 @@
         button.disabled = false;
         button.textContent = "Import to Sly Fox";
       });
+    }
+  }
+
+  function syncDuolingoExportButton() {
+    document.querySelectorAll(`[id='${DUOLINGO_EXPORT_BUTTON_ID}']`).forEach((button) => {
+      button.disabled = duolingoExportInProgress;
+      button.textContent = duolingoExportInProgress ? "Exporting…" : DUOLINGO_EXPORT_BUTTON_LABEL;
+    });
+  }
+
+  // The vocabulary as something to read, rather than as something the
+  // extension consumes: one "word — meanings" line per learned word, so the
+  // whole list can be handed to a person or to an AI. Pitching a lesson at the
+  // right difficulty is guesswork without knowing which words are already
+  // known, and that knowledge only exists inside Duolingo's own Words page.
+  //
+  // The em dash is the separator the importer already reads and "#" now opens
+  // a comment line there, so an exported list imports back unchanged.
+  function buildDuolingoWordListFile(scraped) {
+    const language = scraped.languageName || "Duolingo";
+    const lines = [
+      `# ${language} words learned on Duolingo — exported by Sly Fox Translator`,
+      `# ${scraped.count} word${scraped.count === 1 ? "" : "s"}, ${new Date().toISOString().slice(0, 10)}`,
+      "# One line per word: word — meanings",
+      "",
+      ...scraped.records.map((record) => `${record.word} — ${record.meanings}`)
+    ];
+
+    return `${lines.join("\n")}\n`;
+  }
+
+  function duolingoWordListFilename(languageName) {
+    const slug =
+      String(languageName || "")
+        .toLocaleLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "duolingo";
+    return `sly-fox-${slug}-words.txt`;
+  }
+
+  async function runDuolingoWordListExport() {
+    // Import and export both drive Duolingo's "Load more" button; running them
+    // at once would have each waiting on the other's rows.
+    if (duolingoImportInProgress || duolingoExportInProgress) {
+      return;
+    }
+
+    duolingoExportInProgress = true;
+    syncDuolingoExportButton();
+    setDuolingoImportStatus("Loading every learned word from this page…");
+
+    try {
+      const scraped = await LWR.scrapeAllDuolingoWords();
+      const filename = duolingoWordListFilename(scraped.languageName);
+      const blob = new Blob([buildDuolingoWordListFile(scraped)], {
+        type: "text/plain;charset=utf-8"
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setDuolingoImportStatus(
+        `Downloaded ${scraped.count} word${scraped.count === 1 ? "" : "s"} as ${filename}`,
+        "rgb(88, 167, 0)"
+      );
+    } catch (error) {
+      setDuolingoImportStatus(
+        error && error.message ? error.message : "Could not export the word list.",
+        "rgb(234, 43, 43)"
+      );
+    } finally {
+      duolingoExportInProgress = false;
+      syncDuolingoExportButton();
     }
   }
 

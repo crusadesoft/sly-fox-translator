@@ -52,6 +52,10 @@
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean)
+      // "#" opens a comment, which is what the exported word list writes its
+      // header in, so a list exported from the Words page imports straight
+      // back without its own header arriving as a word.
+      .filter((line) => !line.startsWith("#"))
       .flatMap(parseImportLine)
       .filter(Boolean);
   }

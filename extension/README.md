@@ -25,15 +25,23 @@ running, or `!` when Chrome's Translator blocks the tab.
 
 **Vocabulary lives on Duolingo's Words page**, where the extension adds its own UI:
 tabs for Duolingo words, manual Sly Fox words, and flashcards; buttons to import
-your Duolingo words, import/export CSV, and delete everything; and a typed
-flashcard session over the whole vocabulary.
+your Duolingo words, export them as a readable word list, import/export CSV, and
+delete everything; and a typed flashcard session over the whole vocabulary.
 
 **Settings live on Duolingo's settings page**, in a Sly Fox section added to the
 settings nav.
 
 Import files accept comma-separated, tab-separated, `note=word` lines, or Duolingo
-export lines (`кафе - a cafe, a café, the cafe`). English meanings are stored as
-notes; the Duolingo word is stored as the term that may appear on pages.
+export lines (`кафе - a cafe, a café, the cafe`); `#` opens a comment line. English
+meanings are stored as notes; the Duolingo word is stored as the term that may
+appear on pages.
+
+**Export word list** writes the other direction of that same format —
+`sly-fox-<language>-words.txt`, a commented header plus one `word — meanings` line
+per learned word. It reads the Words page itself rather than the stored
+vocabulary, so it is the whole list whether or not it has ever been imported. The
+file is meant to be read: it is what tells a person, or an AI writing lessons,
+which words are already known. It imports straight back too.
 
 ## How replacement works
 
