@@ -44,7 +44,7 @@ quoting too.
 
 ## Challenges
 
-Five types. Every one of them takes a `direction`, an optional `word` (see
+Six types. Every one of them takes a `direction`, an optional `word` (see
 below) and an optional `badge`.
 
 ### `direction`
@@ -244,6 +244,58 @@ changes, and the heading with it.
 
 `match` with the target column played rather than printed: each left-hand tile
 is a speaker, and the word is never written down.
+
+### `speak` — "Speak this sentence"
+
+```yaml
+- type: speak
+  direction: [uk, uk]
+  prompt: Уночі в домі темрява.
+  answers:
+    - Уночі в домі темрява
+  hints: {уночі: [at night], темрява: [darkness]}
+  word: темрява
+```
+
+The sentence is shown and you say it. There is no bank and no choices —
+`check-lessons.js` fails a `speak` carrying either, because that would be a
+word-bank exercise wearing a microphone.
+
+`direction: [uk, uk]` is the normal one: shown in the target language, answered
+in it. That is also what makes the transcript get graded as target-language
+text, so Ukrainian's `у`/`в` and `і`/`й` fold together the way they do
+everywhere else — a `speak` is marked by exactly the same `gradeAnswer` as a
+typed sentence, and there is no second notion of "close enough".
+
+Tapping the microphone starts listening; tapping again stops it early. A final
+transcript grades itself rather than waiting for CHECK, because you cannot press
+CHECK while you are talking. The button's label doubles as the status line and
+shows what was actually heard.
+
+**What this does and does not measure.** It is Chrome's Web Speech recognition,
+which returns *what* you said, not *how* — so a heavily accented but correct
+reading and a native one grade the same. It checks that you produced the right
+words. It is not a pronunciation score, and the wording in the player is
+deliberately careful not to imply that it is.
+
+Three consequences of how that engine actually behaves, all measured rather than
+assumed, and all of them already handled:
+
+- **Interim results are for display only.** Every interim carries a fixed
+  confidence of `0.01`, correct ones included; only `isFinal` carries a real
+  number.
+- **`speechstart` does not mean someone answered.** It fires on room noise and
+  is often followed by no result at all, so nothing keys off it — a UI that
+  waited on it would hang on a cough.
+- **Transcripts can merge.** Two utterances can arrive as one string, so the
+  grading tolerates extra words rather than matching exactly.
+
+It needs a microphone, a permission grant, and a network — the audio goes to
+Google's servers, unlike the local `chrome.tts` used for playback. **A `speak`
+challenge is dropped from the lesson when the browser has no recogniser**, the
+same way a listening challenge is dropped when there is no voice for its
+language. If permission is refused at the moment of asking, the challenge says
+so and the footer's **CAN'T SPEAK NOW** carries you past it.
 
 ### Audio, honestly
 

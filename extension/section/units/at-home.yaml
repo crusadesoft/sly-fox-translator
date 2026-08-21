@@ -280,12 +280,11 @@ pucks:
               - На дивані я не хочу спати
             hints: {not: [не], want: [хочу], sleep: [спати], sofa: [дивані]}
             word: диван
-          - type: translate
-            direction: [uk, en]
+          - type: speak
+            direction: [uk, uk]
             prompt: У ванній немає вікна, але є двері.
-            bank: [There, is, no, window, in, the, "bathroom,", but, there, is, a, door, wall]
             answers:
-              - There is no window in the bathroom, but there is a door
+              - У ванній немає вікна, але є двері
             hints: {ванній: [bathroom], немає: [there is no], вікна: [window], але: [but], двері: [door]}
             word: ванна
           - type: translate
@@ -586,12 +585,11 @@ pucks:
               - На ліжку моя ковдра і моя подушка
             hints: {my: [моя], blanket: [ковдра], and: [і], pillow: [подушка], bed: [ліжку]}
             word: ковдра
-          - type: translate
-            direction: [uk, en]
+          - type: speak
+            direction: [uk, uk]
             prompt: Штори на вікні, а килим на підлозі.
-            bank: [The, curtains, are, on, the, window, and, the, carpet, is, on, the, floor, wall]
             answers:
-              - The curtains are on the window and the carpet is on the floor
+              - Штори на вікні, а килим на підлозі
             hints: {штори: [curtains], вікні: [window], килим: [carpet], підлозі: [floor]}
             word: штори
           - type: translate
@@ -656,12 +654,11 @@ pucks:
             answers: [Nice to meet you]
             hints: {дуже: [very], приємно: [pleasant, nice]}
             word: приємно
-          - type: translate
-            direction: [uk, en]
+          - type: speak
+            direction: [uk, uk]
             prompt: Добрий ранок!
-            bank: [Good, morning, evening, afternoon, night]
             answers:
-              - Good morning
+              - Добрий ранок
             hints: {добрий: [good], ранок: [morning]}
             word: ранок
           - type: translate
@@ -714,12 +711,11 @@ pucks:
               - Я хочу каву, будь ласка
             hints: {I: [я], want: [хочу], coffee: [каву], please: [будь, ласка]}
             word: кава
-          - type: translate
-            direction: [uk, en]
+          - type: speak
+            direction: [uk, uk]
             prompt: Скільки це коштує?
-            bank: [How, much, does, it, cost, many, is]
             answers:
-              - How much does it cost
+              - Скільки це коштує
             hints: {скільки: [how much], це: [it, this], коштує: [costs]}
             word: коштує
           - type: listenTap
@@ -777,12 +773,11 @@ pucks:
                 source: soup
       - xp: 10
         challenges:
-          - type: translate
-            direction: [uk, en]
+          - type: speak
+            direction: [uk, uk]
             prompt: Де тут кафе?
-            bank: [Where, is, there, a, cafe, here, restaurant, hotel]
             answers:
-              - Where is there a cafe here
+              - Де тут кафе
             hints: {де: [where], тут: [here], кафе: [cafe]}
             word: кафе
           - type: translate
@@ -883,12 +878,11 @@ pucks:
             hints: {can: [можна], blanket: [ковдру], and: [і], pillow: [подушку], please: [будь, ласка]}
             word: ковдра
             newWords: [ковдру]
-          - type: translate
-            direction: [uk, en]
+          - type: speak
+            direction: [uk, uk]
             prompt: У моїй спальні є ліжко, шафа і велике вікно.
-            bank: [In, my, bedroom, there, is, a, "bed,", a, wardrobe, and, a, big, window, sofa]
             answers:
-              - In my bedroom there is a bed, a wardrobe and a big window
+              - У моїй спальні є ліжко, шафа і велике вікно
             hints: {спальні: [bedroom], є: [there is], ліжко: [bed], шафа: [wardrobe], велике: [big], вікно: [window]}
             word: шафа
           - type: listenTap
@@ -1139,12 +1133,11 @@ pucks:
               - У моїй кімнаті є ліжко, шафа і лампа
             hints: {room: [кімнаті], bed: [ліжко], wardrobe: [шафа], and: [і], lamp: [лампа]}
             word: шафа
-          - type: translate
-            direction: [uk, en]
+          - type: speak
+            direction: [uk, uk]
             prompt: Сьогодні холодно, мені треба тепла ковдра.
-            bank: [It, is, cold, today, I, need, a, warm, blanket, towel, hot]
             answers:
-              - It is cold today I need a warm blanket
+              - Сьогодні холодно, мені треба тепла ковдра
             hints: {сьогодні: [today], холодно: [cold], треба: [need], тепла: [warm], ковдра: [blanket]}
             word: ковдра
           - type: translate
@@ -1185,12 +1178,11 @@ pucks:
                 source: tea
               - target: таксі
                 source: taxi
-          - type: translate
-            direction: [uk, en]
+          - type: speak
+            direction: [uk, uk]
             prompt: Дякую, дуже гарна квартира!
-            bank: [Thank, you, a, very, nice, flat, big, house]
             answers:
-              - Thank you a very nice flat
+              - Дякую, дуже гарна квартира
             hints: {дякую: [thank you], дуже: [very], гарна: [nice, beautiful], квартира: [flat, apartment]}
             word: квартира
           - type: translate

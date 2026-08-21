@@ -26,7 +26,7 @@ const UNITS = path.resolve(__dirname, "../extension/section/units");
 const KNOWN = path.resolve(__dirname, "fixtures/known-words-uk.txt");
 // Forms belonging to those words that the stemmer cannot derive, listed by hand.
 const KNOWN_FORMS = path.resolve(__dirname, "fixtures/known-forms-uk.txt");
-const TYPES = ["assist", "gapFill", "translate", "match", "listenTap", "listenMatch"];
+const TYPES = ["assist", "gapFill", "translate", "match", "listenTap", "listenMatch", "speak"];
 // Both are answered by picking one of a few choices.
 const CHOICE_TYPES = ["assist", "gapFill"];
 // What a lesson file writes where the missing word goes.
@@ -104,6 +104,14 @@ function checkChallenge(file, prefix, index, challenge) {
 
   if (challenge.type === "gapFill" && !String(challenge.prompt || "").includes(GAP)) {
     fail(file, where, `prompt has no ${GAP} for the missing word`);
+  }
+
+  // A speak challenge is answered out loud: there is no bank and no choices,
+  // only a sentence to read and the words it has to come back as. Both are
+  // required by the generic checks above. What it must not carry is a bank --
+  // that would be a word-bank exercise wearing a microphone.
+  if (challenge.type === "speak" && (challenge.bank || challenge.choices)) {
+    fail(file, where, "a speak challenge is answered out loud -- it takes no bank or choices");
   }
 
   if (CHOICE_TYPES.includes(challenge.type)) {

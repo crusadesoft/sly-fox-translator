@@ -11,21 +11,26 @@
 // `[data-test='<word>-challenge-tap-token']` and friends. Speaking Duolingo's
 // DOM contract is what lets those work here for free.
 //
-// Five challenge types, all of which the user walked through on the real site:
+// Seven challenge types, all of which the user walked through on the real site:
 //
 //   assist      "Select the correct meaning" -- prompt plus three choices.
+//   gapFill     "Fill in the blank" -- a sentence with one word missing.
 //   translate   "Write this in English/Ukrainian" -- prompt plus a word bank.
 //   match       "Select the matching pairs" -- five pairs, no Check button.
 //   listenTap   "Tap what you hear" -- two speakers plus a word bank.
 //   listenMatch "Select the matching pairs" with audio down the left column.
+//   speak       "Speak this sentence" -- said aloud, words lighting up as heard.
 //
-// Typing is not a sixth type. `translate` and `listenTap` are the sentence
+// Typing is not an eighth type. `translate` and `listenTap` are the sentence
 // construction pair, and their footer toggle swaps the word bank for a text box
 // -- the same question answered a different way, which is all theirs does.
 //
 // Duolingo ships a recorded mp3 per prompt and we have none, so the listening
-// three speak through the browser's own synthesiser instead. That is the only
-// place where the substance differs from theirs; the markup does not.
+// ones speak through the browser's own synthesiser instead. `speak` is the other
+// place the substance differs: theirs scores how a sentence was pronounced,
+// while Chrome's recogniser only returns the words in it -- so this checks that
+// the right words were said and does not pretend to grade how they sounded. The
+// markup is theirs either way.
 //
 // Two behaviours ride on top of the queue, both watched on the real site:
 //
@@ -52,7 +57,7 @@
   const LEGENDARY_SIZE = 14;
 
   // Types the renderer knows. Anything else in a lesson file is dropped.
-  const CHALLENGE_TYPES = ["assist", "gapFill", "translate", "match", "listenTap", "listenMatch"];
+  const CHALLENGE_TYPES = ["assist", "gapFill", "translate", "match", "listenTap", "listenMatch", "speak"];
   // gapFill answers the way assist does -- one of a few choices -- so
   // everything from selecting to grading treats the two together.
   const CHOICE_TYPES = ["assist", "gapFill"];
@@ -247,6 +252,129 @@
     return available.length === 0 || Boolean(pickVoice(lang));
   }
 
+  // ------------------------------------------------------------- listening --
+  //
+  // Chrome's Web Speech recognition. Unlike speechSynthesis -- which on a
+  // chrome-extension:// page accepts an utterance, reports `speaking`, and then
+  // never starts it -- this one genuinely works here: measured on this origin,
+  // uk-UA came back correct at 0.94 confidence.
+  //
+  // Four things that measurement taught, every one of them load-bearing below:
+  //
+  //   * interim results carry a FIXED confidence of 0.01, correct ones
+  //     included. Only `isFinal` carries a real number, so interims are fit for
+  //     display and nothing else.
+  //   * `speechstart` fires on room noise and is very often followed by no
+  //     result at all. It cannot be read as "the learner answered" -- a UI that
+  //     waits on it hangs on a cough.
+  //   * `no-speech` arrives as an ordinary `error` on timeout, so silence is
+  //     observable rather than a hang.
+  //   * two utterances can arrive merged into one transcript, so what comes
+  //     back may carry more words than were asked for.
+  //
+  // It is also network-backed: the audio goes to Google, and there is no
+  // offline path. A speaking challenge is therefore dropped rather than shown
+  // when recognition is missing, exactly as a listening challenge is dropped
+  // when the browser has no voice for its language.
+  const Recogniser = globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition;
+
+  function canHear() {
+    return Boolean(Recogniser);
+  }
+
+  let listener = null;
+
+  function stopListening() {
+    if (!listener) {
+      return;
+    }
+    const active = listener;
+    listener = null;
+    try {
+      active.abort();
+    } catch (error) {
+      // Already finished; nothing to stop.
+    }
+  }
+
+  // `handlers` gets onInterim(text), onFinal(text), onFail(reason) and onEnd().
+  // Exactly one of onFinal/onFail/onEnd ends a run.
+  function startListening(lang, handlers) {
+    stopListening();
+    if (!Recogniser) {
+      handlers.onFail("unsupported");
+      return;
+    }
+
+    const rec = new Recogniser();
+    listener = rec;
+    // Everything settled so far this run. Chrome emits a FINAL result for an
+    // early part of a sentence while the speaker is still going -- "Мій друг
+    // працює" landed as final, and grading it there marked a correct reading of
+    // "Мій друг працює в офісі" wrong. `event.results` is cumulative, so this
+    // holds the whole utterance and is only graded once the run ends.
+    let settledSoFar = "";
+    rec.lang = lang || targetLang();
+    rec.interimResults = true;
+    // Continuous, because a speaking exercise is not one utterance. Chrome ends
+    // a non-continuous run at the first pause, which gives about five seconds
+    // and cuts people off mid-sentence; the caller decides when the attempt is
+    // over instead.
+    rec.continuous = true;
+    rec.maxAlternatives = 3;
+
+    rec.addEventListener("result", (event) => {
+      if (listener !== rec) {
+        return;
+      }
+      let settled = "";
+      let interim = "";
+      for (let i = 0; i < event.results.length; i += 1) {
+        const result = event.results[i];
+        const text = result[0] ? result[0].transcript : "";
+        if (result.isFinal) {
+          settled += (settled ? " " : "") + text;
+        } else {
+          interim += (interim ? " " : "") + text;
+        }
+      }
+      if (settled.trim()) {
+        settledSoFar = settled.trim();
+      }
+      // Shown, not graded. What is final at this instant may still be half a
+      // sentence; only `end` says the speaker has stopped.
+      const showing = [settledSoFar, interim.trim()].filter(Boolean).join(" ");
+      handlers.onInterim(showing);
+    });
+
+    rec.addEventListener("error", (event) => {
+      if (listener !== rec) {
+        return;
+      }
+      listener = null;
+      handlers.onFail(event.error || "error");
+    });
+
+    rec.addEventListener("end", () => {
+      if (listener !== rec) {
+        return;
+      }
+      listener = null;
+      if (settledSoFar) {
+        handlers.onFinal(settledSoFar);
+        return;
+      }
+      handlers.onEnd();
+    });
+
+    try {
+      rec.start();
+    } catch (error) {
+      listener = null;
+      handlers.onFail("start-failed");
+    }
+  }
+
   // Chrome's web synthesiser also wedges if `cancel()` is followed by `speak()`
   // in the same tick, so cancelling and speaking are always separated by a turn
   // of the event loop. chrome.tts does not need that, but it costs nothing and
@@ -336,6 +464,11 @@
       ["rect", { width: "7", height: "7", x: "14", y: "3", rx: "1" }],
       ["rect", { width: "7", height: "7", x: "14", y: "14", rx: "1" }],
       ["rect", { width: "7", height: "7", x: "3", y: "14", rx: "1" }]
+    ],
+    mic: [
+      ["path", { d: "M12 19v3" }],
+      ["path", { d: "M19 10v2a7 7 0 0 1-14 0v-2" }],
+      ["rect", { width: "6", height: "13", x: "9", y: "2", rx: "3" }]
     ]
   };
 
@@ -479,6 +612,11 @@
     paintSentence(sentence, text);
     const wrapper = el("span");
     wrapper.append(sentence);
+    // A speak challenge carries its play button inside the bubble, before the
+    // sentence. Nothing else does, so it is opt-in rather than the default.
+    if (options.speaker) {
+      line.append(options.speaker);
+    }
     line.append(wrapper);
     bubbleInner.append(line, buildBubbleTail());
     bubble.append(bubbleInner);
@@ -886,6 +1024,313 @@
     return root;
   }
 
+  // Speak. The structure is the harvested one -- build-assets/duolingo-kit/
+  // lesson/speak.tree.txt -- and it needs almost no new markup: the wrapper is
+  // the same _1fxa4._1Mopf every challenge uses, and the character-and-bubble
+  // row is the same _31yjb / _1tbN5 that buildPrompt already draws. Only the
+  // microphone row underneath is new.
+  function buildSpeak(spec) {
+    const root = el("div", "_1fxa4 _1Mopf", {
+      "data-test": "challenge challenge-speak"
+    });
+    const body = el("div", "_2n5fx _1JTA4 _3B8G- K3vbJ");
+    const content = el("div", "XsYNy _3rat3");
+
+    const speaker = el("span", "_3Lwjs");
+    const speakerInner = el("span", "_3KG7r _1fdKO");
+    speakerInner.append(buildBubbleSpeaker(spec));
+    speaker.append(speakerInner);
+
+    const holder = el("div", "QSAmL _3v0hd _35mGI");
+    holder.append(
+      buildPrompt(spec.prompt, spec.promptLang, spec.index, {
+        hints: spec.hints,
+        newWords: spec.newWords,
+        speaker
+      })
+    );
+
+    const micRow = el("div", "_3-hYj");
+    micRow.append(buildMicButton());
+
+    content.append(holder, micRow);
+    body.append(buildHeader(spec.header, spec.badge), content);
+    root.append(body);
+    return root;
+  }
+
+  // Their microphone is a full-width outlined button -- 70px tall, 16px radius,
+  // 2px border, transparent fill, macaw text at 15px/700. Those are measured
+  // numbers rather than copied rules: the classes their markup carries here are
+  // among the four that have no rule in any stylesheet the page loads.
+  //
+  // The label doubles as the status line. Duolingo lights up the words of the
+  // sentence as it hears them, which needs an alignment; we have a transcript,
+  // so the honest equivalent is to show what was actually heard.
+  // The speaker inside a speak bubble is NOT the big blue one the listening
+  // challenges use. Theirs is small and borderless -- .bafGS is transparent
+  // with no border and no padding -- sitting on the sentence's own line. Wiring
+  // buildSpeakerButton in here instead puts a 100x100 tile inside a 56px
+  // bubble, which is exactly as wrong as it sounds.
+  function buildBubbleSpeaker(spec) {
+    const button = el("button", "_1GJVt _3DAip bafGS _2LoNU VzbUl _1saKQ _1AgKJ", {
+      type: "button",
+      "data-test": "challenge-speaker",
+      "aria-label": "Play"
+    });
+    button.dataset.slyFoxSpeak = spec.audio;
+    button.dataset.slyFoxLang = spec.audioLang || targetLang();
+    button.dataset.slyFoxRate = "normal";
+    const glyph = el("span", "u_TP- fs-exclude _1OCYa");
+    // bafGS paints nothing, so the glyph has to carry its own colour.
+    glyph.style.color = "rgb(var(--color-macaw))";
+    glyph.append(buildLucideIcon("volume-2", 24));
+    button.append(glyph);
+    return button;
+  }
+
+  function buildMicButton(label) {
+    const button = el("button", "_3xDVI _2V6ug _1ursp _7jW2t YvvwP _3U5_i", {
+      type: "button",
+      "data-test": "challenge-speak-mic"
+    });
+    button.dataset.slyFoxMic = "idle";
+    const glyph = el("span", "_2ZIf_ _9lHjd");
+    const icon = el("span", "u_TP- fs-exclude FMPra");
+    icon.append(buildLucideIcon("mic", 24));
+    glyph.append(icon);
+    const text = el("span", "_2Rt1l");
+    text.textContent = label || "Tap to speak";
+    button.append(glyph, text);
+    button.addEventListener("click", onMicClick);
+    return button;
+  }
+
+  function micLabel(text) {
+    const label = document.querySelector("[data-test='challenge-speak-mic'] ._2Rt1l");
+    if (label) {
+      label.textContent = text;
+    }
+  }
+
+  function micState(value) {
+    const button = document.querySelector("[data-test='challenge-speak-mic']");
+    if (button) {
+      button.dataset.slyFoxMic = value;
+    }
+  }
+
+  // One tap starts listening, a second stops it early. A final transcript
+  // grades itself the way theirs does, rather than asking for a Check the
+  // learner cannot press while they are talking.
+  //
+  // Note what is NOT here: nothing keys off speechstart. It fires on room noise
+  // and is regularly followed by no result at all, so treating it as "they
+  // answered" would hang the challenge on a cough.
+  // How many goes a speaking exercise gets. Recognition is finnicky enough that
+  // all-or-nothing on a whole sentence is unfair -- Duolingo gives three, and
+  // words that were heard stay heard between them, so each go only has to fill
+  // in what is still dark.
+  const SPEAK_ATTEMPTS = 3;
+  // A continuous run has no natural end, so an attempt is capped rather than
+  // left open on a live microphone.
+  const SPEAK_WINDOW_MS = 20000;
+
+  let speakDeadline = null;
+
+  // Every word of the sentence with the character range it occupies.
+  // paintSentence draws one glyph span per character, so a range is what it
+  // takes to colour a word.
+  function speakWordSpans(text) {
+    const words = [];
+    const pattern = /[\p{L}\p{N}'\u2019]+/gu;
+    let found = pattern.exec(String(text || ""));
+    while (found) {
+      words.push({ text: found[0], from: found.index, to: found.index + found[0].length });
+      found = pattern.exec(String(text || ""));
+    }
+    return words;
+  }
+
+  // One spoken word against one written one. Deliberately the same tolerance a
+  // typed answer gets -- the flashcard keys and the same typo rule, which
+  // refuses to forgive anything under four letters -- only applied per word
+  // rather than per sentence. There is still no second notion of "close
+  // enough"; there is one, used at a different grain.
+  function speakWordMatches(said, written) {
+    const a = normalizeAnswerText(said, false);
+    const b = normalizeAnswerText(written, false);
+    if (!a || !b) {
+      return false;
+    }
+    if (a === b) {
+      return true;
+    }
+    for (const left of LWR.flashcardAnswerKeys(a, false)) {
+      for (const right of LWR.flashcardAnswerKeys(b, false)) {
+        if (left === right || LWR.flashcardTypoMatch(left, right)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function paintHeardWords(challenge) {
+    const sentence = document.querySelector("[data-sly-fox-hints] ._5HFLU");
+    if (!sentence) {
+      return;
+    }
+    const glyphs = sentence.children;
+    for (const word of challenge.speakWords || []) {
+      if (!state.heardWords.has(word.from)) {
+        continue;
+      }
+      for (let at = word.from; at < word.to && at < glyphs.length; at += 1) {
+        glyphs[at].style.color = "rgb(var(--color-macaw))";
+      }
+    }
+  }
+
+  // Take whatever was heard and light up any word it accounts for. Words are
+  // matched in sentence order and each one only once, so a repeated word in the
+  // transcript cannot light the same slot twice.
+  function absorbSpeech(challenge, transcript) {
+    const spoken = String(transcript || "").split(/\s+/).filter(Boolean);
+    let gained = false;
+    for (const said of spoken) {
+      for (const word of challenge.speakWords || []) {
+        if (state.heardWords.has(word.from)) {
+          continue;
+        }
+        if (speakWordMatches(said, word.text)) {
+          state.heardWords.add(word.from);
+          gained = true;
+          break;
+        }
+      }
+    }
+    if (gained) {
+      paintHeardWords(challenge);
+    }
+    return state.heardWords.size >= (challenge.speakWords || []).length;
+  }
+
+  function speakWordsLeft(challenge) {
+    return (challenge.speakWords || []).length - state.heardWords.size;
+  }
+
+  function clearSpeakDeadline() {
+    clearTimeout(speakDeadline);
+    speakDeadline = null;
+  }
+
+  function finishSpeak(challenge, complete) {
+    clearSpeakDeadline();
+    stopListening();
+    micState("idle");
+    state.heard = (challenge.speakWords || [])
+      .filter((word) => state.heardWords.has(word.from))
+      .map((word) => word.text)
+      .join(" ");
+    micLabel(complete ? "Got it" : state.heard || "Did not catch that");
+    // Every word of it was heard, so the sentence was said -- grade it as the
+    // sentence rather than as the transcript, which across three goes is a
+    // jumble of repeats and has no business being string-matched.
+    grade(complete ? challenge.answers[0] : state.heard);
+  }
+
+  function endSpeakAttempt(challenge) {
+    clearSpeakDeadline();
+    micState("idle");
+    if (state.heardWords.size >= (challenge.speakWords || []).length) {
+      finishSpeak(challenge, true);
+      return;
+    }
+    if (state.speakAttempts >= SPEAK_ATTEMPTS) {
+      finishSpeak(challenge, false);
+      return;
+    }
+    const goes = SPEAK_ATTEMPTS - state.speakAttempts;
+    const said = String(state.spokenText || "").trim();
+    micLabel(`${said || "Did not catch that"} -- ${goes} ${goes === 1 ? "try" : "tries"} left`);
+  }
+
+  // One tap starts an attempt, a second ends it early. Words light up as they
+  // are heard and stay lit across attempts, so a second go only has to say what
+  // is still dark.
+  //
+  // Note what is NOT here: nothing keys off speechstart, which fires on room
+  // noise and is regularly followed by no result at all; and nothing grades on
+  // the first `isFinal`, because Chrome emits one for the front of a sentence
+  // while the speaker is still going -- that marked a correct reading of
+  // "Мій друг працює в офісі" wrong on the strength of "Мій друг працює".
+  function onMicClick() {
+    const challenge = state.queue[state.position];
+    if (!challenge || challenge.type !== "speak" || state.graded) {
+      return;
+    }
+    if (listener) {
+      stopListening();
+      endSpeakAttempt(challenge);
+      return;
+    }
+    if (state.speakAttempts >= SPEAK_ATTEMPTS) {
+      return;
+    }
+
+    state.speakAttempts += 1;
+    state.spokenText = "";
+    micState("listening");
+    micLabel("Listening...");
+    stopSpeaking();
+
+    clearSpeakDeadline();
+    speakDeadline = setTimeout(() => {
+      stopListening();
+      endSpeakAttempt(challenge);
+    }, SPEAK_WINDOW_MS);
+
+    startListening(challenge.answerLang, {
+      onInterim: (text) => {
+        state.spokenText = text;
+        if (absorbSpeech(challenge, text)) {
+          finishSpeak(challenge, true);
+          return;
+        }
+        // What was actually heard, not a count of what is missing: the words
+        // lighting up already say what is missing, and seeing the transcript is
+        // the only way to tell a misheard word from an unheard one.
+        micLabel(text || "Listening...");
+      },
+      onFinal: (text) => {
+        state.spokenText = text;
+        if (absorbSpeech(challenge, text)) {
+          finishSpeak(challenge, true);
+          return;
+        }
+        endSpeakAttempt(challenge);
+      },
+      onFail: (reason) => {
+        clearSpeakDeadline();
+        micState("idle");
+        if (reason === "not-allowed" || reason === "service-not-allowed") {
+          // Without a microphone this challenge cannot be answered at all. Say
+          // so and let the footer's skip carry them past it, rather than
+          // leaving a button that looks live and does nothing.
+          micState("blocked");
+          micLabel("No microphone -- use Can't speak now");
+          return;
+        }
+        // Everything else -- no-speech, aborted, a network blip -- is just an
+        // attempt that got nowhere, and costs one of the three.
+        endSpeakAttempt(challenge);
+      },
+      onEnd: () => endSpeakAttempt(challenge)
+    });
+  }
+
+
   // Their match is a single grid, not two columns of markup: one container with
   // --match-challenge-rows on it, filled column-first, so the tiles land in two
   // columns on their own.
@@ -934,7 +1379,7 @@
     quit.append(el("img", "_3X5b9 _9lHjd", { src: ASSET.quit, alt: "Quit" }));
     quit.addEventListener("click", () => {
       stopSpeaking();
-      globalThis.location.href = "section.html";
+      globalThis.location.href = sectionUrl();
     });
 
     const bar = el("div", "oCRfA", {
@@ -1321,6 +1766,23 @@
       return challenge;
     }
 
+    if (challenge.type === "speak") {
+      // You are shown a sentence and asked to say it, so the language answered
+      // in is the one it is written in -- not the "answer in English" default
+      // the sentence types take. That also makes gradeAnswer normalise the
+      // transcript as target-language text, which is what folds Ukrainian's
+      // y/B and i/й together.
+      challenge.answerLang =
+        raw.answerLang || direction.answered || direction.shown || targetLang();
+      challenge.audio = String(raw.audio || raw.prompt || challenge.answer);
+      challenge.audioLang = raw.audioLang || direction.shown || challenge.answerLang;
+      challenge.header = raw.header || "Speak this sentence";
+      challenge.record = recordFor(raw, challenge.answerLang);
+      // The words that have to light up, with where they sit in the sentence.
+      challenge.speakWords = speakWordSpans(challenge.prompt);
+      return challenge;
+    }
+
     if (CHOICE_TYPES.includes(challenge.type)) {
       challenge.header =
         raw.header ||
@@ -1348,6 +1810,8 @@
       .filter(
         (challenge) => !LISTEN_TYPES.includes(challenge.type) || canSpeak(challenge.audioLang)
       )
+      // The same rule for speaking: no recogniser, no way to answer it.
+      .filter((challenge) => challenge.type !== "speak" || canHear())
       .map((challenge) => {
         if (!legendary) {
           return challenge;
@@ -1710,8 +2174,14 @@
     state.matched = 0;
     state.graded = false;
     state.retryUsed = false;
+    state.heard = "";
+    state.heardWords = new Set();
+    state.speakAttempts = 0;
+    state.spokenText = "";
+    clearSpeakDeadline();
     state.shownAt = Date.now();
     stopSpeaking();
+    stopListening();
 
     const challenge = state.queue[state.position];
     if (!challenge) {
@@ -1732,6 +2202,8 @@
       slot.append(buildTranslate(challenge));
     } else if (challenge.type === "listenTap") {
       slot.append(buildListen(challenge));
+    } else if (challenge.type === "speak") {
+      slot.append(buildSpeak(challenge));
     } else {
       slot.append(buildMatch(challenge));
     }
@@ -1807,7 +2279,11 @@
       // Everything else keeps Skip, listening especially: "Can't listen now" is
       // the whole point of it.
       hideSkip: state.legendary,
-      skipText: listening ? "Can't listen now" : "Skip",
+      skipText: listening
+        ? "Can't listen now"
+        : challenge.type === "speak"
+          ? "Can't speak now"
+          : "Skip",
       toggle: challenge.canType
         ? {
             label: challenge.typed ? "Use word bank" : "Use keyboard",
@@ -1828,6 +2304,9 @@
     if (CHOICE_TYPES.includes(challenge.type)) {
       return state.selection !== null;
     }
+    if (challenge.type === "speak") {
+      return String(state.heard || "").trim().length > 0;
+    }
     if (challenge.typed) {
       return state.typed.trim().length > 0;
     }
@@ -1842,6 +2321,9 @@
     const challenge = state.queue[state.position];
     if (CHOICE_TYPES.includes(challenge.type)) {
       return state.selection === null ? null : challenge.choices[state.selection];
+    }
+    if (challenge.type === "speak") {
+      return state.heard || null;
     }
     if (challenge.typed) {
       return state.typed;
@@ -2207,7 +2689,7 @@
       actionLabel: "Continue",
       hideSkip: true,
       onAction: () => {
-        globalThis.location.href = "section.html";
+        globalThis.location.href = sectionUrl();
       }
     });
   }
@@ -2627,8 +3109,31 @@
     slot.append(wrap);
   }
 
+  // Back to the path, at the puck this lesson was started from. The section
+  // stacks every unit into one scroll, so a bare section.html lands at the top
+  // of the first unit -- a long way from where the learner just was, and
+  // further with every unit added.
+  //
+  // `at` and not `unit`: section.html already reads `unit` as "show only this
+  // one", which would hide the rest of the path on the way back. This one only
+  // says where to scroll to.
+  function sectionUrl() {
+    const params = new URLSearchParams(globalThis.location.search);
+    const slug = params.get("unit");
+    const node = params.get("node");
+    const back = new URLSearchParams();
+    if (slug) {
+      back.set("at", slug);
+    }
+    if (node !== null) {
+      back.set("node", node);
+    }
+    const query = back.toString();
+    return query ? `section.html?${query}` : "section.html";
+  }
+
   function backToSection() {
-    globalThis.location.href = "section.html";
+    globalThis.location.href = sectionUrl();
   }
 
   function refuse(message) {

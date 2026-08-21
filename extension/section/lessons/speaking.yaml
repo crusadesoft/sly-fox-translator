@@ -1,0 +1,46 @@
+# A lesson of nothing but speak challenges, the way listening.yaml is a lesson
+# of nothing but listening ones: somewhere to exercise the type on its own,
+# without hunting for one inside a unit.
+#
+# Every sentence here is built from words already on the learner's Duolingo
+# list, so this stays playable no matter which unit they are on.
+#
+#   section/lesson.html?lesson=speaking
+title: Saying it out loud
+xp: 10
+challenges:
+  - type: speak
+    direction: [uk, uk]
+    prompt: Добрий день!
+    answers:
+      - Добрий день
+    hints: {добрий: [good], день: [day, afternoon]}
+    word: день
+  - type: speak
+    direction: [uk, uk]
+    prompt: Мене звати Віктор.
+    answers:
+      - Мене звати Віктор
+    hints: {мене: [me], звати: [name, to call], віктор: [Victor]}
+    word: звати
+  - type: speak
+    direction: [uk, uk]
+    prompt: Я не розумію.
+    answers:
+      - Я не розумію
+    hints: {я: [I], не: [not], розумію: [understand]}
+    word: розуміти
+  - type: speak
+    direction: [uk, uk]
+    prompt: Мій друг працює в офісі.
+    answers:
+      - Мій друг працює в офісі
+    hints: {друг: [friend], працює: [works], офісі: [office]}
+    word: офіс
+  - type: speak
+    direction: [uk, uk]
+    prompt: Сьогодні гарна погода.
+    answers:
+      - Сьогодні гарна погода
+    hints: {сьогодні: [today], гарна: [nice, beautiful], погода: [weather]}
+    word: погода

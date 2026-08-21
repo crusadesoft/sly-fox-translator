@@ -1,0 +1,70 @@
+Harvested read-only from a live challenge on duolingo.com/practice-hub/speaking-practice.
+Runs of identical sibling elements are collapsed with an xN note; <svg> internals
+are shown as a leaf, the same way the other trees in this folder do.
+
+Notes worth keeping, because they are not obvious from the tree:
+
+  * The wrapper is the same _1fxa4._1Mopf as every other challenge -- only the
+    data-test changes. So a speak challenge slots into the existing shell.
+  * div._2qg6J > div > canvas is the character. Duolingo PAINTS her into a
+    canvas rather than using an <img>, so she cannot be lifted by copying a src.
+  * The sentence is one span PER CHARACTER (span._2IGwo.XxgPa), with separate
+    absolutely-positioned div[dt=hint-token] overlays laid over the hinted words
+    -- the same structure the gapFill prompt uses. Anything reading this prompt
+    must walk text nodes rather than trusting innerText.
+  * button[aria=Copy this phrase] sits inside the bubble, after the sentence.
+  * div._3-hYj holds the microphone button. Its two u_TP- spans are the idle and
+    active icon states; img.WXznX is the third.
+  * There is NO "can't speak now" control inside the challenge -- that lives in
+    the footer as the existing [data-test=player-next], which the player already
+    draws. Nothing new to harvest for it.
+
+div._1fxa4._1Mopf [dt=challenge challenge-speak]
+  div._2n5fx._1JTA4._3B8G-.K3vbJ
+    div.U41Ye
+      h1._3EOK0 [dt=challenge-header]
+        span "Speak this sentence"
+    div.XsYNy._3rat3
+      div.QSAmL._3v0hd._35mGI
+        div._31yjb
+          div._2qg6J
+            div
+              canvas
+          div._1tbN5._44BHt
+            div._1lWtm
+              div._20npu
+                span._3Lwjs
+                  span._3KG7r._1fdKO
+                    button._1GJVt._3DAip.bafGS._2LoNU.VzbUl._1saKQ._1AgKJ
+                      span.u_TP-.fs-exclude._1OCYa
+                        svg
+                span
+                  span._5HFLU
+                    span._2IGwo.XxgPa   x23  (one per character)
+                    div.tFegI._2IGwo.XxgPa._33wyM   x4  (one per character, [dt=hint-token])
+                button [aria=Copy this phrase]
+                  svg
+              svg._2PgN7._3tTXW._3PLLp
+      div._3-hYj
+        button._3xDVI._2V6ug._1ursp._7jW2t.YvvwP._3U5_i
+          img.WXznX
+          span._2ZIf_._9lHjd
+            span.u_TP-.fs-exclude.FMPra
+              svg
+            span.u_TP-.fs-exclude._2iWiH
+              svg
+
+Computed reference, read off the live challenge at a 600px column. Kept because
+four of the classes on this tree (._1JTA4, .QSAmL, ._3KG7r, ._1GJVt) have no
+rule in ANY sheet the page loads -- they appear to be no-ops, and ._1JTA4 is
+already on the same element in listenTap.tree.txt, which renders correctly
+without them. So there is nothing to copy for those; match these numbers
+instead, and check the build against them rather than against a rule.
+
+  micButton   600x70   radius 16px, border 2px, transparent fill,
+                       text rgb(28,176,246) (macaw), 15px/700
+  micHolder   600x70
+  bubble      318x56
+  header      600x40   32px/700
+  sentence    213x24   20px/500, rgb(75,75,75)
+  canvas      142x210  (the character; painted, not an <img>)

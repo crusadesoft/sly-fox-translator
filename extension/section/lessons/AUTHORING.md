@@ -5,17 +5,17 @@ Run `node scripts/check-lessons.js` after every edit.
 
 ## 1. Find out what they already know — first
 
-`scripts/fixtures/known-words-uk.txt` is their Duolingo export (gitignored;
-re-export with the Words page's **Export word list** button).
+Navigate to https://www.duolingo.com/practice-hub/words in their browser to export their up-to-date Duolingo word list.
 
 - It lists **dictionary forms only**. `читати` being present says nothing about
   whether `читаю` is missing from their head.
-- Rule: a word in the export is known in **every** form — cases, conjugations,
+- Rule: Assume a word in the export is known in **every** form — cases, conjugations,
   plurals. Use them freely.
 - **Never infer a grammar gap from what the export omits.** A whole unit on verb
   conjugation was built and binned on that mistake. Ask instead.
 - Measure the gap before choosing a theme. One unit taught 18 words, 11 of which
   were already known.
+- Review the other lessons that are in the repo and include that in what they know since if you are making a lesson it will come after those.
 
 ## 2. The five pucks each have a job
 
@@ -35,16 +35,34 @@ taught are fine in L4 — that *is* the increase in difficulty.
 
 | | |
 | --- | --- |
-| challenges | 7–9 per lesson |
+| challenges | 7–9 per lesson — count it **without** the `speak`, which drops out on a machine with no microphone |
 | new words | 2–3 per teaching lesson, **used in sentences in that same lesson** |
 | direction | at least half `[en, uk]` — building the target language, not English |
 | `assist` | ~10%. More than that is a vocabulary quiz, not a lesson |
 | `gapFill` | ~1 per consolidation and review lesson. Drill the word the sentence turns on — a preposition, `немає`, a case ending |
 | matching | ~1 per lesson from puck 1 L2 onward, a third of them `listenMatch` |
+| `speak` | **At most 1 per lesson**, in consolidation, puck 3 and the reviews. Never two — see below |
 | sentences | 5+ words average. Recombine known words to get there |
 
 Vary the challenge order. Six lessons once shared a byte-identical skeleton with
 the listening challenge 5th every time; you can feel that coming.
+
+**One `speak` per lesson, never two.** A speaking challenge is dropped from the
+lesson when the browser has no recogniser, exactly as a listening one is dropped
+when there is no voice for the language. One of them costs a lesson a single
+challenge; two can take it under the 7-challenge floor on somebody else's
+machine. Count the lesson without them.
+
+Put them where production is the point: the L4 consolidations, puck 3, and the
+reviews. Not in P1/P2 lessons 1–3 — a word met sixty seconds ago is not ready to
+be said out loud unprompted.
+
+The cheap way to write one is to **convert a `[uk, en]` translate**. Its prompt
+is already the target-language sentence and its hints are already keyed on the
+target-language words, which is exactly what a `speak` needs: change the type,
+set `direction: [uk, uk]`, drop the `bank`, and make `answers[0]` the prompt
+without its final punctuation. All sixteen in the repo were made this way, which
+is also why no lesson got longer.
 
 **Prefer things people actually say.** `Мені треба рушник, будь ласка` teaches
 the same noun as `Рушник у ванній` and also teaches how a request is shaped.
@@ -84,9 +102,31 @@ The rest are typed-only and need not be buildable from the tiles.
   already know is not new — don't badge it.
 - **Don't reuse the previous unit's title.** Same name reads as "nothing
   changed", whatever is inside.
+- **A `speak` is graded word by word, not as a sentence.** Every word has to be
+  heard before it counts, and the per-word tolerance refuses to forgive
+  anything under four letters — the same rule the typed grader uses, at a
+  smaller grain. A sentence built mostly of tiny words (`Я не хочу іти`) is
+  therefore far more fragile than its length suggests. Prefer sentences with
+  some long words in them.
+- **Don't put two sentences in a `speak` prompt.** `Де мій рушник? У ванній.` is
+  a dialogue, not something anybody says in one breath, and the learner has to
+  say all of it before the challenge completes.
 
 ## 6. Testing
 
 Play it in a **throwaway tab**, and answer **correctly** — the answers are in
 the YAML. `player-skip` grades as wrong and writes to their real flashcard
 records. This has gone wrong three times; see CLAUDE.md.
+
+A `speak` cannot be tested by clicking, and it needs a real microphone, which
+makes it the one type worth exercising headlessly instead:
+
+```bash
+node scripts/shoot.js "section/lesson.html?lesson=speaking" out.png --init "<fake recogniser>" --probe "<script>"
+```
+
+Stub **both** `SpeechRecognition` and `webkitSpeechRecognition` — headless
+Chromium defines the unprefixed one natively and it wins, so stubbing only the
+prefixed name silently tests the real engine. Feed the fake a partial transcript
+and then the rest, and assert the words light up and stay lit between attempts.
+`speaking.yaml` is a lesson of nothing but `speak`, kept for this.
