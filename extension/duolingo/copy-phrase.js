@@ -53,7 +53,7 @@
 
   function syncDuolingoCopyPhrase() {
     const shouldRun =
-      globalThis === globalThis.top && LWR.isDuolingoHost() && Boolean(LWR.state.duolingoCopyPhrase);
+      globalThis === globalThis.top && LWR.isLessonSurface() && Boolean(LWR.state.duolingoCopyPhrase);
 
     if (shouldRun && !duolingoCopyObserver) {
       duolingoCopyObserver = new MutationObserver(() => {

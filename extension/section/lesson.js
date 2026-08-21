@@ -1746,7 +1746,11 @@
     // Both sentence-construction types can be answered either way; the toggle
     // is sticky for the session, and a lesson opens on the word bank.
     challenge.canType = BUILD_TYPES.includes(challenge.type);
-    challenge.typed = challenge.canType && state.preferTyping === true;
+    // When the shared typing feature is on it injects its own input and hides
+    // the bank behind its eye toggle, so the player must not draw a box of its
+    // own as well: two inputs would disagree about what the answer is.
+    challenge.typed =
+      challenge.canType && state.preferTyping === true && !LWR.state.duolingoTypeAnswers;
 
     if (LISTEN_TYPES.includes(challenge.type)) {
       // What is spoken is the answer itself -- you are being asked to write
@@ -2284,7 +2288,7 @@
         : challenge.type === "speak"
           ? "Can't speak now"
           : "Skip",
-      toggle: challenge.canType
+      toggle: challenge.canType && !LWR.state.duolingoTypeAnswers
         ? {
             label: challenge.typed ? "Use word bank" : "Use keyboard",
             icon: challenge.typed ? "layout-grid" : "keyboard",
@@ -3310,10 +3314,38 @@
       (stored) => {
         LWR.state = LWR.normalizeState(stored[LWR.STORAGE_KEY]);
         LWR.flashcardsState = LWR.normalizeFlashcardsState(stored[LWR.FLASHCARDS_STORAGE_KEY]);
+        syncSharedLessonFeatures();
         start();
       }
     );
   }
+
+  // The in-lesson features -- the typing input and its hint ladder, the bank
+  // eye-toggle, the misspelled decoys, the copy-phrase button -- are the
+  // duolingo/ modules, shared verbatim. They find their own hooks in the markup
+  // this player emits, so there is no second implementation of any of them.
+  //
+  // boot.js does this wiring on duolingo.com, but boot.js also starts the
+  // translator, the cloak and the page-UI injections, none of which has any
+  // business running on our own page. So this calls the same syncs and nothing
+  // else.
+  function syncSharedLessonFeatures() {
+    LWR.syncDuolingoTypeAnswers();
+    LWR.syncDuolingoCopyPhrase();
+    LWR.syncDuolingoBankTraps();
+  }
+
+  // Toggling one of those settings elsewhere -- the settings panel lives on
+  // duolingo.com -- has to reach a lesson that is already open.
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local" || !changes[LWR.STORAGE_KEY]) {
+      return;
+    }
+    LWR.state = LWR.normalizeState(changes[LWR.STORAGE_KEY].newValue);
+    syncSharedLessonFeatures();
+    // The keyboard toggle comes and goes with the typing setting.
+    refreshFooter();
+  });
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot, { once: true });

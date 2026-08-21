@@ -60,7 +60,7 @@
 
   function syncDuolingoTypeAnswers() {
     const shouldRun =
-      globalThis === globalThis.top && LWR.isDuolingoHost() && Boolean(LWR.state.duolingoTypeAnswers);
+      globalThis === globalThis.top && LWR.isLessonSurface() && Boolean(LWR.state.duolingoTypeAnswers);
 
     if (shouldRun && !duolingoTypeObserver) {
       duolingoTypeObserver = new MutationObserver(() => {

@@ -45,7 +45,7 @@
   function syncDuolingoBankTraps() {
     const shouldRun =
       globalThis === globalThis.top &&
-      LWR.isDuolingoHost() &&
+      LWR.isLessonSurface() &&
       Boolean(LWR.state.duolingoLowercaseBank || LWR.state.duolingoDecoyWords);
 
     if (shouldRun && !duolingoBankTrapObserver) {
