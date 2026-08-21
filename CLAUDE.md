@@ -17,6 +17,9 @@ to hand edits too:
 node scripts/check-lessons.js
 ```
 
+`extension/section/lessons/AUTHORING.md` is the short guide to what goes in a
+unit; `README.md` beside it is the format reference.
+
 It also checks lesson vocabulary against the learner's own Duolingo export at
 `scripts/fixtures/known-words-uk.txt`, which is **gitignored** -- it is personal
 and this remote is public. Without it the checker still runs, but every form of

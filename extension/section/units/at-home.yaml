@@ -1,6 +1,8 @@
 title: Moving in
 sectionLabel: SLY FOX SECTION, UNIT 1
 pucks:
+  # Puck 1 and 2 teach. Lessons 1-3 introduce; lesson 4 introduces nothing and
+  # is the same words asked harder.
   - kind: skill
     label: The empty flat
     art: star
@@ -15,18 +17,18 @@ pucks:
             hints: {двері: [door, the door, doors]}
             word: двері
             newWords: [двері]
-          - type: listenTap
-            direction: [uk, uk]
-            audio: Двері білі.
-            bank: [Двері, білі, Вікно, нові, стіна]
-            answers:
-              - Двері білі
-            meaning: The door is white
-            word: двері
+          - type: assist
+            direction: [uk, en]
+            prompt: стіна
+            choices: [the wall, the floor, the door]
+            answers: [the wall]
+            hints: {стіна: [wall, a wall]}
+            word: стіна
+            newWords: [стіна]
           - type: translate
             direction: [uk, en]
             prompt: Двері білі.
-            bank: [The, door, is, white, green, big, new]
+            bank: [The, door, is, white, wall, green, big]
             answers:
               - The door is white
               - The doors are white
@@ -34,201 +36,55 @@ pucks:
             word: двері
           - type: translate
             direction: [en, uk]
-            prompt: The door is new
-            bank: [Двері, нові, старі, білі, вікно]
+            prompt: The wall is green
+            bank: [Стіна, зелена, біла, двері, нові]
             answers:
-              - Двері нові
-            hints: {door: [двері], new: [нові]}
-            word: двері
-          - type: translate
-            direction: [uk, en]
-            prompt: Це мої двері.
-            bank: [These, are, my, doors, your, the, window]
-            answers:
-              - These are my doors
-              - This is my door
-            hints: {це: [this, these], мої: [my], двері: [doors]}
-            word: двері
-          - type: translate
-            direction: [uk, en]
-            prompt: Двері у моїй кімнаті великі.
-            bank: [The, door, in, my, room, is, big, small, kitchen, white]
-            answers:
-              - The door in my room is big
-            hints: {двері: [door], моїй: [my], кімнаті: [room], великі: [big, large]}
-            word: двері
-          - type: translate
-            direction: [en, uk]
-            prompt: In my room there is a big window and a white door
-            bank: [У, моїй, кімнаті, велике, вікно, і, білі, двері, кухні, нові, маленьке]
-            answers:
-              - У моїй кімнаті велике вікно і білі двері
-            hints: {my: [моїй], room: [кімнаті], big: [велике], window: [вікно], and: [і], white: [білі], door: [двері]}
-            word: двері
-          - type: translate
-            direction: [en, uk]
-            prompt: Where is the door
-            bank: [Де, двері, вікно, тут, там, мої]
-            answers:
-              - Де двері
-            hints: {where: [де], door: [двері]}
-            word: двері
-      - xp: 10
-        challenges:
-          - type: assist
-            direction: [uk, en]
-            prompt: стіна
-            choices: [the wall, the door, the floor]
-            answers: [the wall]
-            hints: {стіна: [wall, a wall]}
-            word: стіна
-            newWords: [стіна]
-          - type: translate
-            direction: [uk, en]
-            prompt: Стіна біла.
-            bank: [The, wall, is, white, green, door, big]
-            answers:
-              - The wall is white
-            hints: {стіна: [wall], біла: [white]}
-            word: стіна
-          - type: translate
-            direction: [en, uk]
-            prompt: The wall in the kitchen is green
-            bank: [Стіна, на, кухні, зелена, біла, спальні, двері]
-            answers:
-              - Стіна на кухні зелена
-              - на кухні Стіна зелена
-            hints: {wall: [стіна], kitchen: [кухні], green: [зелена]}
-            word: стіна
-          - type: translate
-            direction: [uk, en]
-            prompt: На стіні картина.
-            bank: [There, is, a, painting, on, the, wall, photo, floor, door]
-            answers:
-              - There is a painting on the wall
-            hints: {стіні: [wall, the wall], картина: [painting, picture]}
-            word: стіна
-            newWords: [стіні]
-          - type: translate
-            direction: [en, uk]
-            prompt: There is a photo on the wall
-            bank: [На, стіні, фото, картина, двері, у, вікні]
-            answers:
-              - На стіні фото
-            hints: {photo: [фото], wall: [стіні]}
-            word: стіна
-          - type: translate
-            direction: [uk, en]
-            prompt: Двері і стіна білі.
-            bank: [The, door, and, the, wall, are, white, green, floor, room]
-            answers:
-              - The door and the wall are white
-            hints: {двері: [door], і: [and], стіна: [wall], білі: [white]}
+              - Стіна зелена
+            hints: {wall: [стіна], green: [зелена]}
             word: стіна
           - type: listenTap
             direction: [uk, uk]
-            audio: Стіна біла.
-            bank: [Стіна, біла, Двері, зелена, вікно]
+            audio: Двері білі.
+            bank: [Двері, білі, стіна, зелена, нові]
             answers:
-              - Стіна біла
-            meaning: The wall is white
-            word: стіна
+              - Двері білі
+            meaning: The door is white
+            word: двері
+          - type: translate
+            direction: [uk, en]
+            prompt: Де двері?
+            bank: [Where, is, the, door, wall, window]
+            answers:
+              - Where is the door
+            hints: {де: [where], двері: [door, the door]}
+            word: двері
           - type: translate
             direction: [en, uk]
-            prompt: My favourite painting is on this wall
-            bank: [Моя, улюблена, картина, на, цій, стіні, фото, двері, кухні]
+            prompt: The wall in my room is white
+            bank: [Стіна, у, моїй, кімнаті, біла, зелена, двері]
             answers:
-              - Моя улюблена картина на цій стіні
-              - на цій стіні Моя улюблена картина
-            hints: {my: [моя], favourite: [улюблена], painting: [картина], this: [цій], wall: [стіні]}
+              - Стіна у моїй кімнаті біла
+              - У моїй кімнаті стіна біла
+            hints: {wall: [стіна], my: [моїй], room: [кімнаті], white: [біла]}
             word: стіна
+          - type: translate
+            direction: [uk, en]
+            prompt: У кімнаті є двері і вікно.
+            bank: [There, is, a, door, and, a, window, in, the, room, wall]
+            answers:
+              - There is a door and a window in the room
+            hints: {кімнаті: [room], є: [there is], двері: [door], і: [and], вікно: [window]}
+            word: двері
       - xp: 10
         challenges:
           - type: assist
             direction: [uk, en]
             prompt: підлога
-            choices: [the floor, the wall, the ceiling]
+            choices: [the floor, the wall, the door]
             answers: [the floor]
             hints: {підлога: [floor, the floor]}
             word: підлога
             newWords: [підлога]
-          - type: translate
-            direction: [uk, en]
-            prompt: Підлога холодна.
-            bank: [The, floor, is, cold, warm, wall, white]
-            answers:
-              - The floor is cold
-            hints: {підлога: [floor], холодна: [cold]}
-            word: підлога
-          - type: translate
-            direction: [en, uk]
-            prompt: The floor in the kitchen is warm
-            bank: [Підлога, на, кухні, тепла, холодна, стіна, спальні]
-            answers:
-              - Підлога на кухні тепла
-              - на кухні Підлога тепла
-            hints: {floor: [підлога], kitchen: [кухні], warm: [тепла]}
-            word: підлога
-          - type: listenTap
-            direction: [uk, uk]
-            audio: Підлога холодна.
-            bank: [Підлога, холодна, Стіна, тепла, двері]
-            answers:
-              - Підлога холодна
-            meaning: The floor is cold
-            word: підлога
-          - type: translate
-            direction: [uk, en]
-            prompt: Мій кіт спить на підлозі.
-            bank: [My, cat, is, sleeping, on, the, floor, wall, bed, dog]
-            answers:
-              - My cat is sleeping on the floor
-              - My cat sleeps on the floor
-            hints: {кіт: [cat], спить: [sleeps, is sleeping], підлозі: [floor, the floor]}
-            word: підлога
-            newWords: [підлозі]
-          - type: translate
-            direction: [en, uk]
-            prompt: The book is on the floor
-            bank: [Книга, на, підлозі, стіні, столі, холодна]
-            answers:
-              - Книга на підлозі
-              - на підлозі Книга
-            hints: {book: [книга], floor: [підлозі]}
-            word: підлога
-          - type: translate
-            direction: [uk, en]
-            prompt: Підлога і стіни білі.
-            bank: [The, floor, and, the, walls, are, white, doors, green, cold]
-            answers:
-              - The floor and the walls are white
-            hints: {підлога: [floor], і: [and], стіни: [walls], білі: [white]}
-            word: підлога
-            newWords: [стіни]
-          - type: translate
-            direction: [en, uk]
-            prompt: I do not want to sleep on the floor
-            bank: [Я, не, хочу, спати, на, підлозі, стіні, кухні, холодна]
-            answers:
-              - Я не хочу спати на підлозі
-              - на підлозі Я не хочу спати
-            hints: {I: [я], not: [не], want: [хочу], sleep: [спати], floor: [підлозі]}
-            word: підлога
-      - xp: 10
-        challenges:
-          - type: match
-            direction: [uk, en]
-            pairs:
-              - target: двері
-                source: door
-              - target: стіна
-                source: wall
-              - target: підлога
-                source: floor
-              - target: кімната
-                source: room
-              - target: вікно
-                source: window
           - type: assist
             direction: [uk, en]
             prompt: ванна
@@ -237,80 +93,89 @@ pucks:
             hints: {ванна: [bathroom, a bathroom]}
             word: ванна
             newWords: [ванна]
+          - type: match
+            direction: [uk, en]
+            pairs:
+              - target: підлога
+                source: floor
+              - target: ванна
+                source: bathroom
+              - target: двері
+                source: door
+              - target: стіна
+                source: wall
+              - target: кімната
+                source: room
           - type: translate
             direction: [uk, en]
-            prompt: Ванна маленька.
-            bank: [The, bathroom, is, small, big, warm, kitchen]
+            prompt: Підлога холодна.
+            bank: [The, floor, is, cold, warm, wall, white]
             answers:
-              - The bathroom is small
-              - The bathroom is little
-            hints: {ванна: [bathroom], маленька: [small, little]}
-            word: ванна
-          - type: translate
-            direction: [en, uk]
-            prompt: There is no window in the bathroom
-            bank: [У, ванній, немає, вікна, двері, є, кухні]
-            answers:
-              - У ванній немає вікна
-            hints: {no: [немає], window: [вікна], bathroom: [ванній]}
-            word: ванна
-            newWords: [ванній]
-          - type: translate
-            direction: [uk, en]
-            prompt: Хто у ванній?
-            bank: [Who, is, in, the, bathroom, what, where, kitchen]
-            answers:
-              - Who is in the bathroom
-            hints: {хто: [who], ванній: [bathroom, the bathroom]}
-            word: ванна
-          - type: translate
-            direction: [uk, en]
-            prompt: У ванній є двері і вікно.
-            bank: [There, is, a, door, and, a, window, in, the, bathroom, wall, floor, kitchen]
-            answers:
-              - There is a door and a window in the bathroom
-            hints: {ванній: [bathroom], є: [there is], двері: [door], і: [and], вікно: [window]}
-            word: ванна
+              - The floor is cold
+            hints: {підлога: [floor], холодна: [cold]}
+            word: підлога
           - type: listenTap
             direction: [uk, uk]
             audio: Ванна маленька.
-            bank: [Ванна, маленька, Кухня, велика, двері]
+            bank: [Ванна, маленька, велика, підлога, холодна]
             answers:
               - Ванна маленька
             meaning: The bathroom is small
             word: ванна
           - type: translate
             direction: [en, uk]
+            prompt: Where is the bathroom
+            bank: [Де, ванна, підлога, тут, кімната]
+            answers:
+              - Де ванна
+            hints: {where: [де], bathroom: [ванна]}
+            word: ванна
+          - type: translate
+            direction: [uk, en]
+            prompt: Мій кіт спить на підлозі.
+            bank: [My, cat, is, sleeping, on, the, floor, wall, bed]
+            answers:
+              - My cat is sleeping on the floor
+              - My cat sleeps on the floor
+            hints: {кіт: [cat], спить: [sleeps, is sleeping], підлозі: [floor, the floor]}
+            word: підлога
+            newWords: [підлозі]
+          - type: translate
+            direction: [en, uk]
             prompt: The floor in the bathroom is cold
-            bank: [Підлога, у, ванній, холодна, стіна, тепла, кухні]
+            bank: [Підлога, у, ванній, холодна, тепла, кухні, стіна]
             answers:
               - Підлога у ванній холодна
-              - у ванній Підлога холодна
+              - У ванній підлога холодна
             hints: {floor: [підлога], bathroom: [ванній], cold: [холодна]}
+            word: ванна
+            newWords: [ванній]
+          - type: translate
+            direction: [uk, en]
+            prompt: Я не хочу спати на підлозі.
+            bank: [I, do, not, want, to, sleep, on, the, floor, wall]
+            answers:
+              - I do not want to sleep on the floor
+            hints: {не: [not], хочу: [want], спати: [to sleep], підлозі: [floor, the floor]}
             word: підлога
-  - kind: chest
-  - kind: skill
-    label: Filling it up
-    art: star
-    lessons:
       - xp: 10
         challenges:
           - type: assist
             direction: [uk, en]
             prompt: ліжко
-            choices: [the bed, the sofa, the wardrobe]
+            choices: [the bed, the sofa, the floor]
             answers: [the bed]
             hints: {ліжко: [bed, a bed]}
             word: ліжко
             newWords: [ліжко]
-          - type: listenTap
-            direction: [uk, uk]
-            audio: Моє ліжко нове.
-            bank: [Моє, ліжко, нове, Твоє, старе, велике]
-            answers:
-              - Моє ліжко нове
-            meaning: My bed is new
-            word: ліжко
+          - type: assist
+            direction: [uk, en]
+            prompt: диван
+            choices: [the sofa, the bed, the wall]
+            answers: [the sofa]
+            hints: {диван: [sofa, couch]}
+            word: диван
+            newWords: [диван]
           - type: translate
             direction: [uk, en]
             prompt: Моє ліжко нове.
@@ -321,233 +186,24 @@ pucks:
             word: ліжко
           - type: translate
             direction: [en, uk]
-            prompt: My bed is big and comfortable
-            bank: [Моє, ліжко, велике, і, зручне, старе, маленьке, диван]
+            prompt: My sofa is old
+            bank: [Мій, диван, старий, новий, ліжко, моє]
             answers:
-              - Моє ліжко велике і зручне
-            hints: {my: [моє], bed: [ліжко], big: [велике], and: [і], comfortable: [зручне]}
-            word: ліжко
-          - type: translate
-            direction: [uk, en]
-            prompt: Кіт спить на моєму ліжку.
-            bank: [The, cat, is, sleeping, on, my, bed, floor, sofa, dog]
-            answers:
-              - The cat is sleeping on my bed
-              - The cat sleeps on my bed
-            hints: {кіт: [cat], спить: [is sleeping], моєму: [my], ліжку: [bed, the bed]}
-            word: ліжко
-            newWords: [ліжку]
-          - type: translate
-            direction: [uk, en]
-            prompt: Я люблю читати на ліжку.
-            bank: [I, like, to, read, on, the, bed, sofa, floor, sleep]
-            answers:
-              - I like to read on the bed
-              - I like reading on the bed
-            hints: {люблю: [I like, I love], читати: [to read, reading], ліжку: [bed, the bed]}
-            word: ліжко
-          - type: translate
-            direction: [en, uk]
-            prompt: My bed is not big
-            bank: [Моє, ліжко, не, велике, маленьке, нове, диван]
-            answers:
-              - Моє ліжко не велике
-            hints: {my: [моє], bed: [ліжко], not: [не], big: [велике]}
-            word: ліжко
-          - type: translate
-            direction: [en, uk]
-            prompt: The bed is in the bedroom
-            bank: [Ліжко, у, спальні, кухні, ванній, нове]
-            answers:
-              - Ліжко у спальні
-              - у спальні Ліжко
-            hints: {bed: [ліжко], bedroom: [спальні]}
-            word: ліжко
-      - xp: 10
-        challenges:
-          - type: assist
-            direction: [uk, en]
-            prompt: диван
-            choices: [the sofa, the bed, the carpet]
-            answers: [the sofa]
-            hints: {диван: [sofa, couch]}
-            word: диван
-            newWords: [диван]
-          - type: translate
-            direction: [uk, en]
-            prompt: Диван старий.
-            bank: [The, sofa, is, old, new, bed, brown]
-            answers:
-              - The sofa is old
-              - The couch is old
-            hints: {диван: [sofa, couch], старий: [old]}
-            word: диван
-          - type: translate
-            direction: [en, uk]
-            prompt: My sofa is brown
-            bank: [Мій, диван, коричневий, зелений, ліжко, старий]
-            answers:
-              - Мій диван коричневий
-            hints: {my: [мій], sofa: [диван], brown: [коричневий]}
-            word: диван
-          - type: translate
-            direction: [uk, en]
-            prompt: Мій брат спить на дивані.
-            bank: [My, brother, is, sleeping, on, the, sofa, bed, floor, sister]
-            answers:
-              - My brother is sleeping on the sofa
-              - My brother sleeps on the sofa
-            hints: {брат: [brother], спить: [is sleeping], дивані: [sofa, the sofa]}
-            word: диван
-            newWords: [дивані]
-          - type: translate
-            direction: [en, uk]
-            prompt: I am reading on the sofa
-            bank: [Я, читаю, на, дивані, ліжку, підлозі, спить]
-            answers:
-              - Я читаю на дивані
-              - на дивані Я читаю
-            hints: {I: [я], reading: [читаю], sofa: [дивані]}
-            word: диван
-          - type: translate
-            direction: [uk, en]
-            prompt: "Диван у кімнаті, а ліжко у спальні."
-            bank: [The, sofa, is, in, the, room, and, the, bed, is, in, the, bedroom, kitchen, wall, floor]
-            answers:
-              - The sofa is in the room and the bed is in the bedroom
-            hints: {диван: [sofa], кімнаті: [room], а: [and, but], ліжко: [bed], спальні: [bedroom]}
+              - Мій диван старий
+            hints: {my: [мій], sofa: [диван], old: [старий]}
             word: диван
           - type: listenTap
             direction: [uk, uk]
-            audio: Диван старий.
-            bank: [Диван, старий, Ліжко, нове, велике]
+            audio: Мій диван старий.
+            bank: [Мій, диван, старий, ліжко, нове]
             answers:
-              - Диван старий
-            meaning: The sofa is old
+              - Мій диван старий
+            meaning: My sofa is old
             word: диван
-          - type: translate
-            direction: [en, uk]
-            prompt: We are watching a film on the sofa
-            bank: [Ми, дивимося, фільм, на, дивані, ліжку, читаємо, кухні]
-            answers:
-              - Ми дивимося фільм на дивані
-              - на дивані Ми дивимося фільм
-            hints: {we: [ми], watching: [дивимося], film: [фільм], sofa: [дивані]}
-            word: диван
-      - xp: 10
-        challenges:
-          - type: assist
-            direction: [uk, en]
-            prompt: шафа
-            choices: [the wardrobe, the sofa, the mirror]
-            answers: [the wardrobe]
-            hints: {шафа: [wardrobe, closet]}
-            word: шафа
-            newWords: [шафа]
-          - type: translate
-            direction: [uk, en]
-            prompt: Шафа велика.
-            bank: [The, wardrobe, is, big, small, bed, old]
-            answers:
-              - The wardrobe is big
-              - The closet is big
-            hints: {шафа: [wardrobe, closet], велика: [big, large]}
-            word: шафа
-          - type: translate
-            direction: [en, uk]
-            prompt: My clothes are in the wardrobe
-            bank: [Мій, одяг, у, шафі, взуття, ліжку, дивані]
-            answers:
-              - Мій одяг у шафі
-              - у шафі Мій одяг
-            hints: {my: [мій], clothes: [одяг], wardrobe: [шафі]}
-            word: шафа
-            newWords: [шафі]
-          - type: listenTap
-            direction: [uk, uk]
-            audio: Шафа велика.
-            bank: [Шафа, велика, Ліжко, маленька, диван]
-            answers:
-              - Шафа велика
-            meaning: The wardrobe is big
-            word: шафа
-          - type: translate
-            direction: [uk, en]
-            prompt: У шафі мої сорочки.
-            bank: [My, shirts, are, in, the, wardrobe, shoes, bed, room]
-            answers:
-              - My shirts are in the wardrobe
-            hints: {шафі: [wardrobe, the wardrobe], мої: [my], сорочки: [shirts]}
-            word: шафа
-          - type: translate
-            direction: [en, uk]
-            prompt: The wardrobe in my bedroom is old
-            bank: [Шафа, у, моїй, спальні, стара, нова, кухні, ліжко]
-            answers:
-              - Шафа у моїй спальні стара
-              - у моїй спальні Шафа стара
-            hints: {wardrobe: [шафа], my: [моїй], bedroom: [спальні], old: [стара]}
-            word: шафа
-          - type: translate
-            direction: [uk, en]
-            prompt: Мій светр у шафі.
-            bank: [My, sweater, is, in, the, wardrobe, shirt, bed, room]
-            answers:
-              - My sweater is in the wardrobe
-            hints: {светр: [sweater], шафі: [wardrobe, the wardrobe]}
-            word: шафа
-          - type: translate
-            direction: [en, uk]
-            prompt: There is a wardrobe and a bed in the bedroom
-            bank: [У, спальні, є, шафа, і, ліжко, кухні, диван, вікно]
-            answers:
-              - У спальні є шафа і ліжко
-            hints: {wardrobe: [шафа], and: [і], bed: [ліжко], bedroom: [спальні]}
-            word: шафа
-      - xp: 10
-        challenges:
-          - type: match
-            direction: [uk, en]
-            pairs:
-              - target: двері
-                source: door
-              - target: стіна
-                source: wall
-              - target: підлога
-                source: floor
-              - target: ліжко
-                source: bed
-              - target: диван
-                source: sofa
-          - type: assist
-            direction: [uk, en]
-            prompt: килим
-            choices: [the carpet, the curtains, the wall]
-            answers: [the carpet]
-            hints: {килим: [carpet, rug]}
-            word: килим
-            newWords: [килим]
-          - type: translate
-            direction: [uk, en]
-            prompt: Килим на підлозі.
-            bank: [The, carpet, is, on, the, floor, wall, bed, sofa]
-            answers:
-              - The carpet is on the floor
-            hints: {килим: [carpet, rug], підлозі: [floor, the floor]}
-            word: килим
-          - type: translate
-            direction: [en, uk]
-            prompt: The carpet in my room is red
-            bank: [Килим, у, моїй, кімнаті, червоний, зелений, кухні, стіна]
-            answers:
-              - Килим у моїй кімнаті червоний
-              - у моїй кімнаті Килим червоний
-            hints: {carpet: [килим], my: [моїй], room: [кімнаті], red: [червоний]}
-            word: килим
           - type: translate
             direction: [uk, en]
             prompt: Кіт спить під ліжком.
-            bank: [The, cat, is, sleeping, under, the, bed, on, sofa, floor]
+            bank: [The, cat, is, sleeping, under, the, bed, sofa, on]
             answers:
               - The cat is sleeping under the bed
               - The cat sleeps under the bed
@@ -555,264 +211,193 @@ pucks:
             word: ліжко
             newWords: [під, ліжком]
           - type: translate
-            direction: [uk, en]
-            prompt: Що під диваном?
-            bank: [What, is, under, the, sofa, bed, on, carpet]
-            answers:
-              - What is under the sofa
-            hints: {що: [what], під: [under], диваном: [sofa, the sofa]}
-            word: диван
-          - type: listenTap
-            direction: [uk, uk]
-            audio: Килим на підлозі.
-            bank: [Килим, на, підлозі, Диван, стіні, ліжко]
-            answers:
-              - Килим на підлозі
-              - на підлозі Килим
-            meaning: The carpet is on the floor
-            word: килим
-          - type: translate
             direction: [en, uk]
             prompt: My shoes are under the sofa
-            bank: [Моє, взуття, під, диваном, ліжком, на, килимом]
+            bank: [Моє, взуття, під, диваном, ліжком, на]
             answers:
               - Моє взуття під диваном
-              - під диваном Моє взуття
+              - Під диваном моє взуття
             hints: {my: [моє], shoes: [взуття], under: [під], sofa: [диваном]}
             word: диван
             newWords: [диваном]
-  - kind: chest
-  - kind: practice
-    label: Settling in
-    art: dumbbell
-    lessons:
+          - type: translate
+            direction: [uk, en]
+            prompt: Я читаю на дивані щовечора.
+            bank: [I, read, on, the, sofa, every, evening, bed, morning]
+            answers:
+              - I read on the sofa every evening
+              - I am reading on the sofa every evening
+            hints: {читаю: [I read], дивані: [sofa, the sofa], щовечора: [every evening]}
+            word: диван
+            newWords: [дивані]
       - xp: 10
         challenges:
           - type: match
             direction: [uk, en]
             pairs:
+              - target: двері
+                source: door
+              - target: стіна
+                source: wall
+              - target: підлога
+                source: floor
               - target: ліжко
                 source: bed
               - target: диван
                 source: sofa
-              - target: шафа
-                source: wardrobe
-              - target: килим
-                source: carpet
-              - target: ванна
-                source: bathroom
-          - type: listenTap
-            direction: [uk, uk]
-            audio: Килим у моїй кімнаті.
-            bank: [Килим, у, моїй, кімнаті, Диван, спальні, шафа]
-            answers:
-              - Килим у моїй кімнаті
-              - у моїй кімнаті Килим
-            meaning: The carpet is in my room
-            word: килим
           - type: translate
             direction: [en, uk]
-            prompt: The wardrobe is not big but it is new
-            bank: [Шафа, не, "велика,", але, нова, стара, ліжко, маленька]
+            prompt: The walls in the bathroom are white and the floor is cold
+            bank: [Стіни, у, "ванній", "білі,", а, підлога, холодна, тепла, зелені]
             answers:
-              - "Шафа не велика, але нова"
-            hints: {wardrobe: [шафа], not: [не], big: [велика], but: [але], new: [нова]}
-            word: шафа
-          - type: translate
-            direction: [uk, en]
-            prompt: "У моїй кімнаті є ліжко, шафа і килим."
-            bank: [In, my, room, there, is, a, "bed,", a, wardrobe, and, a, carpet, sofa, kitchen, window]
-            answers:
-              - "In my room there is a bed, a wardrobe and a carpet"
-            hints: {моїй: [my], кімнаті: [room], є: [there is], ліжко: [bed], шафа: [wardrobe], килим: [carpet]}
-            word: килим
-          - type: translate
-            direction: [en, uk]
-            prompt: The cat is sleeping under the sofa
-            bank: [Кіт, спить, під, диваном, ліжком, на, килимом]
-            answers:
-              - Кіт спить під диваном
-              - під диваном Кіт спить
-            hints: {cat: [кіт], sleeping: [спить], under: [під], sofa: [диваном]}
-            word: диван
-          - type: translate
-            direction: [en, uk]
-            prompt: I am reading on the sofa and my brother is sleeping
-            bank: [Я, читаю, на, "дивані,", а, мій, брат, спить, ліжку, сестра, підлозі]
-            answers:
-              - "Я читаю на дивані, а мій брат спить"
-            hints: {I: [я], reading: [читаю], sofa: [дивані], brother: [брат], sleeping: [спить]}
-            word: диван
-          - type: translate
-            direction: [uk, en]
-            prompt: Підлога у ванній холодна.
-            bank: [The, floor, in, the, bathroom, is, cold, warm, kitchen, wall]
-            answers:
-              - The floor in the bathroom is cold
-            hints: {підлога: [floor], ванній: [bathroom], холодна: [cold]}
-            word: підлога
-          - type: translate
-            direction: [uk, en]
-            prompt: "Двері білі, а стіни зелені."
-            bank: [The, door, is, white, and, the, walls, are, green, floor, carpet, black]
-            answers:
-              - The door is white and the walls are green
-            hints: {двері: [door], білі: [white], а: [and, but], стіни: [walls], зелені: [green]}
-            word: стіна
-      - xp: 10
-        challenges:
-          - type: translate
-            direction: [uk, en]
-            prompt: "Мій одяг у шафі, а взуття під ліжком."
-            bank: [My, clothes, are, in, the, wardrobe, and, my, shoes, are, under, the, bed, sofa, carpet, floor]
-            answers:
-              - My clothes are in the wardrobe and my shoes are under the bed
-            hints: {одяг: [clothes], шафі: [wardrobe], а: [and], взуття: [shoes, footwear], під: [under], ліжком: [bed]}
-            word: шафа
-          - type: translate
-            direction: [en, uk]
-            prompt: There is a carpet on the floor in my bedroom
-            bank: [У, моїй, спальні, на, підлозі, килим, кухні, стіні, диван]
-            answers:
-              - У моїй спальні на підлозі килим
-              - на підлозі килим У моїй спальні
-            hints: {carpet: [килим], floor: [підлозі], my: [моїй], bedroom: [спальні]}
-            word: килим
-          - type: match
-            direction: [uk, en]
-            pairs:
-              - target: стіна
-                source: wall
-              - target: вікно
-                source: window
-              - target: двері
-                source: door
-              - target: підлога
-                source: floor
-              - target: кімната
-                source: room
-          - type: translate
-            direction: [uk, en]
-            prompt: Я не хочу спати на дивані.
-            bank: [I, do, not, want, to, sleep, on, the, sofa, bed, floor, carpet]
-            answers:
-              - I do not want to sleep on the sofa
-            hints: {не: [not], хочу: [want], спати: [to sleep], дивані: [sofa, the sofa]}
-            word: диван
-          - type: translate
-            direction: [en, uk]
-            prompt: My bedroom is small but the bed is big
-            bank: [Моя, спальня, "маленька,", але, ліжко, велике, кухня, диван, нове]
-            answers:
-              - "Моя спальня маленька, але ліжко велике"
-            hints: {my: [моя], bedroom: [спальня], small: [маленька], but: [але], bed: [ліжко], big: [велике]}
-            word: ліжко
-          - type: translate
-            direction: [uk, en]
-            prompt: "У ванній немає вікна, тільки двері."
-            bank: [There, is, no, window, in, the, "bathroom,", only, a, door, wall, floor, kitchen]
-            answers:
-              - "There is no window in the bathroom, only a door"
-            hints: {ванній: [bathroom], немає: [there is no], вікна: [window], тільки: [only], двері: [door]}
+              - Стіни у ванній білі, а підлога холодна
+            hints: {walls: [стіни], bathroom: [ванній], white: [білі], floor: [підлога], cold: [холодна]}
             word: ванна
-            newWords: [тільки]
+            newWords: [стіни]
+          - type: translate
+            direction: [uk, en]
+            prompt: Мій брат спить на дивані, а я на ліжку.
+            bank: [My, brother, sleeps, on, the, sofa, and, I, on, the, bed, floor]
+            answers:
+              - My brother sleeps on the sofa and I on the bed
+            hints: {брат: [brother], спить: [sleeps], дивані: [sofa], а: [and], ліжку: [bed, the bed]}
+            word: диван
+            newWords: [ліжку]
           - type: listenTap
             direction: [uk, uk]
             audio: Що під ліжком?
-            bank: [Що, під, ліжком, диваном, на, килимом]
+            bank: [Що, під, ліжком, диваном, на]
             answers:
               - Що під ліжком
-              - під ліжком Що
             meaning: What is under the bed
             word: ліжко
           - type: translate
             direction: [en, uk]
-            prompt: The walls in my kitchen are yellow
-            bank: [Стіни, на, моїй, кухні, жовті, зелені, спальні, підлога]
+            prompt: I do not want to sleep on the sofa
+            bank: [Я, не, хочу, спати, на, дивані, ліжку, підлозі]
             answers:
-              - Стіни на моїй кухні жовті
-              - на моїй кухні Стіни жовті
-            hints: {walls: [стіни], my: [моїй], kitchen: [кухні], yellow: [жовті]}
-            word: стіна
-      - xp: 10
-        challenges:
-          - type: translate
-            direction: [en, uk]
-            prompt: We are watching a film and the cat is sleeping under the sofa
-            bank: [Ми, дивимося, "фільм,", а, кіт, спить, під, диваном, ліжком, читаємо, килимом]
-            answers:
-              - "Ми дивимося фільм, а кіт спить під диваном"
-            hints: {we: [ми], watching: [дивимося], film: [фільм], cat: [кіт], sleeping: [спить], under: [під], sofa: [диваном]}
+              - Я не хочу спати на дивані
+              - На дивані я не хочу спати
+            hints: {not: [не], want: [хочу], sleep: [спати], sofa: [дивані]}
             word: диван
           - type: translate
             direction: [uk, en]
-            prompt: Моя улюблена картина на стіні у спальні.
-            bank: [My, favourite, painting, is, on, the, wall, in, the, bedroom, photo, kitchen, floor]
+            prompt: У ванній немає вікна, але є двері.
+            bank: [There, is, no, window, in, the, "bathroom,", but, there, is, a, door, wall]
             answers:
-              - My favourite painting is on the wall in the bedroom
-            hints: {улюблена: [favourite], картина: [painting], стіні: [wall], спальні: [bedroom]}
-            word: стіна
-          - type: match
-            direction: [uk, en]
-            pairs:
-              - target: килим
-                source: carpet
-              - target: шафа
-                source: wardrobe
-              - target: ліжко
-                source: bed
-              - target: ванна
-                source: bathroom
-              - target: диван
-                source: sofa
-          - type: listenTap
-            direction: [uk, uk]
-            audio: Двері у ванній білі.
-            bank: [Двері, у, ванній, білі, Стіни, зелені, кухні]
-            answers:
-              - Двері у ванній білі
-              - у ванній Двері білі
-            meaning: The bathroom door is white
-            word: двері
-          - type: translate
-            direction: [en, uk]
-            prompt: Where are my shoes? Under the bed
-            bank: [Де, моє, взуття?, Під, ліжком, диваном, на, килимом]
-            answers:
-              - Де моє взуття? Під ліжком
-            hints: {where: [де], my: [моє], shoes: [взуття], under: [під], bed: [ліжком]}
-            word: ліжко
-          - type: translate
-            direction: [uk, en]
-            prompt: У нашій квартирі три кімнати і одна ванна.
-            bank: [In, our, flat, there, are, three, rooms, and, one, bathroom, two, kitchen, four]
-            answers:
-              - In our flat there are three rooms and one bathroom
-              - In our apartment there are three rooms and one bathroom
-            hints: {нашій: [our], квартирі: [flat, apartment], три: [three], кімнати: [rooms], одна: [one], ванна: [bathroom]}
+              - There is no window in the bathroom, but there is a door
+            hints: {ванній: [bathroom], немає: [there is no], вікна: [window], але: [but], двері: [door]}
             word: ванна
           - type: translate
             direction: [en, uk]
-            prompt: The carpet is old but very comfortable
-            bank: [Килим, "старий,", але, дуже, зручний, новий, диван, маленький]
+            prompt: The door is white and the wall is green
+            bank: [Двері, "білі,", а, стіна, зелена, біла, підлога]
             answers:
-              - "Килим старий, але дуже зручний"
-            hints: {carpet: [килим], old: [старий], but: [але], very: [дуже], comfortable: [зручний]}
-            word: килим
+              - Двері білі, а стіна зелена
+            hints: {door: [двері], white: [білі], wall: [стіна], green: [зелена]}
+            word: стіна
           - type: translate
             direction: [uk, en]
-            prompt: Мій кіт любить спати на килимі.
-            bank: [My, cat, likes, to, sleep, on, the, carpet, floor, bed, dog]
+            prompt: Моє ліжко нове, але диван дуже старий.
+            bank: [My, bed, is, new, but, the, sofa, is, very, old, wall]
             answers:
-              - My cat likes to sleep on the carpet
-              - My cat likes sleeping on the carpet
-            hints: {кіт: [cat], любить: [likes], спати: [to sleep], килимі: [carpet, the carpet]}
-            word: килим
-            newWords: [килимі]
+              - My bed is new but the sofa is very old
+            hints: {ліжко: [bed], нове: [new], але: [but], диван: [sofa], дуже: [very], старий: [old]}
+            word: ліжко
+          - type: gapFill
+            direction: [uk, uk]
+            prompt: Кіт спить ___ ліжком.
+            choices: [під, на, у]
+            answers: [під]
+            hints: {кіт: [cat], спить: [sleeps], ліжком: [bed, the bed]}
+            word: ліжко
+          - type: listenMatch
+            direction: [uk, en]
+            pairs:
+              - target: двері
+                source: door
+              - target: стіна
+                source: wall
+              - target: підлога
+                source: floor
+              - target: ванна
+                source: bathroom
+              - target: вікно
+                source: window
+  - kind: chest
   - kind: skill
-    label: Small comforts
+    label: Filling it up
     art: star
     lessons:
+      - xp: 10
+        challenges:
+          - type: assist
+            direction: [uk, en]
+            prompt: шафа
+            choices: [the wardrobe, the sofa, the curtains]
+            answers: [the wardrobe]
+            hints: {шафа: [wardrobe, closet]}
+            word: шафа
+            newWords: [шафа]
+          - type: assist
+            direction: [uk, en]
+            prompt: килим
+            choices: [the carpet, the wardrobe, the bed]
+            answers: [the carpet]
+            hints: {килим: [carpet, rug]}
+            word: килим
+            newWords: [килим]
+          - type: assist
+            direction: [uk, en]
+            prompt: штори
+            choices: [the curtains, the carpet, the walls]
+            answers: [the curtains]
+            hints: {штори: [curtains]}
+            word: штори
+            newWords: [штори]
+          - type: translate
+            direction: [uk, en]
+            prompt: Килим на підлозі.
+            bank: [The, carpet, is, on, the, floor, wall, wardrobe]
+            answers:
+              - The carpet is on the floor
+            hints: {килим: [carpet], підлозі: [floor, the floor]}
+            word: килим
+          - type: translate
+            direction: [en, uk]
+            prompt: My clothes are in the wardrobe
+            bank: [Мій, одяг, у, шафі, килим, на]
+            answers:
+              - Мій одяг у шафі
+              - У шафі мій одяг
+            hints: {my: [мій], clothes: [одяг], wardrobe: [шафі]}
+            word: шафа
+            newWords: [шафі]
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Штори зелені.
+            bank: [Штори, зелені, білі, килим, шафа]
+            answers:
+              - Штори зелені
+            meaning: The curtains are green
+            word: штори
+          - type: translate
+            direction: [en, uk]
+            prompt: The curtains on the window are white
+            bank: [Штори, на, вікні, білі, зелені, килим]
+            answers:
+              - Штори на вікні білі
+              - На вікні штори білі
+            hints: {curtains: [штори], window: [вікні], white: [білі]}
+            word: штори
+          - type: translate
+            direction: [uk, en]
+            prompt: Шафа стара, але дуже велика.
+            bank: [The, wardrobe, is, old, but, very, big, new, carpet]
+            answers:
+              - The wardrobe is old but very big
+            hints: {шафа: [wardrobe, closet], стара: [old], але: [but], дуже: [very], велика: [big, large]}
+            word: шафа
       - xp: 10
         challenges:
           - type: assist
@@ -823,15 +408,6 @@ pucks:
             hints: {лампа: [lamp, a lamp]}
             word: лампа
             newWords: [лампа]
-          - type: listenTap
-            direction: [uk, uk]
-            audio: Лампа на столі.
-            bank: [Лампа, на, столі, Дзеркало, стіні, підлозі]
-            answers:
-              - Лампа на столі
-              - на столі Лампа
-            meaning: The lamp is on the table
-            word: лампа
           - type: assist
             direction: [uk, en]
             prompt: дзеркало
@@ -843,7 +419,7 @@ pucks:
           - type: translate
             direction: [uk, en]
             prompt: Лампа на столі.
-            bank: [The, lamp, is, on, the, table, floor, wall, mirror]
+            bank: [The, lamp, is, on, the, table, mirror, floor]
             answers:
               - The lamp is on the table
             hints: {лампа: [lamp], столі: [table, the table]}
@@ -851,33 +427,46 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: The mirror is on the wall
-            bank: [Дзеркало, на, стіні, підлозі, лампа, столі]
+            bank: [Дзеркало, на, стіні, лампа, підлозі]
             answers:
               - Дзеркало на стіні
-              - на стіні Дзеркало
+              - На стіні дзеркало
             hints: {mirror: [дзеркало], wall: [стіні]}
             word: дзеркало
-          - type: translate
-            direction: [en, uk]
-            prompt: My lamp is old but it works
-            bank: [Моя, лампа, "стара,", але, працює, нова, дзеркало, велика]
-            answers:
-              - "Моя лампа стара, але працює"
-            hints: {my: [моя], lamp: [лампа], old: [стара], but: [але], works: [працює]}
-            word: лампа
+            newWords: [стіні]
           - type: translate
             direction: [uk, en]
-            prompt: Я бачу себе у дзеркалі.
-            bank: [I, see, myself, in, the, mirror, window, lamp, wall]
+            prompt: Лампа біля ліжка.
+            bank: [The, lamp, is, near, the, bed, sofa, under]
             answers:
-              - I see myself in the mirror
-            hints: {бачу: [I see], себе: [myself], дзеркалі: [mirror, the mirror]}
+              - The lamp is near the bed
+              - The lamp is by the bed
+            hints: {лампа: [lamp], біля: [near, by, next to], ліжка: [bed, the bed]}
+            word: лампа
+            newWords: [біля, ліжка]
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Дзеркало біля дверей.
+            bank: [Дзеркало, біля, дверей, лампа, вікна]
+            answers:
+              - Дзеркало біля дверей
+            meaning: The mirror is near the door
             word: дзеркало
-            newWords: [себе, дзеркалі]
+            newWords: [дверей]
+          - type: translate
+            direction: [en, uk]
+            prompt: There is a lamp near the sofa
+            bank: [Біля, дивана, лампа, ліжка, на, штори]
+            answers:
+              - Біля дивана лампа
+              - Лампа біля дивана
+            hints: {lamp: [лампа], near: [біля], sofa: [дивана]}
+            word: диван
+            newWords: [дивана]
           - type: translate
             direction: [uk, en]
             prompt: У ванній велике дзеркало.
-            bank: [There, is, a, big, mirror, in, the, bathroom, small, lamp, kitchen]
+            bank: [There, is, a, big, mirror, in, the, bathroom, lamp, small]
             answers:
               - There is a big mirror in the bathroom
             hints: {ванній: [bathroom], велике: [big], дзеркало: [mirror]}
@@ -900,213 +489,377 @@ pucks:
             hints: {ковдра: [blanket, a blanket]}
             word: ковдра
             newWords: [ковдра]
-          - type: translate
-            direction: [uk, en]
-            prompt: Подушка на ліжку.
-            bank: [The, pillow, is, on, the, bed, sofa, blanket, floor]
-            answers:
-              - The pillow is on the bed
-            hints: {подушка: [pillow], ліжку: [bed, the bed]}
-            word: подушка
-          - type: translate
-            direction: [en, uk]
-            prompt: The blanket is warm
-            bank: [Ковдра, тепла, холодна, подушка, нова]
-            answers:
-              - Ковдра тепла
-            hints: {blanket: [ковдра], warm: [тепла]}
-            word: ковдра
           - type: assist
             direction: [uk, en]
             prompt: рушник
-            choices: [the towel, the blanket, the shirt]
+            choices: [the towel, the blanket, the curtains]
             answers: [the towel]
             hints: {рушник: [towel, a towel]}
             word: рушник
             newWords: [рушник]
           - type: translate
             direction: [uk, en]
-            prompt: Рушник у ванній.
-            bank: [The, towel, is, in, the, bathroom, kitchen, pillow, bedroom]
+            prompt: Подушка на ліжку.
+            bank: [The, pillow, is, on, the, bed, sofa, blanket]
             answers:
-              - The towel is in the bathroom
-            hints: {рушник: [towel], ванній: [bathroom, the bathroom]}
-            word: рушник
-          - type: listenTap
-            direction: [uk, uk]
-            audio: Подушка на ліжку.
-            bank: [Подушка, на, ліжку, Ковдра, дивані, тепла]
-            answers:
-              - Подушка на ліжку
-              - на ліжку Подушка
-            meaning: The pillow is on the bed
+              - The pillow is on the bed
+            hints: {подушка: [pillow], ліжку: [bed, the bed]}
             word: подушка
           - type: translate
             direction: [en, uk]
-            prompt: My blanket and my pillow are on the bed
-            bank: [Моя, ковдра, і, моя, подушка, на, ліжку, дивані, рушник, підлозі]
+            prompt: I need a blanket please
+            bank: [Мені, треба, "ковдра,", "будь", ласка, подушка, рушник]
             answers:
-              - Моя ковдра і моя подушка на ліжку
-              - на ліжку Моя ковдра і моя подушка
-            hints: {my: [моя], blanket: [ковдра], and: [і], pillow: [подушка], bed: [ліжку]}
+              - Мені треба ковдра, будь ласка
+            hints: {I: [мені], need: [треба], blanket: [ковдра], please: [будь, ласка]}
             word: ковдра
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Мені треба рушник.
+            bank: [Мені, треба, рушник, ковдра, подушка]
+            answers:
+              - Мені треба рушник
+            meaning: I need a towel
+            word: рушник
+          - type: translate
+            direction: [uk, en]
+            prompt: Рушник у ванній, а ковдра на ліжку.
+            bank: [The, towel, is, in, the, bathroom, and, the, blanket, is, on, the, bed, sofa]
+            answers:
+              - The towel is in the bathroom and the blanket is on the bed
+            hints: {рушник: [towel], ванній: [bathroom], ковдра: [blanket], ліжку: [bed]}
+            word: рушник
+          - type: translate
+            direction: [en, uk]
+            prompt: Can I have a pillow please
+            bank: [Можна, "подушку,", "будь", ласка, ковдру, рушник]
+            answers:
+              - Можна подушку, будь ласка
+            hints: {can: [можна], pillow: [подушку], please: [будь, ласка]}
+            word: подушка
+            newWords: [подушку]
       - xp: 10
         challenges:
           - type: match
             direction: [uk, en]
             pairs:
+              - target: шафа
+                source: wardrobe
+              - target: килим
+                source: carpet
               - target: лампа
                 source: lamp
               - target: дзеркало
                 source: mirror
+              - target: рушник
+                source: towel
+          - type: translate
+            direction: [en, uk]
+            prompt: The carpet is old but very comfortable
+            bank: [Килим, "старий,", але, дуже, зручний, новий, шафа]
+            answers:
+              - Килим старий, але дуже зручний
+            hints: {carpet: [килим], old: [старий], but: [але], very: [дуже], comfortable: [зручний]}
+            word: килим
+          - type: translate
+            direction: [uk, en]
+            prompt: Де мій рушник? У ванній.
+            bank: [Where, is, my, towel, In, the, bathroom, kitchen, blanket]
+            answers:
+              - Where is my towel In the bathroom
+            hints: {де: [where], рушник: [towel], ванній: [bathroom]}
+            word: рушник
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Можна рушник, будь ласка?
+            bank: [Можна, "рушник,", "будь", ласка, ковдру]
+            answers:
+              - Можна рушник, будь ласка
+            meaning: Can I have a towel please
+            word: рушник
+          - type: translate
+            direction: [en, uk]
+            prompt: My blanket and my pillow are on the bed
+            bank: [Моя, ковдра, і, моя, подушка, на, ліжку, дивані]
+            answers:
+              - Моя ковдра і моя подушка на ліжку
+              - На ліжку моя ковдра і моя подушка
+            hints: {my: [моя], blanket: [ковдра], and: [і], pillow: [подушка], bed: [ліжку]}
+            word: ковдра
+          - type: translate
+            direction: [uk, en]
+            prompt: Штори на вікні, а килим на підлозі.
+            bank: [The, curtains, are, on, the, window, and, the, carpet, is, on, the, floor, wall]
+            answers:
+              - The curtains are on the window and the carpet is on the floor
+            hints: {штори: [curtains], вікні: [window], килим: [carpet], підлозі: [floor]}
+            word: штори
+          - type: translate
+            direction: [en, uk]
+            prompt: There is no mirror in my room
+            bank: [У, моїй, кімнаті, немає, дзеркала, лампи, є]
+            answers:
+              - У моїй кімнаті немає дзеркала
+            hints: {no: [немає], mirror: [дзеркала], my: [моїй], room: [кімнаті]}
+            word: дзеркало
+            newWords: [дзеркала]
+          - type: translate
+            direction: [uk, en]
+            prompt: Мені треба нова лампа і нова шафа.
+            bank: [I, need, a, new, lamp, and, a, new, wardrobe, mirror]
+            answers:
+              - I need a new lamp and a new wardrobe
+            hints: {мені: [I], треба: [need], нова: [new], лампа: [lamp], шафа: [wardrobe]}
+            word: лампа
+          - type: gapFill
+            direction: [uk, uk]
+            prompt: Дзеркало ___ дверей.
+            choices: [біля, під, на]
+            answers: [біля]
+            hints: {дзеркало: [mirror], дверей: [door, the door]}
+            word: дзеркало
+          - type: listenMatch
+            direction: [uk, en]
+            pairs:
               - target: подушка
                 source: pillow
               - target: ковдра
                 source: blanket
               - target: рушник
                 source: towel
+              - target: шафа
+                source: wardrobe
+              - target: стіл
+                source: table
+  - kind: chest
+  # Puck 3 refreshes older vocabulary and deliberately uses NOTHING from this
+  # unit -- it is a break from the new words, not more practice on them. Phrases
+  # are ones people actually say, so the flow of a conversation gets drilled
+  # alongside the words.
+  - kind: practice
+    label: Catching up
+    art: dumbbell
+    lessons:
+      - xp: 10
+        challenges:
           - type: assist
             direction: [uk, en]
-            prompt: штори
-            choices: [the curtains, the carpet, the walls]
-            answers: [the curtains]
-            hints: {штори: [curtains]}
-            word: штори
-            newWords: [штори]
+            prompt: Як справи?
+            choices: [How are you, Nice to meet you, Good morning]
+            answers: [How are you]
+            hints: {як: [how], справи: [things, going]}
+            word: справи
+          - type: assist
+            direction: [uk, en]
+            prompt: Дуже приємно.
+            choices: [Nice to meet you, See you later, Good evening]
+            answers: [Nice to meet you]
+            hints: {дуже: [very], приємно: [pleasant, nice]}
+            word: приємно
           - type: translate
             direction: [uk, en]
-            prompt: Штори зелені.
-            bank: [The, curtains, are, green, white, carpet, new]
+            prompt: Добрий ранок!
+            bank: [Good, morning, evening, afternoon, night]
             answers:
-              - The curtains are green
-            hints: {штори: [curtains], зелені: [green]}
-            word: штори
+              - Good morning
+            hints: {добрий: [good], ранок: [morning]}
+            word: ранок
+          - type: translate
+            direction: [en, uk]
+            prompt: My name is Victor
+            bank: [Мене, звати, Віктор, Лінда, вас]
+            answers:
+              - Мене звати Віктор
+            hints: {my: [мене], name: [звати], victor: [віктор]}
+            word: звати
           - type: listenTap
             direction: [uk, uk]
-            audio: Штори зелені.
-            bank: [Штори, зелені, Килим, білі, стіни]
+            audio: Добрий день!
+            bank: [Добрий, день, вечір, ранок, привіт]
             answers:
-              - Штори зелені
-            meaning: The curtains are green
-            word: штори
-          - type: translate
-            direction: [en, uk]
-            prompt: The curtains are on the window
-            bank: [Штори, на, вікні, стіні, килим, підлозі]
-            answers:
-              - Штори на вікні
-              - на вікні Штори
-            hints: {curtains: [штори], window: [вікні]}
-            word: штори
+              - Добрий день
+            meaning: Good afternoon
+            word: день
           - type: translate
             direction: [uk, en]
-            prompt: Лампа біля ліжка.
-            bank: [The, lamp, is, near, the, bed, under, sofa, mirror]
+            prompt: Ви говорите англійською?
+            bank: [Do, you, speak, English, Ukrainian, know]
             answers:
-              - The lamp is near the bed
-              - The lamp is by the bed
-            hints: {лампа: [lamp], біля: [near, by, next to], ліжка: [bed, the bed]}
-            word: лампа
-            newWords: [біля, ліжка]
+              - Do you speak English
+            hints: {ви: [you], говорите: [speak], англійською: [English]}
+            word: говорити
           - type: translate
             direction: [en, uk]
-            prompt: The mirror is near the door
-            bank: [Дзеркало, біля, дверей, вікна, під, стіні]
+            prompt: I do not understand
+            bank: [Я, не, розумію, знаю, дуже]
             answers:
-              - Дзеркало біля дверей
-              - біля дверей Дзеркало
-            hints: {mirror: [дзеркало], near: [біля], door: [дверей]}
-            word: дзеркало
-            newWords: [дверей]
+              - Я не розумію
+            hints: {I: [я], not: [не], understand: [розумію]}
+            word: розуміти
           - type: translate
             direction: [uk, en]
-            prompt: "Біля дивана лампа, а на дивані подушка."
-            bank: [There, is, a, lamp, by, the, sofa, and, a, pillow, on, the, sofa, bed, blanket, under]
+            prompt: Мене звати Лінда, дуже приємно.
+            bank: [My, name, is, "Linda,", nice, to, meet, you, Victor]
             answers:
-              - There is a lamp by the sofa and a pillow on the sofa
-            hints: {біля: [by, near], дивана: [sofa, the sofa], лампа: [lamp], дивані: [sofa], подушка: [pillow]}
-            word: диван
-            newWords: [дивана]
-  - kind: chest
-  - kind: unit_review
-    label: Housewarming
-    art: trophy
-    lessons:
-      - xp: 20
+              - My name is Linda, nice to meet you
+            hints: {звати: [name], лінда: [Linda], приємно: [nice]}
+            word: звати
+      - xp: 10
         challenges:
+          - type: translate
+            direction: [en, uk]
+            prompt: I want coffee please
+            bank: [Я, хочу, "каву,", "будь", ласка, чай, воду]
+            answers:
+              - Я хочу каву, будь ласка
+            hints: {I: [я], want: [хочу], coffee: [каву], please: [будь, ласка]}
+            word: кава
+          - type: translate
+            direction: [uk, en]
+            prompt: Скільки це коштує?
+            bank: [How, much, does, it, cost, many, is]
+            answers:
+              - How much does it cost
+            hints: {скільки: [how much], це: [it, this], коштує: [costs]}
+            word: коштує
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Можна меню, будь ласка?
+            bank: [Можна, "меню,", "будь", ласка, рахунок]
+            answers:
+              - Можна меню, будь ласка
+            meaning: Can I have the menu please
+            word: меню
+          - type: translate
+            direction: [en, uk]
+            prompt: Do you have tea
+            bank: [У, вас, є, чай, кава, немає]
+            answers:
+              - У вас є чай
+            hints: {you: [вас], have: [є], tea: [чай]}
+            word: чай
+          - type: translate
+            direction: [uk, en]
+            prompt: Я не хочу пити каву.
+            bank: [I, do, not, want, to, drink, coffee, eat, tea]
+            answers:
+              - I do not want to drink coffee
+            hints: {хочу: [want], пити: [to drink], каву: [coffee]}
+            word: пити
+          - type: translate
+            direction: [en, uk]
+            prompt: The bill please
+            bank: ["Рахунок,", "будь", ласка, меню, дякую]
+            answers:
+              - Рахунок, будь ласка
+            hints: {bill: [рахунок], please: [будь, ласка]}
+            word: рахунок
+          - type: translate
+            direction: [uk, en]
+            prompt: Що ви хочете на обід?
+            bank: [What, do, you, want, for, lunch, dinner, eat]
+            answers:
+              - What do you want for lunch
+            hints: {що: [what], хочете: [want], обід: [lunch]}
+            word: обід
           - type: match
             direction: [uk, en]
             pairs:
-              - target: двері
-                source: door
-              - target: стіна
-                source: wall
-              - target: килим
-                source: carpet
-              - target: дзеркало
-                source: mirror
-              - target: штори
-                source: curtains
+              - target: кава
+                source: coffee
+              - target: чай
+                source: tea
+              - target: вода
+                source: water
+              - target: хліб
+                source: bread
+              - target: суп
+                source: soup
+      - xp: 10
+        challenges:
+          - type: translate
+            direction: [uk, en]
+            prompt: Де тут кафе?
+            bank: [Where, is, there, a, cafe, here, restaurant, hotel]
+            answers:
+              - Where is there a cafe here
+            hints: {де: [where], тут: [here], кафе: [cafe]}
+            word: кафе
+          - type: translate
+            direction: [en, uk]
+            prompt: I need a taxi
+            bank: [Мені, треба, таксі, автобус, метро]
+            answers:
+              - Мені треба таксі
+            hints: {I: [мені], need: [треба], taxi: [таксі]}
+            word: таксі
           - type: listenTap
             direction: [uk, uk]
-            audio: Дзеркало біля дверей.
-            bank: [Дзеркало, біля, дверей, Лампа, вікна, стіні]
+            audio: Сьогодні гарна погода.
+            bank: [Сьогодні, гарна, погода, завтра, холодно]
             answers:
-              - Дзеркало біля дверей
-              - біля дверей Дзеркало
-            meaning: The mirror is near the door
-            word: дзеркало
+              - Сьогодні гарна погода
+            meaning: The weather is nice today
+            word: погода
           - type: translate
             direction: [uk, en]
-            prompt: "У моїй спальні є ліжко, шафа і велике вікно."
-            bank: [In, my, bedroom, there, is, a, "bed,", a, wardrobe, and, a, big, window, sofa, kitchen, small]
+            prompt: Мій друг працює в офісі.
+            bank: [My, friend, works, in, an, office, brother, shop]
             answers:
-              - "In my bedroom there is a bed, a wardrobe and a big window"
-            hints: {моїй: [my], спальні: [bedroom], є: [there is], ліжко: [bed], шафа: [wardrobe], велике: [big], вікно: [window]}
-            word: шафа
+              - My friend works in an office
+            hints: {друг: [friend], працює: [works], офісі: [office]}
+            word: офіс
           - type: translate
             direction: [en, uk]
-            prompt: The cat is sleeping under the bed and my brother is on the sofa
-            bank: [Кіт, спить, під, "ліжком,", а, мій, брат, на, дивані, диваном, килимі, сестра]
+            prompt: Where do you live
+            bank: [Де, ви, живете, працюєте, тут]
             answers:
-              - "Кіт спить під ліжком, а мій брат на дивані"
-            hints: {cat: [кіт], sleeping: [спить], under: [під], bed: [ліжком], brother: [брат], sofa: [дивані]}
-            word: ліжко
+              - Де ви живете
+            hints: {where: [де], you: [ви], live: [живете]}
+            word: жити
           - type: translate
             direction: [uk, en]
-            prompt: "Штори на вікні зелені, а стіни білі."
-            bank: [The, curtains, on, the, window, are, green, and, the, walls, are, white, yellow, carpet, door]
+            prompt: Я не знаю, де це.
+            bank: [I, do, not, know, where, it, is, understand, here]
             answers:
-              - The curtains on the window are green and the walls are white
-            hints: {штори: [curtains], вікні: [window], зелені: [green], стіни: [walls], білі: [white]}
-            word: штори
-          - type: translate
+              - I do not know where it is
+            hints: {знаю: [I know], де: [where], це: [it]}
+            word: знати
+          - type: match
             direction: [uk, en]
-            prompt: "Я не хочу спати на підлозі, я хочу спати на ліжку."
-            bank: [I, do, not, want, to, sleep, on, the, "floor,", I, want, to, sleep, on, the, bed, sofa, carpet, under]
-            answers:
-              - "I do not want to sleep on the floor, I want to sleep on the bed"
-            hints: {хочу: [want], спати: [to sleep], підлозі: [floor], ліжку: [bed]}
-            word: підлога
+            pairs:
+              - target: де
+                source: where
+              - target: коли
+                source: when
+              - target: хто
+                source: who
+              - target: що
+                source: what
+              - target: скільки
+                source: how much
           - type: translate
             direction: [en, uk]
-            prompt: My favourite lamp is near my bed
-            bank: [Моя, улюблена, лампа, біля, мого, ліжка, дивана, під, дзеркало]
+            prompt: Thank you very much goodbye
+            bank: [Дуже, "дякую,", до, побачення, привіт, ласка]
             answers:
-              - Моя улюблена лампа біля мого ліжка
-              - біля мого ліжка Моя улюблена лампа
-            hints: {my: [моя, мого], favourite: [улюблена], lamp: [лампа], near: [біля], bed: [ліжка]}
-            word: лампа
-            newWords: [мого]
-          - type: translate
-            direction: [en, uk]
-            prompt: There is a towel in the bathroom and a blanket on the bed
-            bank: [У, ванній, "рушник,", а, на, ліжку, ковдра, дивані, подушка, кухні]
-            answers:
-              - "У ванній рушник, а на ліжку ковдра"
-            hints: {towel: [рушник], bathroom: [ванній], blanket: [ковдра], bed: [ліжку]}
-            word: рушник
-      - xp: 20
+              - Дуже дякую, до побачення
+            hints: {thank: [дякую], very: [дуже], goodbye: [до, побачення]}
+            word: дякую
+          - type: gapFill
+            direction: [uk, uk]
+            prompt: Я не ___ англійською.
+            choices: [говорю, знаю, хочу]
+            answers: [говорю]
+            hints: {я: [I], не: [not], англійською: [English]}
+            word: говорити
+  # Puck 4 is pucks 1 and 2 again, harder: longer sentences, two clauses, and
+  # the words put to work in things you would actually say. Nothing new.
+  - kind: practice
+    label: Settling in
+    art: star
+    lessons:
+      - xp: 10
         challenges:
           - type: match
             direction: [uk, en]
@@ -1123,63 +876,369 @@ pucks:
                 source: bathroom
           - type: translate
             direction: [en, uk]
-            prompt: The walls in our flat are white and the floor is warm
-            bank: [Стіни, у, нашій, квартирі, "білі,", а, підлога, тепла, зелені, холодна, кухні]
+            prompt: Can I have a blanket and a pillow please
+            bank: [Можна, ковдру, і, "подушку,", "будь", ласка, рушник]
             answers:
-              - "Стіни у нашій квартирі білі, а підлога тепла"
-            hints: {walls: [стіни], our: [нашій], flat: [квартирі], white: [білі], floor: [підлога], warm: [тепла]}
-            word: стіна
+              - Можна ковдру і подушку, будь ласка
+            hints: {can: [можна], blanket: [ковдру], and: [і], pillow: [подушку], please: [будь, ласка]}
+            word: ковдра
+            newWords: [ковдру]
           - type: translate
             direction: [uk, en]
-            prompt: "Мій одяг у шафі, а рушник у ванній."
-            bank: [My, clothes, are, in, the, wardrobe, and, the, towel, is, in, the, bathroom, shoes, kitchen, bed]
+            prompt: У моїй спальні є ліжко, шафа і велике вікно.
+            bank: [In, my, bedroom, there, is, a, "bed,", a, wardrobe, and, a, big, window, sofa]
+            answers:
+              - In my bedroom there is a bed, a wardrobe and a big window
+            hints: {спальні: [bedroom], є: [there is], ліжко: [bed], шафа: [wardrobe], велике: [big], вікно: [window]}
+            word: шафа
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Мені треба нова подушка.
+            bank: [Мені, треба, нова, подушка, ковдра, рушник]
+            answers:
+              - Мені треба нова подушка
+            meaning: I need a new pillow
+            word: подушка
+          - type: translate
+            direction: [en, uk]
+            prompt: The cat sleeps under the bed and my brother on the sofa
+            bank: [Кіт, спить, під, "ліжком,", а, мій, брат, на, дивані, килимі]
+            answers:
+              - Кіт спить під ліжком, а мій брат на дивані
+            hints: {cat: [кіт], sleeps: [спить], under: [під], bed: [ліжком], brother: [брат], sofa: [дивані]}
+            word: ліжко
+          - type: translate
+            direction: [uk, en]
+            prompt: Штори на вікні зелені, а стіни білі.
+            bank: [The, curtains, on, the, window, are, green, and, the, walls, are, white, carpet]
+            answers:
+              - The curtains on the window are green and the walls are white
+            hints: {штори: [curtains], вікні: [window], зелені: [green], стіни: [walls], білі: [white]}
+            word: штори
+          - type: translate
+            direction: [en, uk]
+            prompt: Where is the towel? In the bathroom near the mirror
+            bank: [Де, "рушник?", У, ванній, біля, дзеркала, лампи, на]
+            answers:
+              - Де рушник? У ванній біля дзеркала
+            hints: {where: [де], towel: [рушник], bathroom: [ванній], near: [біля], mirror: [дзеркала]}
+            word: рушник
+          - type: translate
+            direction: [uk, en]
+            prompt: Я люблю читати на дивані під теплою ковдрою.
+            bank: [I, like, to, read, on, the, sofa, under, a, warm, blanket, bed]
+            answers:
+              - I like to read on the sofa under a warm blanket
+              - I like reading on the sofa under a warm blanket
+            hints: {люблю: [I like], читати: [to read], дивані: [sofa], під: [under], теплою: [warm], ковдрою: [blanket]}
+            word: ковдра
+            newWords: [ковдрою]
+      - xp: 10
+        challenges:
+          - type: translate
+            direction: [uk, en]
+            prompt: Мій одяг у шафі, а рушник у ванній.
+            bank: [My, clothes, are, in, the, wardrobe, and, the, towel, is, in, the, bathroom, bed]
             answers:
               - My clothes are in the wardrobe and the towel is in the bathroom
             hints: {одяг: [clothes], шафі: [wardrobe], рушник: [towel], ванній: [bathroom]}
-            word: рушник
+            word: шафа
           - type: translate
             direction: [en, uk]
-            prompt: I like reading on the sofa under a warm blanket
-            bank: [Я, люблю, читати, на, дивані, під, теплою, ковдрою, ліжку, подушкою, холодною]
+            prompt: There is a carpet on the floor in my bedroom
+            bank: [У, моїй, спальні, на, підлозі, килим, штори, кухні]
             answers:
-              - Я люблю читати на дивані під теплою ковдрою
-              - на дивані Я люблю читати під теплою ковдрою
-              - під теплою ковдрою Я люблю читати на дивані
-            hints: {I: [я], like: [люблю], reading: [читати], sofa: [дивані], under: [під], warm: [теплою], blanket: [ковдрою]}
-            word: ковдра
-            newWords: [теплою, ковдрою]
-          - type: translate
+              - У моїй спальні на підлозі килим
+              - На підлозі у моїй спальні килим
+            hints: {carpet: [килим], floor: [підлозі], my: [моїй], bedroom: [спальні]}
+            word: килим
+          - type: match
             direction: [uk, en]
-            prompt: "Біля вікна стіл, а на столі лампа."
-            bank: [There, is, a, table, by, the, window, and, a, lamp, on, the, table, door, mirror, under]
-            answers:
-              - There is a table by the window and a lamp on the table
-            hints: {біля: [by, near], вікна: [window, the window], стіл: [table], столі: [table], лампа: [lamp]}
-            word: лампа
-          - type: translate
-            direction: [en, uk]
-            prompt: "There is no mirror in my room, only a big window"
-            bank: [У, моїй, кімнаті, немає, "дзеркала,", тільки, велике, вікно, штори, лампа, маленьке]
-            answers:
-              - "У моїй кімнаті немає дзеркала, тільки велике вікно"
-            hints: {no: [немає], mirror: [дзеркала], my: [моїй], room: [кімнаті], only: [тільки], big: [велике], window: [вікно]}
-            word: дзеркало
-            newWords: [дзеркала]
+            pairs:
+              - target: стіна
+                source: wall
+              - target: підлога
+                source: floor
+              - target: двері
+                source: door
+              - target: килим
+                source: carpet
+              - target: лампа
+                source: lamp
           - type: listenTap
             direction: [uk, uk]
             audio: Килим на підлозі у кімнаті.
-            bank: [Килим, на, підлозі, у, кімнаті, Штори, стіні, спальні]
+            bank: [Килим, на, підлозі, у, кімнаті, спальні, штори]
             answers:
               - Килим на підлозі у кімнаті
-              - на підлозі Килим у кімнаті
-              - у кімнаті Килим на підлозі
             meaning: The carpet is on the floor in the room
             word: килим
           - type: translate
             direction: [uk, en]
-            prompt: "Ми дивимося фільм на дивані, а кіт спить на килимі."
-            bank: [We, are, watching, a, film, on, the, sofa, and, the, cat, is, sleeping, on, the, carpet, bed, floor, under]
+            prompt: Біля вікна стіл, а на столі лампа.
+            bank: [There, is, a, table, by, the, window, and, a, lamp, on, the, table, wall]
+            answers:
+              - There is a table by the window and a lamp on the table
+            hints: {біля: [by, near], вікна: [window], стіл: [table], столі: [table], лампа: [lamp]}
+            word: лампа
+          - type: translate
+            direction: [en, uk]
+            prompt: My bedroom is small but the bed is very comfortable
+            bank: [Моя, спальня, "маленька,", але, ліжко, дуже, зручне, велике, диван]
+            answers:
+              - Моя спальня маленька, але ліжко дуже зручне
+            hints: {bedroom: [спальня], small: [маленька], but: [але], bed: [ліжко], very: [дуже], comfortable: [зручне]}
+            word: ліжко
+          - type: translate
+            direction: [uk, en]
+            prompt: У ванній немає вікна, але є двері і дзеркало.
+            bank: [There, is, no, window, in, the, "bathroom,", but, there, is, a, door, and, a, mirror, wall]
+            answers:
+              - There is no window in the bathroom, but there is a door and a mirror
+            hints: {ванній: [bathroom], немає: [there is no], вікна: [window], але: [but], двері: [door], дзеркало: [mirror]}
+            word: ванна
+          - type: translate
+            direction: [en, uk]
+            prompt: I do not want to sleep on the floor, I want a bed
+            bank: [Я, не, хочу, спати, на, "підлозі,", я, хочу, ліжко, диван]
+            answers:
+              - Я не хочу спати на підлозі, я хочу ліжко
+            hints: {not: [не], want: [хочу], sleep: [спати], floor: [підлозі], bed: [ліжко]}
+            word: підлога
+          - type: gapFill
+            direction: [uk, uk]
+            prompt: У ванній ___ вікна.
+            choices: [немає, є, не]
+            answers: [немає]
+            hints: {ванній: [bathroom], вікна: [window]}
+            word: ванна
+      - xp: 10
+        challenges:
+          - type: translate
+            direction: [en, uk]
+            prompt: The walls in our flat are white and the floor is warm
+            bank: [Стіни, у, нашій, квартирі, "білі,", а, підлога, тепла, холодна, зелені]
+            answers:
+              - Стіни у нашій квартирі білі, а підлога тепла
+            hints: {walls: [стіни], our: [нашій], flat: [квартирі], white: [білі], floor: [підлога], warm: [тепла]}
+            word: стіна
+          - type: translate
+            direction: [uk, en]
+            prompt: Ми дивимося фільм на дивані, а кіт спить на килимі.
+            bank: [We, are, watching, a, film, on, the, sofa, and, the, cat, is, sleeping, on, the, carpet, bed]
             answers:
               - We are watching a film on the sofa and the cat is sleeping on the carpet
             hints: {дивимося: [we are watching], фільм: [film], дивані: [sofa], кіт: [cat], спить: [is sleeping], килимі: [carpet]}
             word: килим
+            newWords: [килимі]
+          - type: listenMatch
+            direction: [uk, en]
+            pairs:
+              - target: ковдра
+                source: blanket
+              - target: рушник
+                source: towel
+              - target: штори
+                source: curtains
+              - target: дзеркало
+                source: mirror
+              - target: крісло
+                source: armchair
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Мені треба нова ковдра.
+            bank: [Мені, треба, нова, ковдра, подушка, рушник]
+            answers:
+              - Мені треба нова ковдра
+            meaning: I need a new blanket
+            word: ковдра
+          - type: translate
+            direction: [en, uk]
+            prompt: My favourite lamp is near my bed
+            bank: [Моя, улюблена, лампа, біля, мого, ліжка, дивана, під]
+            answers:
+              - Моя улюблена лампа біля мого ліжка
+              - Біля мого ліжка моя улюблена лампа
+            hints: {my: [моя, мого], favourite: [улюблена], lamp: [лампа], near: [біля], bed: [ліжка]}
+            word: лампа
+          - type: translate
+            direction: [uk, en]
+            prompt: Шафа у моїй спальні дуже стара.
+            bank: [The, wardrobe, in, my, bedroom, is, very, old, new, room]
+            answers:
+              - The wardrobe in my bedroom is very old
+            hints: {шафа: [wardrobe], моїй: [my], спальні: [bedroom], дуже: [very], стара: [old]}
+            word: шафа
+          - type: translate
+            direction: [en, uk]
+            prompt: The mirror is near the door and the lamp is on the table
+            bank: [Дзеркало, біля, "дверей,", а, лампа, на, столі, підлозі, під]
+            answers:
+              - Дзеркало біля дверей, а лампа на столі
+            hints: {mirror: [дзеркало], near: [біля], door: [дверей], lamp: [лампа], table: [столі]}
+            word: дзеркало
+          - type: translate
+            direction: [uk, en]
+            prompt: Мені треба рушник і ковдра, будь ласка.
+            bank: [I, need, a, towel, and, a, blanket, please, pillow]
+            answers:
+              - I need a towel and a blanket please
+            hints: {мені: [I], треба: [need], рушник: [towel], ковдра: [blanket]}
+            word: рушник
+  - kind: chest
+  # Puck 5 mixes everything: the new words from pucks 1 and 2, and the older
+  # vocabulary puck 3 refreshed, in the same sentences.
+  - kind: unit_review
+    label: Housewarming
+    art: trophy
+    lessons:
+      - xp: 20
+        challenges:
+          - type: match
+            direction: [uk, en]
+            pairs:
+              - target: двері
+                source: door
+              - target: килим
+                source: carpet
+              - target: дзеркало
+                source: mirror
+              - target: кава
+                source: coffee
+              - target: погода
+                source: weather
+          - type: translate
+            direction: [en, uk]
+            prompt: Good morning, can I have coffee please
+            bank: [Добрий, "ранок,", можна, "каву,", "будь", ласка, чай]
+            answers:
+              - Добрий ранок, можна каву, будь ласка
+            hints: {good: [добрий], morning: [ранок], can: [можна], coffee: [каву], please: [будь, ласка]}
+            word: кава
+          - type: translate
+            direction: [uk, en]
+            prompt: Мій друг живе тут, у нього велика квартира.
+            bank: [My, friend, lives, here, he, has, a, big, flat, small, room]
+            answers:
+              - My friend lives here he has a big flat
+            hints: {друг: [friend], живе: [lives], тут: [here], велика: [big], квартира: [flat, apartment]}
+            word: жити
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Мені треба рушник, будь ласка.
+            bank: [Мені, треба, "рушник,", "будь", ласка, ковдра]
+            answers:
+              - Мені треба рушник, будь ласка
+            meaning: I need a towel please
+            word: рушник
+          - type: translate
+            direction: [en, uk]
+            prompt: In my room there is a bed, a wardrobe and a lamp
+            bank: [У, моїй, кімнаті, є, "ліжко,", шафа, і, лампа, диван]
+            answers:
+              - У моїй кімнаті є ліжко, шафа і лампа
+            hints: {room: [кімнаті], bed: [ліжко], wardrobe: [шафа], and: [і], lamp: [лампа]}
+            word: шафа
+          - type: translate
+            direction: [uk, en]
+            prompt: Сьогодні холодно, мені треба тепла ковдра.
+            bank: [It, is, cold, today, I, need, a, warm, blanket, towel, hot]
+            answers:
+              - It is cold today I need a warm blanket
+            hints: {сьогодні: [today], холодно: [cold], треба: [need], тепла: [warm], ковдра: [blanket]}
+            word: ковдра
+          - type: translate
+            direction: [en, uk]
+            prompt: Where is the bathroom please
+            bank: [Де, "ванна,", "будь", ласка, кухня, тут]
+            answers:
+              - Де ванна, будь ласка
+            hints: {where: [де], bathroom: [ванна], please: [будь, ласка]}
+            word: ванна
+          - type: translate
+            direction: [uk, en]
+            prompt: Штори зелені, а килим на підлозі червоний.
+            bank: [The, curtains, are, green, and, the, carpet, on, the, floor, is, red, wall]
+            answers:
+              - The curtains are green and the carpet on the floor is red
+            hints: {штори: [curtains], зелені: [green], килим: [carpet], підлозі: [floor], червоний: [red]}
+            word: килим
+          - type: gapFill
+            direction: [uk, uk]
+            prompt: Можна рушник, ___ ласка?
+            choices: [будь, дуже, тут]
+            answers: [будь]
+            hints: {можна: [can I], рушник: [towel], ласка: [please]}
+            word: рушник
+      - xp: 20
+        challenges:
+          - type: listenMatch
+            direction: [uk, en]
+            pairs:
+              - target: ліжко
+                source: bed
+              - target: подушка
+                source: pillow
+              - target: стіна
+                source: wall
+              - target: чай
+                source: tea
+              - target: таксі
+                source: taxi
+          - type: translate
+            direction: [uk, en]
+            prompt: Дякую, дуже гарна квартира!
+            bank: [Thank, you, a, very, nice, flat, big, house]
+            answers:
+              - Thank you a very nice flat
+            hints: {дякую: [thank you], дуже: [very], гарна: [nice, beautiful], квартира: [flat, apartment]}
+            word: квартира
+          - type: translate
+            direction: [en, uk]
+            prompt: I am reading on the sofa and my cat is sleeping under the bed
+            bank: [Я, читаю, на, "дивані,", а, мій, кіт, спить, під, ліжком, килимі]
+            answers:
+              - Я читаю на дивані, а мій кіт спить під ліжком
+            hints: {reading: [читаю], sofa: [дивані], cat: [кіт], sleeping: [спить], under: [під], bed: [ліжком]}
+            word: диван
+          - type: listenTap
+            direction: [uk, uk]
+            audio: Можна меню, будь ласка?
+            bank: [Можна, "меню,", "будь", ласка, рахунок]
+            answers:
+              - Можна меню, будь ласка
+            meaning: Can I have the menu please
+            word: меню
+          - type: translate
+            direction: [uk, en]
+            prompt: У ванній є дзеркало, але немає вікна.
+            bank: [There, is, a, mirror, in, the, bathroom, but, no, window, door]
+            answers:
+              - There is a mirror in the bathroom but no window
+            hints: {ванній: [bathroom], дзеркало: [mirror], але: [but], немає: [no], вікна: [window]}
+            word: дзеркало
+          - type: translate
+            direction: [en, uk]
+            prompt: My friend works here and lives near the park
+            bank: [Мій, друг, працює, "тут", і, живе, біля, парку, офісі]
+            answers:
+              - Мій друг працює тут і живе біля парку
+            hints: {friend: [друг], works: [працює], here: [тут], lives: [живе], near: [біля], park: [парку]}
+            word: друг
+          - type: translate
+            direction: [uk, en]
+            prompt: Ви не знаєте, де тут кафе?
+            bank: [Do, you, not, know, where, there, is, a, cafe, here, restaurant]
+            answers:
+              - Do you not know where there is a cafe here
+            hints: {знаєте: [you know], де: [where], тут: [here], кафе: [cafe]}
+            word: кафе
+          - type: translate
+            direction: [en, uk]
+            prompt: The lamp near my bed is very old
+            bank: [Лампа, біля, мого, ліжка, дуже, стара, нова, дивана]
+            answers:
+              - Лампа біля мого ліжка дуже стара
+              - Біля мого ліжка лампа дуже стара
+            hints: {lamp: [лампа], near: [біля], my: [мого], bed: [ліжка], very: [дуже], old: [стара]}
+            word: лампа
