@@ -31,6 +31,15 @@ const TYPES = ["assist", "gapFill", "translate", "match", "listenTap", "listenMa
 const CHOICE_TYPES = ["assist", "gapFill"];
 // What a lesson file writes where the missing word goes.
 const GAP = "___";
+
+// A bank has to SPELL the answer, counted -- but it does not have to punctuate
+// it. Tiles carry no commas: a tile reading "скрип," announces where the clause
+// ends before the sentence has been built, which gives the word order away. The
+// grader ignores punctuation anywhere in an answer, so the tiles can too, and
+// this compares the two on their words alone.
+function bankToken(word) {
+  return String(word).replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+}
 // The two that are spoken rather than printed. They carry no prompt: what is
 // said IS the answer, so there is nothing to show before it has been given.
 // Typing is not a type -- it is the other way to answer a word-bank question.
@@ -145,11 +154,11 @@ function checkChallenge(file, prefix, index, challenge) {
     // happen to spell it.
     for (const answer of answers.slice(0, 1)) {
       const spare = new Map();
-      for (const word of bank) {
+      for (const word of bank.map(bankToken).filter(Boolean)) {
         spare.set(word, (spare.get(word) || 0) + 1);
       }
       const missing = [];
-      for (const word of answer.split(/\s+/).filter(Boolean)) {
+      for (const word of answer.split(/\s+/).map(bankToken).filter(Boolean)) {
         const left = spare.get(word) || 0;
         if (left) {
           spare.set(word, left - 1);

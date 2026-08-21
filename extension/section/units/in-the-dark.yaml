@@ -143,7 +143,7 @@ pucks:
           - type: translate
             direction: [uk, en]
             prompt: Іди нагору, там світло.
-            bank: [Go, "upstairs,", there, is, light, there, dark, stairs]
+            bank: [Go, upstairs, there, is, light, there, dark, stairs]
             answers:
               - Go upstairs, there is light there
             hints: {іди: [go], нагору: [upstairs], там: [there], світло: [light]}
@@ -151,7 +151,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: At night there is a creak on the stairs and I do not sleep
-            bank: [Уночі, на, сходах, "скрип,", і, я, не, сплю, темно]
+            bank: [Уночі, на, сходах, скрип, і, я, не, сплю, темно]
             answers:
               - Уночі на сходах скрип, і я не сплю
             hints: {night: [уночі], creak: [скрип], stairs: [сходах], sleep: [сплю]}
@@ -202,7 +202,7 @@ pucks:
           - type: listenTap
             direction: [uk, uk]
             audio: Зачиняй вікно, будь ласка.
-            bank: [Зачиняй, "вікно,", "будь", ласка, двері]
+            bank: [Зачиняй, вікно, будь, ласка, двері]
             answers:
               - Зачиняй вікно, будь ласка
             meaning: Shut the window please
@@ -229,7 +229,7 @@ pucks:
           - type: translate
             direction: [uk, en]
             prompt: Зачиняй двері, у льоху хтось є.
-            bank: [Shut, the, "door,", there, is, someone, in, the, cellar, window]
+            bank: [Shut, the, door, there, is, someone, in, the, cellar, window]
             answers:
               - Shut the door, there is someone in the cellar
             hints: {зачиняй: [shut], двері: [door], льоху: [cellar], хтось: [someone]}
@@ -273,7 +273,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: It is dark upstairs, and I do not want to go there
-            bank: [Нагорі, "темно,", і, я, не, хочу, іти, туди, льох]
+            bank: [Нагорі, темно, і, я, не, хочу, іти, туди, льох]
             answers:
               - Нагорі темно, і я не хочу іти туди
             hints: {dark: [темно], upstairs: [нагорі], want: [хочу], go: [іти], there: [туди]}
@@ -295,7 +295,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: Shut the cellar door, it is creepy there
-            bank: [Зачиняй, двері, в, "льох,", там, моторошно, темно, нагору]
+            bank: [Зачиняй, двері, в, льох, там, моторошно, темно, нагору]
             answers:
               - Зачиняй двері в льох, там моторошно
             hints: {shut: [зачиняй], door: [двері], cellar: [льох], creepy: [моторошно]}
@@ -334,7 +334,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: Shut the windows, it is cold in the house at night
-            bank: [Зачиняй, "вікна,", уночі, в, домі, холодно, двері, темно]
+            bank: [Зачиняй, вікна, уночі, в, домі, холодно, двері, темно]
             answers:
               - Зачиняй вікна, уночі в домі холодно
             hints: {shut: [зачиняй], windows: [вікна], cold: [холодно], house: [домі], night: [уночі]}
@@ -381,7 +381,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: I do not know who this guest is
-            bank: [Я, не, "знаю,", хто, цей, гість, дух]
+            bank: [Я, не, знаю, хто, цей, гість, дух]
             answers:
               - Я не знаю, хто цей гість
             hints: {I: [я], not: [не], know: [знаю], who: [хто], guest: [гість]}
@@ -389,7 +389,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: The ghost is somewhere in the cellar, in the darkness
-            bank: [Дух, десь, у, "льоху,", в, темряві, гість, нагору]
+            bank: [Дух, десь, у, льоху, в, темряві, гість, нагору]
             answers:
               - Дух десь у льоху, в темряві
             hints: {ghost: [дух], somewhere: [десь], cellar: [льоху], darkness: [темряві]}
@@ -413,7 +413,7 @@ pucks:
           - type: translate
             direction: [uk, en]
             prompt: Уночі в домі дух, а не гість.
-            bank: [At, night, there, is, a, ghost, in, the, "house,", not, a, guest, cellar]
+            bank: [At, night, there, is, a, ghost, in, the, house, not, a, guest, cellar]
             answers:
               - At night there is a ghost in the house, not a guest
             hints: {уночі: [at night], домі: [house], дух: [ghost, spirit], гість: [guest]}
@@ -457,7 +457,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: I do not know what creature this is
-            bank: [Я, не, "знаю,", що, це, за, істота, дух]
+            bank: [Я, не, знаю, що, це, за, істота, дух]
             answers:
               - Я не знаю, що це за істота
             hints: {I: [я], know: [знаю], what: [що], creature: [істота]}
@@ -494,7 +494,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: The ghost whispers, but I do not understand
-            bank: [Дух, "шепоче,", але, я, не, розумію, істота]
+            bank: [Дух, шепоче, але, я, не, розумію, істота]
             answers:
               - Дух шепоче, але я не розумію
             hints: {ghost: [дух], whispers: [шепоче], but: [але], understand: [розумію]}
@@ -537,7 +537,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: You are very brave, but I am scared
-            bank: [Ти, дуже, "хоробрий,", але, мені, страшно, істота]
+            bank: [Ти, дуже, хоробрий, але, мені, страшно, істота]
             answers:
               - Ти дуже хоробрий, але мені страшно
             hints: {you: [ти], very: [дуже], brave: [хоробрий], but: [але], scared: [страшно]}
@@ -562,7 +562,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: Our guest is not brave, he does not want to go into the cellar
-            bank: [Наш, гість, не, "хоробрий,", він, не, хоче, іти, в, льох, дух]
+            bank: [Наш, гість, не, хоробрий, він, не, хоче, іти, в, льох, дух]
             answers:
               - Наш гість не хоробрий, він не хоче іти в льох
             hints: {our: [наш], guest: [гість], brave: [хоробрий], want: [хоче], cellar: [льох]}
@@ -586,7 +586,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: Our guest says that a ghost lives in this house
-            bank: [Наш, гість, "говорить,", що, в, цьому, домі, живе, дух, істота]
+            bank: [Наш, гість, говорить, що, в, цьому, домі, живе, дух, істота]
             answers:
               - Наш гість говорить, що в цьому домі живе дух
             hints: {our: [наш], guest: [гість], says: [говорить], ghost: [дух], lives: [живе], house: [домі]}
@@ -594,7 +594,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: This creature is whispering, and I am very scared
-            bank: [Ця, істота, "шепоче,", і, мені, дуже, страшно, хоробрий]
+            bank: [Ця, істота, шепоче, і, мені, дуже, страшно, хоробрий]
             answers:
               - Ця істота шепоче, і мені дуже страшно
             hints: {creature: [істота], whispering: [шепоче], very: [дуже], scared: [страшно]}
@@ -622,7 +622,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: Our guest is brave, but I am not
-            bank: [Наш, гість, "хоробрий,", а, я, ні, страшно, дух]
+            bank: [Наш, гість, хоробрий, а, я, ні, страшно, дух]
             answers:
               - Наш гість хоробрий, а я ні
             hints: {our: [наш], guest: [гість], brave: [хоробрий], but: [а], not: [ні]}
@@ -638,7 +638,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: The guest is brave, but the creature in the cellar is very scary
-            bank: [Гість, "хоробрий,", але, істота, в, льоху, дуже, страшна, дух]
+            bank: [Гість, хоробрий, але, істота, в, льоху, дуже, страшна, дух]
             answers:
               - Гість хоробрий, але істота в льоху дуже страшна
             hints: {guest: [гість], brave: [хоробрий], creature: [істота], cellar: [льоху], scary: [страшна]}
@@ -646,7 +646,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: At night I do not want to go upstairs, it is scary there
-            bank: [Уночі, я, не, хочу, іти, "нагору,", там, страшно, льох]
+            bank: [Уночі, я, не, хочу, іти, нагору, там, страшно, льох]
             answers:
               - Уночі я не хочу іти нагору, там страшно
             hints: {night: [уночі], want: [хочу], go: [іти], upstairs: [нагору], there: [там], scary: [страшно]}
@@ -740,7 +740,7 @@ pucks:
           - type: translate
             direction: [uk, en]
             prompt: Моя мама учитель, а тато лікар.
-            bank: [My, mother, is, a, "teacher,", and, my, father, is, a, doctor, sister]
+            bank: [My, mother, is, a, teacher, and, my, father, is, a, doctor, sister]
             answers:
               - My mother is a teacher, and my father is a doctor
             hints: {мама: [mother, mom], учитель: [teacher], тато: [father, dad], лікар: [doctor]}
@@ -757,7 +757,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: On Monday I work, and on Sunday I sleep
-            bank: [У, понеділок, я, "працюю,", а, в, неділю, я, сплю, суботу]
+            bank: [У, понеділок, я, працюю, а, в, неділю, я, сплю, суботу]
             answers:
               - У понеділок я працюю, а в неділю я сплю
             hints: {monday: [понеділок], work: [працюю], sunday: [неділю], sleep: [сплю]}
@@ -773,7 +773,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: I am not working today, I am at home
-            bank: [Сьогодні, я, не, "працюю,", я, вдома, завтра, сплю]
+            bank: [Сьогодні, я, не, працюю, я, вдома, завтра, сплю]
             answers:
               - Сьогодні я не працюю, я вдома
             hints: {working: [працюю], today: [сьогодні], home: [вдома]}
@@ -781,7 +781,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: Excuse me, what time is it now
-            bank: ["Вибачте,", котра, зараз, година, час, день]
+            bank: [Вибачте, котра, зараз, година, час, день]
             answers:
               - Вибачте, котра зараз година
             hints: {excuse: [вибачте], what: [котра], time: [година], now: [зараз]}
@@ -789,7 +789,7 @@ pucks:
           - type: translate
             direction: [uk, en]
             prompt: Я працюю щодня, але не в неділю.
-            bank: [I, work, every, "day,", but, not, on, Sunday, Saturday]
+            bank: [I, work, every, day, but, not, on, Sunday, Saturday]
             answers:
               - I work every day, but not on Sunday
             hints: {працюю: [work], щодня: [every day], але: [but], неділю: [Sunday]}
@@ -828,7 +828,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: One ticket to Odesa please
-            bank: [Один, квиток, до, "Одеси,", "будь", ласка, два]
+            bank: [Один, квиток, до, Одеси, будь, ласка, два]
             answers:
               - Один квиток до Одеси, будь ласка
             hints: {one: [один], ticket: [квиток], odesa: [одеси], please: [будь, ласка]}
@@ -880,7 +880,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: Excuse me, where is the ticket office at the station
-            bank: ["Вибачте,", де, каса, на, вокзалі, довідка, аеропорт]
+            bank: [Вибачте, де, каса, на, вокзалі, довідка, аеропорт]
             answers:
               - Вибачте, де каса на вокзалі
             hints: {excuse: [вибачте], ticket: [каса], office: [каса], station: [вокзалі]}
@@ -924,7 +924,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: At night I shut the doors, because it is creepy in this house
-            bank: [Уночі, я, зачиняю, "двері,", тому, що, в, цьому, домі, моторошно, страшно]
+            bank: [Уночі, я, зачиняю, двері, тому, що, в, цьому, домі, моторошно, страшно]
             answers:
               - Уночі я зачиняю двері, тому що в цьому домі моторошно
             hints: {night: [уночі], shut: [зачиняю], doors: [двері], because: [тому, що], creepy: [моторошно], house: [домі]}
@@ -939,7 +939,7 @@ pucks:
           - type: listenTap
             direction: [uk, uk]
             audio: У темряві хтось шепоче, і мені страшно.
-            bank: [У, темряві, хтось, "шепоче,", і, мені, страшно, льоху, спить]
+            bank: [У, темряві, хтось, шепоче, і, мені, страшно, льоху, спить]
             answers:
               - У темряві хтось шепоче, і мені страшно
             meaning: Someone is whispering in the darkness, and I am scared
@@ -947,7 +947,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: At night there is a creak on the stairs, but my cat sleeps
-            bank: [Уночі, на, сходах, "скрип,", але, мій, кіт, спить, темряві]
+            bank: [Уночі, на, сходах, скрип, але, мій, кіт, спить, темряві]
             answers:
               - Уночі на сходах скрип, але мій кіт спить
             hints: {night: [уночі], creak: [скрип], stairs: [сходах], but: [але], cat: [кіт], sleeps: [спить]}
@@ -962,7 +962,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: I am scared, because someone is whispering in the house
-            bank: [Мені, "страшно,", тому, що, в, домі, хтось, шепоче, істота]
+            bank: [Мені, страшно, тому, що, в, домі, хтось, шепоче, істота]
             answers:
               - Мені страшно, тому що в домі хтось шепоче
             hints: {scared: [страшно], because: [тому, що], someone: [хтось], whispering: [шепоче], house: [домі]}
@@ -970,7 +970,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: Our guest is brave, but he does not want to go into the cellar at night
-            bank: [Наш, гість, "хоробрий,", але, він, не, хоче, іти, в, льох, уночі, дух]
+            bank: [Наш, гість, хоробрий, але, він, не, хоче, іти, в, льох, уночі, дух]
             answers:
               - Наш гість хоробрий, але він не хоче іти в льох уночі
               - Уночі наш гість хоробрий, але він не хоче іти в льох
@@ -1003,7 +1003,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: I do not know what is whispering in the cellar, and I am scared
-            bank: [Я, не, "знаю,", що, шепоче, в, "льоху,", і, мені, страшно, істота]
+            bank: [Я, не, знаю, що, шепоче, в, льоху, і, мені, страшно, істота]
             answers:
               - Я не знаю, що шепоче в льоху, і мені страшно
             hints: {I: [я], know: [знаю], what: [що], whispering: [шепоче], cellar: [льоху], scared: [страшно]}
@@ -1011,7 +1011,7 @@ pucks:
           - type: translate
             direction: [uk, en]
             prompt: Наш гість хоробрий, він спить у льоху.
-            bank: [Our, guest, is, "brave,", he, sleeps, in, the, cellar, scared, upstairs]
+            bank: [Our, guest, is, brave, he, sleeps, in, the, cellar, scared, upstairs]
             answers:
               - Our guest is brave, he sleeps in the cellar
             hints: {гість: [guest], хоробрий: [brave], спить: [sleeps], льоху: [cellar]}
@@ -1019,7 +1019,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: Go upstairs and shut the window, it is cold in this house
-            bank: [Іди, нагору, і, зачиняй, "вікно,", в, цьому, домі, холодно, льох]
+            bank: [Іди, нагору, і, зачиняй, вікно, в, цьому, домі, холодно, льох]
             answers:
               - Іди нагору і зачиняй вікно, в цьому домі холодно
             hints: {go: [іди], upstairs: [нагору], shut: [зачиняй], window: [вікно], house: [домі], cold: [холодно]}
@@ -1027,7 +1027,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: This creature is very scary, but my cat is brave
-            bank: [Ця, істота, дуже, "страшна,", але, мій, кіт, хоробрий, дух]
+            bank: [Ця, істота, дуже, страшна, але, мій, кіт, хоробрий, дух]
             answers:
               - Ця істота дуже страшна, але мій кіт хоробрий
             hints: {creature: [істота], very: [дуже], scary: [страшна], but: [але], cat: [кіт], brave: [хоробрий]}
@@ -1042,7 +1042,7 @@ pucks:
           - type: listenTap
             direction: [uk, uk]
             audio: Зачиняй двері, у льоху моторошно.
-            bank: [Зачиняй, "двері,", у, льоху, моторошно, темно, нагору]
+            bank: [Зачиняй, двері, у, льоху, моторошно, темно, нагору]
             answers:
               - Зачиняй двері, у льоху моторошно
             meaning: Shut the door, it is creepy in the cellar
@@ -1050,7 +1050,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: A ghost lives in this old house, and at night it whispers
-            bank: [У, цьому, старому, домі, живе, "дух,", і, уночі, він, шепоче, істота]
+            bank: [У, цьому, старому, домі, живе, дух, і, уночі, він, шепоче, істота]
             answers:
               - У цьому старому домі живе дух, і уночі він шепоче
             hints: {ghost: [дух], lives: [живе], old: [старому], house: [домі], night: [уночі], whispers: [шепоче]}
@@ -1058,7 +1058,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: I do not want to go into the cellar, it is very creepy there
-            bank: [Я, не, хочу, іти, в, "льох,", там, дуже, моторошно, страшно]
+            bank: [Я, не, хочу, іти, в, льох, там, дуже, моторошно, страшно]
             answers:
               - Я не хочу іти в льох, там дуже моторошно
             hints: {want: [хочу], go: [іти], cellar: [льох], very: [дуже], creepy: [моторошно], there: [там]}
@@ -1081,7 +1081,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: At night someone whispers upstairs, and I do not sleep
-            bank: [Уночі, хтось, шепоче, "нагорі,", і, я, не, сплю, льоху]
+            bank: [Уночі, хтось, шепоче, нагорі, і, я, не, сплю, льоху]
             answers:
               - Уночі хтось шепоче нагорі, і я не сплю
             hints: {night: [уночі], someone: [хтось], whispers: [шепоче], upstairs: [нагорі], sleep: [сплю]}
@@ -1089,7 +1089,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: The guest says that the creature in the cellar is not scary
-            bank: [Гість, "говорить,", що, істота, в, льоху, не, страшна, а, хоробра]
+            bank: [Гість, говорить, що, істота, в, льоху, не, страшна, а, хоробра]
             answers:
               - Гість говорить, що істота в льоху не страшна
             hints: {guest: [гість], says: [говорить], creature: [істота], cellar: [льоху], scary: [страшна]}
@@ -1097,7 +1097,7 @@ pucks:
           - type: listenTap
             direction: [uk, uk]
             audio: Мені страшно, тут дуже темно.
-            bank: [Мені, "страшно,", тут, дуже, темно, моторошно, льоху]
+            bank: [Мені, страшно, тут, дуже, темно, моторошно, льоху]
             answers:
               - Мені страшно, тут дуже темно
             meaning: I am scared, it is very dark here
@@ -1105,7 +1105,7 @@ pucks:
           - type: translate
             direction: [uk, en]
             prompt: Дух у льоху шепоче, але я не розумію, що він говорить.
-            bank: [The, ghost, in, the, cellar, "whispers,", but, I, do, not, understand, what, it, says, creature]
+            bank: [The, ghost, in, the, cellar, whispers, but, I, do, not, understand, what, it, says, creature]
             answers:
               - The ghost in the cellar whispers, but I do not understand what it says
             hints: {дух: [ghost, spirit], льоху: [cellar], шепоче: [whispers], розумію: [understand], говорить: [says]}
@@ -1120,7 +1120,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: My cat is brave, he sleeps in the cellar in the darkness
-            bank: [Мій, кіт, "хоробрий,", він, спить, у, льоху, в, темряві, страшний]
+            bank: [Мій, кіт, хоробрий, він, спить, у, льоху, в, темряві, страшний]
             answers:
               - Мій кіт хоробрий, він спить у льоху в темряві
             hints: {my: [мій], cat: [кіт], brave: [хоробрий], sleeps: [спить], cellar: [льоху], darkness: [темряві]}
@@ -1128,7 +1128,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: This house is very creepy, but our guest wants to sleep here
-            bank: [Цей, дім, дуже, "моторошний,", але, наш, гість, хоче, спати, тут, льох]
+            bank: [Цей, дім, дуже, моторошний, але, наш, гість, хоче, спати, тут, льох]
             answers:
               - Цей дім дуже моторошний, але наш гість хоче спати тут
             hints: {house: [дім], very: [дуже], creepy: [моторошний], guest: [гість], wants: [хоче], sleep: [спати]}
@@ -1136,7 +1136,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: Go upstairs, it is very scary in the cellar
-            bank: [Іди, "нагору,", у, льоху, дуже, страшно, моторошно, темно]
+            bank: [Іди, нагору, у, льоху, дуже, страшно, моторошно, темно]
             answers:
               - Іди нагору, у льоху дуже страшно
             hints: {go: [іди], upstairs: [нагору], very: [дуже], scary: [страшно], cellar: [льоху]}
@@ -1166,7 +1166,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: My sister is a doctor, but she is scared of the darkness
-            bank: [Моя, сестра, "лікар,", але, їй, страшно, в, темряві, хоробра]
+            bank: [Моя, сестра, лікар, але, їй, страшно, в, темряві, хоробра]
             answers:
               - Моя сестра лікар, але їй страшно в темряві
             hints: {my: [моя], sister: [сестра], doctor: [лікар], scared: [страшно], darkness: [темряві]}
@@ -1189,7 +1189,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: On Monday I work, but at night I do not sleep, because of the creak on the stairs
-            bank: [У, понеділок, я, "працюю,", але, уночі, я, не, "сплю,", тому, що, на, сходах, скрип, льоху]
+            bank: [У, понеділок, я, працюю, але, уночі, я, не, сплю, тому, що, на, сходах, скрип, льоху]
             answers:
               - У понеділок я працюю, але уночі я не сплю, тому що на сходах скрип
             hints: {monday: [понеділок], work: [працюю], night: [уночі], sleep: [сплю], creak: [скрип], stairs: [сходах]}
@@ -1197,7 +1197,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: My brother is brave, but he does not want to sleep in this house
-            bank: [Мій, брат, "хоробрий,", але, він, не, хоче, спати, в, цьому, домі, льоху]
+            bank: [Мій, брат, хоробрий, але, він, не, хоче, спати, в, цьому, домі, льоху]
             answers:
               - Мій брат хоробрий, але він не хоче спати в цьому домі
             hints: {my: [мій], brother: [брат], brave: [хоробрий], want: [хоче], sleep: [спати], house: [домі]}
@@ -1205,7 +1205,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: Excuse me, is there a guest in this house
-            bank: ["Вибачте,", в, цьому, домі, є, гість, дух, льох]
+            bank: [Вибачте, в, цьому, домі, є, гість, дух, льох]
             answers:
               - Вибачте, в цьому домі є гість
             hints: {excuse: [вибачте], house: [домі], guest: [гість]}
@@ -1213,7 +1213,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: I am not working today, because there is a guest in the house
-            bank: [Сьогодні, я, не, "працюю,", тому, що, в, домі, гість, дух]
+            bank: [Сьогодні, я, не, працюю, тому, що, в, домі, гість, дух]
             answers:
               - Сьогодні я не працюю, тому що в домі гість
             hints: {working: [працюю], today: [сьогодні], because: [тому, що], guest: [гість], house: [домі]}
@@ -1230,7 +1230,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: Our guest is a teacher, but he is very creepy
-            bank: [Наш, гість, "учитель,", але, він, дуже, моторошний, лікар]
+            bank: [Наш, гість, учитель, але, він, дуже, моторошний, лікар]
             answers:
               - Наш гість учитель, але він дуже моторошний
             hints: {our: [наш], guest: [гість], teacher: [учитель], very: [дуже], creepy: [моторошний]}
@@ -1251,7 +1251,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: Tomorrow I want to go to Odesa, because this house is very scary
-            bank: [Завтра, я, хочу, їхати, в, "Одесу,", тому, що, цей, дім, дуже, страшний, льох]
+            bank: [Завтра, я, хочу, їхати, в, Одесу, тому, що, цей, дім, дуже, страшний, льох]
             answers:
               - Завтра я хочу їхати в Одесу, тому що цей дім дуже страшний
             hints: {tomorrow: [завтра], want: [хочу], go: [їхати], odesa: [одесу], house: [дім], scary: [страшний]}
@@ -1259,7 +1259,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: On Saturday my father is at home, and I shut the doors and the windows
-            bank: [У, суботу, мій, батько, "вдома,", а, я, зачиняю, двері, і, вікна, неділю]
+            bank: [У, суботу, мій, батько, вдома, а, я, зачиняю, двері, і, вікна, неділю]
             answers:
               - У суботу мій батько вдома, а я зачиняю двері і вікна
             hints: {saturday: [суботу], father: [батько], home: [вдома], shut: [зачиняю], doors: [двері], windows: [вікна]}
@@ -1267,7 +1267,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: My friend is brave, he does not want to go to the hospital
-            bank: [Мій, друг, "хоробрий,", він, не, хоче, іти, в, лікарню, льох]
+            bank: [Мій, друг, хоробрий, він, не, хоче, іти, в, лікарню, льох]
             answers:
               - Мій друг хоробрий, він не хоче іти в лікарню
             hints: {my: [мій], friend: [друг], brave: [хоробрий], want: [хоче], hospital: [лікарню]}
@@ -1282,7 +1282,7 @@ pucks:
           - type: listenTap
             direction: [uk, uk]
             audio: Іди нагору, мені тут страшно.
-            bank: [Іди, "нагору,", мені, тут, страшно, темно, льоху]
+            bank: [Іди, нагору, мені, тут, страшно, темно, льоху]
             answers:
               - Іди нагору, мені тут страшно
             meaning: Go upstairs, I am scared here
@@ -1290,7 +1290,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: I have a ticket for Thursday, and tomorrow I am not working
-            bank: [У, мене, є, квиток, на, "четвер,", а, завтра, я, не, працюю, поїзд]
+            bank: [У, мене, є, квиток, на, четвер, а, завтра, я, не, працюю, поїзд]
             answers:
               - У мене є квиток на четвер, а завтра я не працюю
             hints: {ticket: [квиток], thursday: [четвер], tomorrow: [завтра], working: [працюю]}

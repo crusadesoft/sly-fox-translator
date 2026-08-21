@@ -248,7 +248,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: The walls in the bathroom are white and the floor is cold
-            bank: [Стіни, у, "ванній", "білі,", а, підлога, холодна, тепла, зелені]
+            bank: [Стіни, у, ванній, білі, а, підлога, холодна, тепла, зелені]
             answers:
               - Стіни у ванній білі, а підлога холодна
             hints: {walls: [стіни], bathroom: [ванній], white: [білі], floor: [підлога], cold: [холодна]}
@@ -290,7 +290,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: The door is white and the wall is green
-            bank: [Двері, "білі,", а, стіна, зелена, біла, підлога]
+            bank: [Двері, білі, а, стіна, зелена, біла, підлога]
             answers:
               - Двері білі, а стіна зелена
             hints: {door: [двері], white: [білі], wall: [стіна], green: [зелена]}
@@ -507,7 +507,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: I need a blanket please
-            bank: [Мені, треба, "ковдра,", "будь", ласка, подушка, рушник]
+            bank: [Мені, треба, ковдра, будь, ласка, подушка, рушник]
             answers:
               - Мені треба ковдра, будь ласка
             hints: {I: [мені], need: [треба], blanket: [ковдра], please: [будь, ласка]}
@@ -531,7 +531,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: Can I have a pillow please
-            bank: [Можна, "подушку,", "будь", ласка, ковдру, рушник]
+            bank: [Можна, подушку, будь, ласка, ковдру, рушник]
             answers:
               - Можна подушку, будь ласка
             hints: {can: [можна], pillow: [подушку], please: [будь, ласка]}
@@ -555,7 +555,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: The carpet is old but very comfortable
-            bank: [Килим, "старий,", але, дуже, зручний, новий, шафа]
+            bank: [Килим, старий, але, дуже, зручний, новий, шафа]
             answers:
               - Килим старий, але дуже зручний
             hints: {carpet: [килим], old: [старий], but: [але], very: [дуже], comfortable: [зручний]}
@@ -571,7 +571,7 @@ pucks:
           - type: listenTap
             direction: [uk, uk]
             audio: Можна рушник, будь ласка?
-            bank: [Можна, "рушник,", "будь", ласка, ковдру]
+            bank: [Можна, рушник, будь, ласка, ковдру]
             answers:
               - Можна рушник, будь ласка
             meaning: Can I have a towel please
@@ -696,7 +696,7 @@ pucks:
           - type: translate
             direction: [uk, en]
             prompt: Мене звати Лінда, дуже приємно.
-            bank: [My, name, is, "Linda,", nice, to, meet, you, Victor]
+            bank: [My, name, is, Linda, nice, to, meet, you, Victor]
             answers:
               - My name is Linda, nice to meet you
             hints: {звати: [name], лінда: [Linda], приємно: [nice]}
@@ -706,7 +706,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: I want coffee please
-            bank: [Я, хочу, "каву,", "будь", ласка, чай, воду]
+            bank: [Я, хочу, каву, будь, ласка, чай, воду]
             answers:
               - Я хочу каву, будь ласка
             hints: {I: [я], want: [хочу], coffee: [каву], please: [будь, ласка]}
@@ -721,7 +721,7 @@ pucks:
           - type: listenTap
             direction: [uk, uk]
             audio: Можна меню, будь ласка?
-            bank: [Можна, "меню,", "будь", ласка, рахунок]
+            bank: [Можна, меню, будь, ласка, рахунок]
             answers:
               - Можна меню, будь ласка
             meaning: Can I have the menu please
@@ -745,7 +745,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: The bill please
-            bank: ["Рахунок,", "будь", ласка, меню, дякую]
+            bank: [Рахунок, будь, ласка, меню, дякую]
             answers:
               - Рахунок, будь ласка
             hints: {bill: [рахунок], please: [будь, ласка]}
@@ -836,7 +836,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: Thank you very much goodbye
-            bank: [Дуже, "дякую,", до, побачення, привіт, ласка]
+            bank: [Дуже, дякую, до, побачення, привіт, ласка]
             answers:
               - Дуже дякую, до побачення
             hints: {thank: [дякую], very: [дуже], goodbye: [до, побачення]}
@@ -872,7 +872,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: Can I have a blanket and a pillow please
-            bank: [Можна, ковдру, і, "подушку,", "будь", ласка, рушник]
+            bank: [Можна, ковдру, і, подушку, будь, ласка, рушник]
             answers:
               - Можна ковдру і подушку, будь ласка
             hints: {can: [можна], blanket: [ковдру], and: [і], pillow: [подушку], please: [будь, ласка]}
@@ -896,7 +896,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: The cat sleeps under the bed and my brother on the sofa
-            bank: [Кіт, спить, під, "ліжком,", а, мій, брат, на, дивані, килимі]
+            bank: [Кіт, спить, під, ліжком, а, мій, брат, на, дивані, килимі]
             answers:
               - Кіт спить під ліжком, а мій брат на дивані
             hints: {cat: [кіт], sleeps: [спить], under: [під], bed: [ліжком], brother: [брат], sofa: [дивані]}
@@ -912,7 +912,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: Where is the towel? In the bathroom near the mirror
-            bank: [Де, "рушник?", У, ванній, біля, дзеркала, лампи, на]
+            bank: [Де, рушник, У, ванній, біля, дзеркала, лампи, на]
             answers:
               - Де рушник? У ванній біля дзеркала
             hints: {where: [де], towel: [рушник], bathroom: [ванній], near: [біля], mirror: [дзеркала]}
@@ -978,7 +978,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: My bedroom is small but the bed is very comfortable
-            bank: [Моя, спальня, "маленька,", але, ліжко, дуже, зручне, велике, диван]
+            bank: [Моя, спальня, маленька, але, ліжко, дуже, зручне, велике, диван]
             answers:
               - Моя спальня маленька, але ліжко дуже зручне
             hints: {bedroom: [спальня], small: [маленька], but: [але], bed: [ліжко], very: [дуже], comfortable: [зручне]}
@@ -986,7 +986,7 @@ pucks:
           - type: translate
             direction: [uk, en]
             prompt: У ванній немає вікна, але є двері і дзеркало.
-            bank: [There, is, no, window, in, the, "bathroom,", but, there, is, a, door, and, a, mirror, wall]
+            bank: [There, is, no, window, in, the, bathroom, but, there, is, a, door, and, a, mirror, wall]
             answers:
               - There is no window in the bathroom, but there is a door and a mirror
             hints: {ванній: [bathroom], немає: [there is no], вікна: [window], але: [but], двері: [door], дзеркало: [mirror]}
@@ -994,7 +994,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: I do not want to sleep on the floor, I want a bed
-            bank: [Я, не, хочу, спати, на, "підлозі,", я, хочу, ліжко, диван]
+            bank: [Я, не, хочу, спати, на, підлозі, я, хочу, ліжко, диван]
             answers:
               - Я не хочу спати на підлозі, я хочу ліжко
             hints: {not: [не], want: [хочу], sleep: [спати], floor: [підлозі], bed: [ліжко]}
@@ -1011,7 +1011,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: The walls in our flat are white and the floor is warm
-            bank: [Стіни, у, нашій, квартирі, "білі,", а, підлога, тепла, холодна, зелені]
+            bank: [Стіни, у, нашій, квартирі, білі, а, підлога, тепла, холодна, зелені]
             answers:
               - Стіни у нашій квартирі білі, а підлога тепла
             hints: {walls: [стіни], our: [нашій], flat: [квартирі], white: [білі], floor: [підлога], warm: [тепла]}
@@ -1066,7 +1066,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: The mirror is near the door and the lamp is on the table
-            bank: [Дзеркало, біля, "дверей,", а, лампа, на, столі, підлозі, під]
+            bank: [Дзеркало, біля, дверей, а, лампа, на, столі, підлозі, під]
             answers:
               - Дзеркало біля дверей, а лампа на столі
             hints: {mirror: [дзеркало], near: [біля], door: [дверей], lamp: [лампа], table: [столі]}
@@ -1104,7 +1104,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: Good morning, can I have coffee please
-            bank: [Добрий, "ранок,", можна, "каву,", "будь", ласка, чай]
+            bank: [Добрий, ранок, можна, каву, будь, ласка, чай]
             answers:
               - Добрий ранок, можна каву, будь ласка
             hints: {good: [добрий], morning: [ранок], can: [можна], coffee: [каву], please: [будь, ласка]}
@@ -1120,7 +1120,7 @@ pucks:
           - type: listenTap
             direction: [uk, uk]
             audio: Мені треба рушник, будь ласка.
-            bank: [Мені, треба, "рушник,", "будь", ласка, ковдра]
+            bank: [Мені, треба, рушник, будь, ласка, ковдра]
             answers:
               - Мені треба рушник, будь ласка
             meaning: I need a towel please
@@ -1128,7 +1128,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: In my room there is a bed, a wardrobe and a lamp
-            bank: [У, моїй, кімнаті, є, "ліжко,", шафа, і, лампа, диван]
+            bank: [У, моїй, кімнаті, є, ліжко, шафа, і, лампа, диван]
             answers:
               - У моїй кімнаті є ліжко, шафа і лампа
             hints: {room: [кімнаті], bed: [ліжко], wardrobe: [шафа], and: [і], lamp: [лампа]}
@@ -1143,7 +1143,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: Where is the bathroom please
-            bank: [Де, "ванна,", "будь", ласка, кухня, тут]
+            bank: [Де, ванна, будь, ласка, кухня, тут]
             answers:
               - Де ванна, будь ласка
             hints: {where: [де], bathroom: [ванна], please: [будь, ласка]}
@@ -1188,7 +1188,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: I am reading on the sofa and my cat is sleeping under the bed
-            bank: [Я, читаю, на, "дивані,", а, мій, кіт, спить, під, ліжком, килимі]
+            bank: [Я, читаю, на, дивані, а, мій, кіт, спить, під, ліжком, килимі]
             answers:
               - Я читаю на дивані, а мій кіт спить під ліжком
             hints: {reading: [читаю], sofa: [дивані], cat: [кіт], sleeping: [спить], under: [під], bed: [ліжком]}
@@ -1196,7 +1196,7 @@ pucks:
           - type: listenTap
             direction: [uk, uk]
             audio: Можна меню, будь ласка?
-            bank: [Можна, "меню,", "будь", ласка, рахунок]
+            bank: [Можна, меню, будь, ласка, рахунок]
             answers:
               - Можна меню, будь ласка
             meaning: Can I have the menu please
@@ -1212,7 +1212,7 @@ pucks:
           - type: translate
             direction: [en, uk]
             prompt: My friend works here and lives near the park
-            bank: [Мій, друг, працює, "тут", і, живе, біля, парку, офісі]
+            bank: [Мій, друг, працює, тут, і, живе, біля, парку, офісі]
             answers:
               - Мій друг працює тут і живе біля парку
             hints: {friend: [друг], works: [працює], here: [тут], lives: [живе], near: [біля], park: [парку]}
