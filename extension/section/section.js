@@ -8,11 +8,46 @@
 // not a formula worth guessing at, so LAYOUT below is the measured table from
 // that same unit: the same left offsets, the same margins, in the same order.
 (() => {
+  // What a legendary run of a finished puck is worth, matching the figure on
+  // their own LEGENDARY button.
+  const LEGENDARY_XP = 40;
+
+  // Lucide's `rotate-ccw` (ISC), copied verbatim from lucide-icons/lucide.
+  // Duolingo has no "wipe this puck" control to lift a glyph from, because
+  // Duolingo has no such control.
+  const ROTATE_CCW = [
+    "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8",
+    "M3 3v5h5"
+  ];
+
+  function buildResetIcon() {
+    const svg = svgEl("svg", {
+      xmlns: "http://www.w3.org/2000/svg",
+      viewBox: "0 0 24 24",
+      width: "20",
+      height: "20",
+      fill: "none",
+      stroke: "currentColor",
+      "stroke-width": "2",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+      "aria-hidden": "true"
+    });
+    for (const d of ROTATE_CCW) {
+      svg.append(svgEl("path", { d }));
+    }
+    return svg;
+  }
+
   const ASSET = {
     starActive: "assets/path/ef9c771afdb674f0ff82fae25c6a7b0a.svg",
     starLocked: "assets/path/ddd21f172a2db0f5ef169c09b4d3badb.svg",
     dumbbell: "assets/path/09f58d40e31d28e089395af4c54d0c20.svg",
     trophy: "assets/path/7d84afaa096ff1f1d3f8c86d6c2c9542.svg",
+    // The white tick a finished puck wears in place of its star. Theirs comes
+    // in two fills; this is the white one, the gold `53727b0c…` being for the
+    // legendary puck.
+    check: "assets/path/bfa591f6854b4de08e1656b3e8ca084f.svg",
     chest: "assets/path/b841637c196f5be786d8b8578a42ffbf.svg",
     back: "assets/path/e013fd27fc6bd1d2fea85fe707b615cd.svg",
     guidebook: "assets/path/5b531828e59ae83aadb3d88e6b3a98a8.svg",
@@ -60,10 +95,13 @@
   const CHEST_SLOTS = [1, 5];
 
   // A locked star is drawn grey; the dumbbell and trophy carry their own
-  // colour in the asset, so they do not change with state.
+  // colour in the asset, so they do not change with state. A finished lesson or
+  // practice puck drops its face for a tick, which is how their path shows a
+  // puck is done. The trophy keeps its own -- a finished unit review is still a
+  // trophy on their path, not a tick.
   const ICONS = {
-    star: { locked: "starLocked", active: "starActive", done: "starActive" },
-    dumbbell: { locked: "dumbbell", active: "dumbbell", done: "dumbbell" },
+    star: { locked: "starLocked", active: "starActive", done: "check" },
+    dumbbell: { locked: "dumbbell", active: "dumbbell", done: "check" },
     trophy: { locked: "trophy", active: "trophy", done: "trophy" }
   };
 
@@ -274,20 +312,18 @@
     button.append(el("img", "_1B6UH", { alt: "", draggable: "false", src: ASSET[node.icon] }));
 
     // Only the current puck carries the ring, and only it gets the extra
-    // _1xsb4 margin that keeps the ring clear of its neighbours.
-    if (node.state !== "locked") {
+    // _1xsb4 margin that keeps the ring clear of its neighbours. A finished
+    // puck has nothing left to show progress towards, so on their path the ring
+    // goes with the last lesson and the puck stands on its own wearing a tick.
+    if (isActive) {
       hit.append(buildProgressRing(node.done / node.lessons));
-      const inner = el("div", "_1xsb4 _2t1Sd Fw74a");
-      inner.append(button);
-      if (isActive) {
-        inner.append(buildStartFlag());
-      }
-      hit.append(inner);
-    } else {
-      const inner = el("div", "_2t1Sd Fw74a");
-      inner.append(button);
-      hit.append(inner);
     }
+    const inner = el("div", isActive ? "_1xsb4 _2t1Sd Fw74a" : "_2t1Sd Fw74a");
+    inner.append(button);
+    if (isActive) {
+      inner.append(buildStartFlag());
+    }
+    hit.append(inner);
 
     wrap.append(hit);
     return wrap;
@@ -392,6 +428,52 @@
     const inner = el("div", "u_Jo7 _2yBgn");
     inner.append(headingWrap, progress, start);
 
+    // A finished puck grows a second, gold button underneath — their
+    // LEGENDARY. ._1nf5N is the bee/camel/cowbird button variant they paint it
+    // with. It replays the whole puck with the hints taken away.
+    if (node.state === "done" && unit.slug) {
+      const legendary = el("a", "_1rcV8 _1VYyp _1ursp _7jW2t PbV1v _2sYfM _1nf5N", { href: "#" });
+      legendary.dataset.slyFoxStart = "true";
+      legendary.dataset.slyFoxLocked = "false";
+      legendary.dataset.slyFoxNodeIndex = String(node.index);
+      legendary.dataset.slyFoxUnit = unit.slug;
+      legendary.dataset.slyFoxPuck = String(node.order);
+      legendary.dataset.slyFoxLegendary = "true";
+      legendary.textContent = `Legendary +${LEGENDARY_XP} XP`;
+      inner.append(legendary);
+    }
+
+    // Ours, not theirs: a way to put a puck back to untouched. Duolingo has no
+    // such thing, so it wears their borderless text-button classes rather than
+    // anything invented -- .bafGS is transparent with no border, ._3qh60 lays
+    // an icon and a label out in a column-flow grid, ._2caIK is the 20px icon
+    // slot, ._2Rt1l the uppercase label, ._1yHHi the snow text of the path.
+    //
+    // Wiping progress is annoying to do by accident and trivial to redo on
+    // purpose, so it asks once rather than opening a dialog: the first tap arms
+    // it, the second does it, and it disarms itself after a few seconds.
+    if (node.done > 0 && unit.slug) {
+      // .bafGS alone: transparent, no border, no padding. The button variants
+      // that go with it elsewhere (._2LoNU, .VzbUl) paint a fill from the
+      // web-ui button variable, which on this popover came out macaw blue.
+      // .__UZi and not ._1yHHi: the latter is snow text *and* a macaw fill, so
+      // the button came out bright blue on the popover. This one is a single
+      // colour-only rule.
+      const reset = el("button", "bafGS _1AgKJ __UZi", { type: "button" });
+      reset.style.marginTop = "12px";
+      reset.dataset.slyFoxReset = "true";
+      reset.dataset.slyFoxUnit = unit.slug;
+      reset.dataset.slyFoxNodeIndex = String(node.index);
+      const row = el("span", "_3qh60");
+      const slot = el("span", "_2caIK");
+      slot.append(buildResetIcon());
+      const label = el("span", "_2Rt1l");
+      label.textContent = node.state === "done" ? "Reset this puck" : "Reset progress";
+      row.append(slot, label);
+      reset.append(row);
+      inner.append(reset);
+    }
+
     const bubble = buildBubble(
       "_3zpnU _3OfAS _1o3g5 _2dBq4 _27rki",
       "_36bu_ _3RP1Q _1Fbw-",
@@ -432,6 +514,45 @@
     });
   }
 
+  // Put one puck back to untouched. Only that puck's count is removed, so the
+  // rest of the unit keeps its progress -- and because the pucks after it are
+  // locked behind it, wiping one naturally re-locks what came after.
+  let disarm = null;
+
+  function handleReset(button) {
+    const label = button.querySelector("._2Rt1l");
+
+    if (button.dataset.slyFoxArmed !== "true") {
+      button.dataset.slyFoxArmed = "true";
+      if (label) {
+        button.dataset.slyFoxLabel = label.textContent;
+        label.textContent = "Tap again to wipe it";
+      }
+      clearTimeout(disarm);
+      disarm = setTimeout(() => {
+        button.dataset.slyFoxArmed = "false";
+        if (label && button.dataset.slyFoxLabel) {
+          label.textContent = button.dataset.slyFoxLabel;
+        }
+      }, 4000);
+      return;
+    }
+
+    clearTimeout(disarm);
+    const slug = button.dataset.slyFoxUnit;
+    const index = button.dataset.slyFoxNodeIndex;
+    chrome.storage.local.get({ [SECTION_STORAGE_KEY]: null }, (stored) => {
+      const saved = stored[SECTION_STORAGE_KEY] || { version: 2, units: {} };
+      const units = { ...(saved.units || {}) };
+      const nodes = { ...((units[slug] || {}).nodes || {}) };
+      delete nodes[index];
+      units[slug] = { nodes };
+      chrome.storage.local.set({ [SECTION_STORAGE_KEY]: { version: 2, units } }, () => {
+        globalThis.location.reload();
+      });
+    });
+  }
+
   function render() {
     loadUnit().then((loaded) => {
       unit = loaded;
@@ -461,6 +582,13 @@
     mountCharacter(characterMount);
 
     document.addEventListener("click", (event) => {
+      const reset = event.target.closest("[data-sly-fox-reset]");
+      if (reset) {
+        event.preventDefault();
+        handleReset(reset);
+        return;
+      }
+
       const start = event.target.closest("[data-sly-fox-start]");
       if (start) {
         event.preventDefault();
@@ -469,7 +597,11 @@
           if (start.dataset.slyFoxUnit) {
             query.set("unit", start.dataset.slyFoxUnit);
             query.set("puck", start.dataset.slyFoxPuck);
-            query.set("lesson", start.dataset.slyFoxLessonIndex);
+            if (start.dataset.slyFoxLegendary === "true") {
+              query.set("legendary", "1");
+            } else {
+              query.set("lesson", start.dataset.slyFoxLessonIndex);
+            }
           }
           globalThis.location.href = `lesson.html?${query}`;
         }

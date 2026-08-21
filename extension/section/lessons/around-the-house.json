@@ -15,45 +15,112 @@
       "answer": "window",
       "hints": {
         "вікно": [
-          "window",
-          "a window"
+          "window"
         ]
       },
-      "badge": "new",
       "record": {
         "direction": "tg2en",
         "wordKey": "вікно"
-      }
+      },
+      "newWords": [
+        "вікно"
+      ]
     },
     {
-      "type": "translate",
-      "header": "Write this in English",
-      "prompt": "Це моє вікно.",
+      "type": "assist",
+      "prompt": "двері",
       "promptLang": "uk",
-      "answerLang": "en",
-      "bank": [
-        "This",
-        "is",
-        "my",
-        "window",
+      "choiceLang": "en",
+      "choices": [
         "door",
-        "large",
-        "not"
+        "window",
+        "chair"
       ],
-      "answer": "This is my window",
+      "answer": "door",
       "hints": {
-        "вікно": [
-          "window"
-        ],
-        "моє": [
-          "my"
-        ],
-        "це": [
-          "this",
-          "that",
-          "it"
+        "двері": [
+          "door"
         ]
-      }
+      },
+      "record": {
+        "direction": "tg2en",
+        "wordKey": "двері"
+      },
+      "newWords": [
+        "двері"
+      ]
+    },
+    {
+      "type": "assist",
+      "prompt": "стіл",
+      "promptLang": "uk",
+      "choiceLang": "en",
+      "choices": [
+        "table",
+        "chair",
+        "floor"
+      ],
+      "answer": "table",
+      "hints": {
+        "стіл": [
+          "table"
+        ]
+      },
+      "record": {
+        "direction": "tg2en",
+        "wordKey": "стіл"
+      },
+      "newWords": [
+        "стіл"
+      ]
+    },
+    {
+      "type": "assist",
+      "prompt": "стілець",
+      "promptLang": "uk",
+      "choiceLang": "en",
+      "choices": [
+        "chair",
+        "table",
+        "window"
+      ],
+      "answer": "chair",
+      "hints": {
+        "стілець": [
+          "chair"
+        ]
+      },
+      "record": {
+        "direction": "tg2en",
+        "wordKey": "стілець"
+      },
+      "newWords": [
+        "стілець"
+      ]
+    },
+    {
+      "type": "assist",
+      "prompt": "підлога",
+      "promptLang": "uk",
+      "choiceLang": "en",
+      "choices": [
+        "floor",
+        "door",
+        "table"
+      ],
+      "answer": "floor",
+      "hints": {
+        "підлога": [
+          "floor"
+        ]
+      },
+      "record": {
+        "direction": "tg2en",
+        "wordKey": "підлога"
+      },
+      "newWords": [
+        "підлога"
+      ]
     },
     {
       "type": "match",
@@ -75,14 +142,6 @@
           }
         },
         {
-          "target": "підлога",
-          "source": "floor",
-          "record": {
-            "direction": "tg2en",
-            "wordKey": "підлога"
-          }
-        },
-        {
           "target": "стіл",
           "source": "table",
           "record": {
@@ -97,29 +156,16 @@
             "direction": "tg2en",
             "wordKey": "стілець"
           }
+        },
+        {
+          "target": "підлога",
+          "source": "floor",
+          "record": {
+            "direction": "tg2en",
+            "wordKey": "підлога"
+          }
         }
       ]
-    },
-    {
-      "type": "assist",
-      "prompt": "door",
-      "promptLang": "en",
-      "choiceLang": "uk",
-      "choices": [
-        "двері",
-        "вікно",
-        "стіл"
-      ],
-      "answer": "двері",
-      "hints": {
-        "door": [
-          "двері"
-        ]
-      },
-      "record": {
-        "direction": "en2tg",
-        "wordKey": "двері"
-      }
     },
     {
       "type": "translate",

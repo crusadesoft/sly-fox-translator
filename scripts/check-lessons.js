@@ -16,7 +16,11 @@ const path = require("path");
 
 const DIR = path.resolve(__dirname, "../extension/section/lessons");
 const UNITS = path.resolve(__dirname, "../extension/section/units");
-const TYPES = ["assist", "translate", "match"];
+const TYPES = ["assist", "translate", "match", "listenTap", "listenMatch"];
+// The two that are spoken rather than printed. They carry no prompt: what is
+// said IS the answer, so there is nothing to show before it has been given.
+// Typing is not a type -- it is the other way to answer a word-bank question.
+const LISTEN_TYPES = ["listenTap", "listenMatch"];
 const PUCK_KINDS = ["skill", "practice", "unit_review", "chest"];
 const PUCK_SLOTS = 5;
 
@@ -45,10 +49,14 @@ function checkChallenge(file, prefix, index, challenge) {
     return;
   }
 
-  if (challenge.type === "match") {
+  if (challenge.type === "match" || challenge.type === "listenMatch") {
     const pairs = challenge.pairs || [];
-    if (pairs.length < 2) {
-      fail(file, where, `needs at least 2 pairs, has ${pairs.length}`);
+    // Always five, the way theirs is. A short match is not a gentler match --
+    // it is a different, easier exercise wearing the same clothes. If five
+    // taught words are not available yet, the match belongs later in the puck,
+    // not shrunk to fit where it is.
+    if (pairs.length !== MATCH_PAIRS) {
+      fail(file, where, `needs exactly ${MATCH_PAIRS} pairs, has ${pairs.length}`);
     }
     pairs.forEach((pair, at) => {
       if (!pair.target || !pair.source) {
@@ -58,11 +66,21 @@ function checkChallenge(file, prefix, index, challenge) {
     return;
   }
 
-  if (!challenge.prompt) {
+  const listening = LISTEN_TYPES.includes(challenge.type);
+
+  if (!challenge.prompt && !listening) {
     fail(file, where, "needs a prompt");
   }
   if (!challenge.answer && !(challenge.answers || []).length) {
     fail(file, where, "needs an answer");
+  }
+  if (listening) {
+    if (!challenge.audio && !challenge.answer) {
+      fail(file, where, "needs audio (or an answer to speak)");
+    }
+    if (!challenge.meaning) {
+      fail(file, where, "needs a meaning -- it is shown once the answer is in");
+    }
   }
 
   const answers = (challenge.answers && challenge.answers.length
@@ -83,7 +101,7 @@ function checkChallenge(file, prefix, index, challenge) {
     }
   }
 
-  if (challenge.type === "translate") {
+  if (challenge.type === "translate" || challenge.type === "listenTap") {
     const bank = challenge.bank || [];
     if (!bank.length) {
       fail(file, where, "needs a bank");
@@ -162,6 +180,138 @@ function checkUnit(file, unit) {
   return total;
 }
 
+// Every target-language word a unit shows, against the ones it ever declares as
+// new. A word that is used but never introduced simply never turns purple --
+// which is silent, and is exactly how a whole unit ended up with new adjectives
+// nobody was ever told were new. Word forms are not tracked (кухня and кухні are
+// two entries here), so this reports rather than fails: it is a list to read,
+// not a rule to satisfy.
+function auditNewWords(file, unit) {
+  const CYRILLIC = /[\u0400-\u04FF]/;
+  const declared = new Set();
+  const firstSeen = new Map();
+
+  const wordsIn = (text) =>
+    String(text || "")
+      .toLocaleLowerCase()
+      .split(/[^\p{L}\p{N}'\u2019]+/u)
+      .filter((word) => word && CYRILLIC.test(word));
+
+  (unit.pucks || [])
+    .filter((puck) => puck.kind !== "chest")
+    .forEach((puck, pi) => {
+      (puck.lessons || []).forEach((lesson, li) => {
+        (lesson.challenges || []).forEach((challenge) => {
+          for (const word of challenge.newWords || []) {
+            declared.add(String(word).toLocaleLowerCase());
+          }
+          if (challenge.badge === "new" && challenge.prompt) {
+            declared.add(String(challenge.prompt).toLocaleLowerCase());
+          }
+          const texts = [challenge.prompt, challenge.answer, ...(challenge.answers || [])];
+          for (const pair of challenge.pairs || []) {
+            texts.push(pair.target);
+          }
+          for (const text of texts) {
+            for (const word of wordsIn(text)) {
+              if (!firstSeen.has(word)) {
+                firstSeen.set(word, `${puck.label || "puck " + (pi + 1)} lesson ${li + 1}`);
+              }
+            }
+          }
+        });
+      });
+    });
+
+  const orphans = [...firstSeen].filter(([word]) => !declared.has(word));
+  if (orphans.length) {
+    console.log(`  ${file}: ${orphans.length} word(s) appear without ever being marked new --`);
+    for (const [word, where] of orphans) {
+      console.log(`      ${word} (first in ${where})`);
+    }
+  }
+}
+
+// Matching drills recognise; they do not teach. Five pairs put five words in
+// front of someone at once with no gloss, no sentence and no context, so every
+// word in a matching challenge has to have been introduced by an earlier
+// challenge that actually teaches it -- a one-word `assist`, or a sentence.
+// Otherwise the first lesson of a unit hands the learner five strangers and
+// calls it practice.
+//
+// "Introduced" means the word appeared in a non-matching challenge earlier in
+// the same file, in order. Matching challenges never introduce anything.
+const MATCH_TYPES = ["match", "listenMatch"];
+// Duolingo shows five pairs, every time.
+const MATCH_PAIRS = 5;
+
+function splitWords(text) {
+  return String(text || "")
+    .trim()
+    .toLocaleLowerCase()
+    .split(/\s+/)
+    .map((word) => word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""))
+    .filter(Boolean);
+}
+
+// What a matching challenge puts in front of the learner.
+function matchedWordsOf(challenge) {
+  return new Set((challenge.pairs || []).flatMap((pair) => splitWords(pair.target)));
+}
+
+// What a challenge actually *teaches*, which is narrower than what it shows.
+// A word bank is mostly distractors and an assist's wrong choices are noise:
+// both put target-language words on screen without ever saying what they mean,
+// so neither counts. Only the thing being asked about, and the answer, teach.
+function taughtWordsOf(challenge) {
+  const out = new Set();
+  const add = (text) => splitWords(text).forEach((word) => out.add(word));
+
+  if (MATCH_TYPES.includes(challenge.type)) {
+    return out;
+  }
+
+  if (challenge.promptLang !== "en" && challenge.prompt) {
+    add(challenge.prompt);
+  }
+  // An assist run the other way -- English prompt, target-language choices --
+  // teaches its answer. Assists carry no `answerLang`, so `choiceLang` is what
+  // says which side the answer is on.
+  if (challenge.type === "assist" && (challenge.choiceLang || "en") !== "en") {
+    add(challenge.answer);
+  }
+  if (challenge.answerLang && challenge.answerLang !== "en") {
+    add(challenge.answer);
+    for (const answer of challenge.answers || []) add(answer);
+  }
+  // A listening challenge teaches whatever it says out loud, since it hands
+  // over the meaning once the answer is in.
+  add(challenge.audio);
+  return out;
+}
+
+function checkTeachingOrder(file, where, lessons) {
+  const known = new Set();
+  lessons.forEach(({ label, challenges }) => {
+    (challenges || []).forEach((challenge, index) => {
+      if (!MATCH_TYPES.includes(challenge.type)) {
+        for (const word of taughtWordsOf(challenge)) known.add(word);
+        return;
+      }
+      const untaught = [...matchedWordsOf(challenge)].filter((word) => !known.has(word));
+      if (untaught.length) {
+        fail(
+          file,
+          `${where}${label}challenge ${index + 1} (${challenge.type})`,
+          `matches ${untaught.map((w) => `"${w}"`).join(", ")} before anything teaches ` +
+            `${untaught.length === 1 ? "it" : "them"} -- introduce the word first, ` +
+            "in an assist or a sentence"
+        );
+      }
+    });
+  });
+}
+
 function readJson(dir, file) {
   try {
     return JSON.parse(fs.readFileSync(path.join(dir, file), "utf8"));
@@ -185,6 +335,19 @@ function main() {
       const pucks = (unit.pucks || []).filter((p) => p.kind !== "chest");
       const lessons = pucks.reduce((sum, p) => sum + (p.lessons || []).length, 0);
       console.log(`${file}: ${pucks.length} pucks, ${lessons} lessons, ${total} challenges`);
+      auditNewWords(file, unit);
+      checkTeachingOrder(
+        file,
+        "",
+        (unit.pucks || [])
+          .filter((p) => p.kind !== "chest")
+          .flatMap((p, pi) =>
+            (p.lessons || []).map((l, li) => ({
+              label: `${p.label || "puck " + (pi + 1)} lesson ${li + 1} `,
+              challenges: l.challenges
+            }))
+          )
+      );
     }
   }
 
@@ -213,6 +376,7 @@ function main() {
       continue;
     }
     challenges.forEach((challenge, index) => checkChallenge(file, "", index, challenge));
+    checkTeachingOrder(file, "", [{ label: "", challenges }]);
     console.log(`${file}: ${challenges.length} challenges`);
   }
 

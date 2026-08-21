@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Sly Fox Translator",
-  "version": "0.13.0",
+  "version": "0.15.0",
   "description": "Replace only the words and phrases you have learned so far on every webpage.",
   "permissions": [
     "storage",
     "scripting",
     "tabs",
-    "offscreen"
+    "offscreen",
+    "tts"
   ],
   "host_permissions": [
     "<all_urls>"

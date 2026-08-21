@@ -57,49 +57,25 @@
               "badge": "new"
             },
             {
-              "type": "match",
-              "pairs": [
-                {
-                  "target": "кімната",
-                  "source": "room",
-                  "record": {
-                    "direction": "tg2en",
-                    "wordKey": "кімната"
-                  }
-                },
-                {
-                  "target": "кухня",
-                  "source": "kitchen",
-                  "record": {
-                    "direction": "tg2en",
-                    "wordKey": "кухня"
-                  }
-                },
-                {
-                  "target": "спальня",
-                  "source": "bedroom",
-                  "record": {
-                    "direction": "tg2en",
-                    "wordKey": "спальня"
-                  }
-                },
-                {
-                  "target": "ванна",
-                  "source": "bathroom",
-                  "record": {
-                    "direction": "tg2en",
-                    "wordKey": "ванна"
-                  }
-                },
-                {
-                  "target": "двері",
-                  "source": "door",
-                  "record": {
-                    "direction": "tg2en",
-                    "wordKey": "двері"
-                  }
-                }
-              ]
+              "type": "listenTap",
+              "audio": "кухня",
+              "audioLang": "uk",
+              "answerLang": "uk",
+              "answer": "кухня",
+              "answers": [
+                "кухня"
+              ],
+              "meaning": "kitchen",
+              "bank": [
+                "кухня",
+                "кімната",
+                "вікно",
+                "двері"
+              ],
+              "record": {
+                "direction": "en2tg",
+                "wordKey": "кухня"
+              }
             },
             {
               "type": "assist",
@@ -223,7 +199,10 @@
               "record": {
                 "direction": "tg2en",
                 "wordKey": "кухня"
-              }
+              },
+              "newWords": [
+                "велика"
+              ]
             },
             {
               "type": "assist",
@@ -347,7 +326,11 @@
               "record": {
                 "direction": "tg2en",
                 "wordKey": "спальня"
-              }
+              },
+              "newWords": [
+                "це",
+                "моя"
+              ]
             },
             {
               "type": "assist",
@@ -469,7 +452,10 @@
               "record": {
                 "direction": "tg2en",
                 "wordKey": "ванна"
-              }
+              },
+              "newWords": [
+                "мала"
+              ]
             },
             {
               "type": "assist",
@@ -544,7 +530,10 @@
               "record": {
                 "direction": "tg2en",
                 "wordKey": "двері"
-              }
+              },
+              "newWords": [
+                "білі"
+              ]
             }
           ]
         }
@@ -608,49 +597,25 @@
               "badge": "new"
             },
             {
-              "type": "match",
-              "pairs": [
-                {
-                  "target": "стіл",
-                  "source": "table",
-                  "record": {
-                    "direction": "tg2en",
-                    "wordKey": "стіл"
-                  }
-                },
-                {
-                  "target": "стілець",
-                  "source": "chair",
-                  "record": {
-                    "direction": "tg2en",
-                    "wordKey": "стілець"
-                  }
-                },
-                {
-                  "target": "ліжко",
-                  "source": "bed",
-                  "record": {
-                    "direction": "tg2en",
-                    "wordKey": "ліжко"
-                  }
-                },
-                {
-                  "target": "диван",
-                  "source": "sofa",
-                  "record": {
-                    "direction": "tg2en",
-                    "wordKey": "диван"
-                  }
-                },
-                {
-                  "target": "шафа",
-                  "source": "wardrobe",
-                  "record": {
-                    "direction": "tg2en",
-                    "wordKey": "шафа"
-                  }
-                }
-              ]
+              "type": "listenTap",
+              "audio": "стілець",
+              "audioLang": "uk",
+              "answerLang": "uk",
+              "answer": "стілець",
+              "answers": [
+                "стілець"
+              ],
+              "meaning": "chair",
+              "bank": [
+                "стілець",
+                "стіл",
+                "ліжко",
+                "шафа"
+              ],
+              "record": {
+                "direction": "en2tg",
+                "wordKey": "стілець"
+              }
             },
             {
               "type": "assist",
@@ -899,7 +864,10 @@
               "record": {
                 "direction": "tg2en",
                 "wordKey": "ліжко"
-              }
+              },
+              "newWords": [
+                "нове"
+              ]
             },
             {
               "type": "assist",
@@ -1021,7 +989,10 @@
               "record": {
                 "direction": "tg2en",
                 "wordKey": "диван"
-              }
+              },
+              "newWords": [
+                "старий"
+              ]
             },
             {
               "type": "assist",
@@ -1094,7 +1065,10 @@
               "record": {
                 "direction": "tg2en",
                 "wordKey": "шафа"
-              }
+              },
+              "newWords": [
+                "чорна"
+              ]
             }
           ]
         }
@@ -1170,7 +1144,7 @@
                   }
                 },
                 {
-                  "target": "великий",
+                  "target": "велика",
                   "source": "big",
                   "record": {
                     "direction": "tg2en",
@@ -1178,7 +1152,7 @@
                   }
                 },
                 {
-                  "target": "малий",
+                  "target": "мала",
                   "source": "small",
                   "record": {
                     "direction": "tg2en",
@@ -1186,7 +1160,7 @@
                   }
                 },
                 {
-                  "target": "новий",
+                  "target": "нове",
                   "source": "new",
                   "record": {
                     "direction": "tg2en",
@@ -1831,12 +1805,19 @@
                 ],
                 "кухні": [
                   "kitchen"
+                ],
+                "у": [
+                  "in",
+                  "at"
                 ]
               },
               "record": {
                 "direction": "tg2en",
                 "wordKey": "стіл"
-              }
+              },
+              "newWords": [
+                "у"
+              ]
             },
             {
               "type": "translate",

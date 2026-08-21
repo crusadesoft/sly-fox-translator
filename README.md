@@ -31,14 +31,44 @@ rules the page actually uses into `extension/section/duolingo.css`. The class
 names are per-build hashes, so when Duolingo redeploys the section will stop
 looking right — `build-assets/duolingo-kit/README.md` says how to re-harvest.
 
-Check it with:
+Its lessons play five of Duolingo's challenge types — select-the-meaning,
+word-bank translation, matching pairs, tap-what-you-hear, and matching pairs
+against audio. The two word-bank types can also be answered by typing, which is
+their keyboard toggle rather than a challenge type of its own. Listening speaks
+through `chrome.tts` rather than recorded audio, so a challenge is dropped when
+there is no voice for the language, and hovering a hinted word says it as well
+as glossing it. It has to be `chrome.tts`: `speechSynthesis` silently never
+starts on an extension page.
+
+Clicking a puck you have already started offers **Reset progress** (or **Reset
+this puck** once it is finished), which puts just that puck back to untouched
+and re-locks whatever was behind it. It asks once — the first tap arms it, the
+second does it — and it is ours rather than Duolingo's, so it wears their
+borderless text-button styling rather than pretending to be one of their
+controls.
+
+Two behaviours ride on top of the queue, both taken from the real thing. A
+challenge answered wrong is re-queued: after the last new one, Duo asks to
+review what was missed, and every miss comes back re-shuffled under an orange
+PREVIOUS MISTAKE badge until it is answered right — a lesson cannot be finished
+with anything still owed. And a finished puck grows a gold LEGENDARY button that
+replays all of its lessons at once with the hints stripped out.
+
+`build-assets/duolingo-kit/observed-lesson-behaviour.md` is the transcript of a
+real practice session those were built from — every colour, class and state,
+recorded rather than guessed.
+
+To look at a page rather than only query it:
 
 ```sh
-node scripts/test-section.js
+node scripts/shoot.js "section/lesson.html?lesson=listening" listen --steps 4
 ```
 
-It loads the unpacked extension into Chrome, stands in for the sections page,
-and follows the card through to the unit. `--headed` to watch it happen.
+It loads the unpacked extension, walks that many challenges, writes PNGs to
+`output/shots/`, and prints any error the page threw. Querying is not seeing: a
+control can be in the DOM, carry the right `data-test` and click fine while
+rendering off the bottom of the screen. The browser is closed in a `finally`, so
+it cannot leave a headless Chromium running.
 
 ## Create a beta release
 

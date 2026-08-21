@@ -113,9 +113,3 @@ falling back to hint-based alignment only.
 
 Set `localStorage.__lwrDebug = "1"` on a page to log per-sentence pipeline decisions.
 
-The translation runtime has a Playwright harness with a fake Translator API, so
-behavior can be tested without a real language pack:
-
-```bash
-node scripts/test-extension-runtime.js
-```

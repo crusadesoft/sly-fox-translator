@@ -74,7 +74,8 @@ class names are per-build hashes.
      .map((n) => [n.style.left, n.style.marginTop])
    ```
 
-5. `python3 scripts/build-duolingo-css.py`, then `node scripts/test-section.js`.
+5. `python3 scripts/build-duolingo-css.py`, then reload the extension and look at
+   the section page.
 
 ## The character animation
 
