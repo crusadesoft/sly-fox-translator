@@ -67,7 +67,7 @@
   // its pucks and every lesson in them -- so a whole unit is one thing to write
   // and one thing to check, rather than a folder of loose lessons plus a list
   // saying how they go together.
-  const DEFAULT_UNIT = "around-the-house";
+  const DEFAULT_UNIT = "at-home";
 
   // Used when a unit file cannot be read, so the page still draws something
   // rather than sitting blank.

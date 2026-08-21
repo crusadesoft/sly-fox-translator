@@ -6,8 +6,8 @@
 // whole session while rendering at y=872 in an 862px viewport -- off the bottom
 // of the screen. A picture would have shown that in a second.
 //
-//   node scripts/shoot.js "section/lesson.html?lesson=around-the-house"
-//   node scripts/shoot.js "section/section.html?unit=around-the-house" path.png
+//   node scripts/shoot.js "section/lesson.html?lesson=listening"
+//   node scripts/shoot.js "section/section.html?unit=at-home" path.png
 //   node scripts/shoot.js "section/lesson.html?lesson=listening" a.png --steps 3
 //
 // `--steps N` clicks through N challenges, writing a-1.png, a-2.png … so a whole
