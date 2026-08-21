@@ -1,0 +1,22 @@
+# Forms the stemmer cannot reach, confirmed by hand to belong to a word that IS
+# in known-words-uk.txt. Ukrainian verbs change stem as they conjugate
+# (спати → спить, дивитися → дивимося), which suffix-stripping cannot follow,
+# and the export only ever lists the infinitive.
+#
+# Same format as the export: form — the word it belongs to.
+# Add to this rather than loosening the stemmer: a looser stemmer silently
+# calls unknown words known, and this file is at least reviewable.
+
+спить — спати
+сплю — спати
+спимо — спати
+читаю — читати
+читає — читати
+читаємо — читати
+дивимося — дитися, дивитися
+працює — працювати
+працюю — працювати
+бачу — бачити
+бачить — бачити
+люблю — любити
+любить — любити

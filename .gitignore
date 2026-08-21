@@ -4,3 +4,7 @@ output/
 node_modules/
 .playwright-cli/
 extension/vendor/alignment-model/onnx/
+
+# The learner's own exported vocabulary. Personal, and this remote is public;
+# re-export it from Duolingo's Words page with the Sly Fox export button.
+scripts/fixtures/known-words-uk.txt

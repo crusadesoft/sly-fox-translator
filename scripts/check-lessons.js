@@ -19,6 +19,13 @@ const yaml = require("../extension/section/vendor/js-yaml.min.js");
 
 const DIR = path.resolve(__dirname, "../extension/section/lessons");
 const UNITS = path.resolve(__dirname, "../extension/section/units");
+// The learner's own vocabulary, exported from Duolingo's Words page by the
+// Words-page "Export word list" button. A word in here needs no introduction:
+// the audit below is looking for words a unit USES without ever teaching, and
+// a word they already knew before the unit existed is not one of those.
+const KNOWN = path.resolve(__dirname, "fixtures/known-words-uk.txt");
+// Forms belonging to those words that the stemmer cannot derive, listed by hand.
+const KNOWN_FORMS = path.resolve(__dirname, "fixtures/known-forms-uk.txt");
 const TYPES = ["assist", "translate", "match", "listenTap", "listenMatch"];
 // The two that are spoken rather than printed. They carry no prompt: what is
 // said IS the answer, so there is nothing to show before it has been given.
@@ -96,8 +103,9 @@ function checkChallenge(file, prefix, index, challenge) {
     if (choices.length < 2) {
       fail(file, where, `needs at least 2 choices, has ${choices.length}`);
     }
-    if (challenge.answer && !choices.includes(challenge.answer)) {
-      fail(file, where, `answer "${challenge.answer}" is not one of the choices`);
+    // answers[0] is the one on show, which is the one that has to be pickable.
+    if (answers[0] && !choices.includes(answers[0])) {
+      fail(file, where, `answer "${answers[0]}" is not one of the choices`);
     }
     if (new Set(choices).size !== choices.length) {
       fail(file, where, "has a repeated choice");
@@ -109,13 +117,30 @@ function checkChallenge(file, prefix, index, challenge) {
     if (!bank.length) {
       fail(file, where, "needs a bank");
     }
-    // Every word of every accepted answer has to be tappable, or that answer
-    // cannot be given.
-    for (const answer of answers) {
-      const missing = answer
-        .split(/\s+/)
-        .filter(Boolean)
-        .filter((word) => !bank.includes(word));
+    // The answer on show has to be buildable from the tiles, COUNTED: a
+    // sentence needing two "is" needs two tiles, because a tapped tile is
+    // spent. Checking membership instead of multiplicity is how "My kitchen is
+    // here and the room is there" shipped with one "is" in the bank -- the
+    // answer was literally impossible to give, and this said it was fine.
+    //
+    // Only the first answer, though. The rest are the other ways of saying the
+    // same thing, and they are there for someone typing: "There is a table and
+    // a chair in my room" is a correct translation whether or not the tiles
+    // happen to spell it.
+    for (const answer of answers.slice(0, 1)) {
+      const spare = new Map();
+      for (const word of bank) {
+        spare.set(word, (spare.get(word) || 0) + 1);
+      }
+      const missing = [];
+      for (const word of answer.split(/\s+/).filter(Boolean)) {
+        const left = spare.get(word) || 0;
+        if (left) {
+          spare.set(word, left - 1);
+        } else {
+          missing.push(word);
+        }
+      }
       if (missing.length) {
         fail(file, where, `bank is missing ${missing.map((w) => `"${w}"`).join(", ")} for "${answer}"`);
       }
@@ -211,7 +236,10 @@ function auditNewWords(file, unit) {
           if (challenge.badge === "new" && challenge.prompt) {
             declared.add(String(challenge.prompt).toLocaleLowerCase());
           }
-          const texts = [challenge.prompt, challenge.answer, ...(challenge.answers || [])];
+          // The prompt and the answer on show are what a unit puts in front of
+          // you. The other accepted answers are ways of replying, never
+          // content -- "свого" being allowed does not mean anything taught it.
+          const texts = [challenge.prompt, challenge.answer || (challenge.answers || [])[0]];
           for (const pair of challenge.pairs || []) {
             texts.push(pair.target);
           }
@@ -226,13 +254,116 @@ function auditNewWords(file, unit) {
       });
     });
 
-  const orphans = [...firstSeen].filter(([word]) => !declared.has(word));
+  const orphans = [...firstSeen].filter(([word]) => !declared.has(word) && !isKnownWord(word));
   if (orphans.length) {
-    console.log(`  ${file}: ${orphans.length} word(s) appear without ever being marked new --`);
+    console.log(`  ${file}: ${orphans.length} word(s) appear without ever being taught --`);
     for (const [word, where] of orphans) {
       console.log(`      ${word} (first in ${where})`);
     }
   }
+}
+
+// The exported word list. Duolingo's Words page lists DICTIONARY forms only --
+// it will never show читаю or на столі -- so a word's absence from the export
+// says nothing about whether the learner knows that form. Reading grammar
+// knowledge out of what the export omits is a mistake; the rule here is the
+// one the learner set: if a word is in the export, every form of it is known.
+//
+// Matching those forms means stemming, since Ukrainian inflects by suffix.
+// It is approximate on purpose: it clears the endings and the і/о/е alternation
+// of a closed syllable (стіл -> на столі), and anything it cannot resolve is
+// reported rather than assumed, which is the safe direction to be wrong in.
+const ENDINGS = [
+  "ами", "ями", "ові", "еві", "ого", "ому", "ими",
+  "ах", "ях", "ам", "ям", "ів", "ом", "ем", "ою", "ею", "ий", "ій", "им", "их",
+  "ї", "а", "я", "и", "і", "у", "ю", "е", "є", "о", "ь"
+];
+
+// Possessives and pronouns inflect too irregularly to stem, and are a closed
+// set, so their forms are listed rather than derived.
+const CLOSED_CLASS = `
+  мій моя моє мої мого моєї моєму моїй моїм моїми моєю
+  твій твоя твоє твої твого твоєї твоєму твоїй твоїм твоїми твоєю
+  наш наша наше наші нашого нашої нашому нашій нашим нашими нашою
+  ваш ваша ваше ваші вашого вашої вашому вашій вашим вашими вашою
+  свій своя своє свої свого своєї своєму своїй своїм своїми своєю
+  я мене мені мною ти тебе тобі тобою він вона воно його її йому їй ним нею
+  ми нас нам нами ви вас вам вами вони їх їм ними
+  цей ця це ці цього цієї цьому цій цим цими
+`.trim().split(/\s+/);
+
+function stemWord(word) {
+  const value = String(word).toLocaleLowerCase().replace(/[\u2019']/g, "'");
+  for (const ending of ENDINGS) {
+    if (value.length - ending.length >= 3 && value.endsWith(ending)) {
+      return value.slice(0, value.length - ending.length);
+    }
+  }
+  return value;
+}
+
+// стіл / стола, Київ / Києві: a closed syllable takes і where the open one
+// takes о or е, so a stem is filed under every vowel it could surface with.
+function stemVariants(word) {
+  const base = stemWord(word);
+  const out = new Set([base]);
+  if (base.includes("і")) {
+    out.add(base.replace(/і(?=[^аеиіоуяєюї]*$)/, "о"));
+    out.add(base.replace(/і(?=[^аеиіоуяєюї]*$)/, "е"));
+  }
+  return out;
+}
+
+let knownWords = null;
+
+function readKnownWords() {
+  if (knownWords) {
+    return knownWords;
+  }
+
+  knownWords = new Set();
+  const add = (word) => {
+    const value = String(word).trim().toLocaleLowerCase();
+    if (!value) {
+      return;
+    }
+    knownWords.add(value);
+    for (const variant of stemVariants(value)) {
+      knownWords.add(`=${variant}`);
+    }
+  };
+
+  CLOSED_CLASS.forEach(add);
+  for (const file of [KNOWN, KNOWN_FORMS]) {
+    if (!fs.existsSync(file)) {
+      continue;
+    }
+    for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
+      const text = line.trim();
+      if (!text || text.startsWith("#")) {
+        continue;
+      }
+      // Each side of a multi-word entry counts: "домашнє завдання" means both
+      // words are known, and a lesson using either is not introducing it.
+      for (const word of text.split(/[\u2014\u2013-]/)[0].split(/\s+/)) {
+        add(word);
+      }
+    }
+  }
+  return knownWords;
+}
+
+function isKnownWord(word) {
+  const set = readKnownWords();
+  if (set.has(String(word).toLocaleLowerCase())) {
+    return true;
+  }
+  for (const variant of stemVariants(word)) {
+    if (set.has(`=${variant}`)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // Matching drills recognise; they do not teach. Five pairs put five words in
@@ -247,6 +378,33 @@ function auditNewWords(file, unit) {
 const MATCH_TYPES = ["match", "listenMatch"];
 // Duolingo shows five pairs, every time.
 const MATCH_PAIRS = 5;
+const TARGET_LANG = "uk";
+
+// `direction: [shown, answered]` is the one place a challenge says which way it
+// runs; the player reads it the same way. The long-form fields still win where
+// a file uses them.
+function directionOf(challenge) {
+  const pair = Array.isArray(challenge.direction)
+    ? challenge.direction
+    : String(challenge.direction || "").split(/[\s,>-]+/);
+  const listening = LISTEN_TYPES.includes(challenge.type);
+  const matching = MATCH_TYPES.includes(challenge.type);
+  const answered =
+    challenge.answerLang ||
+    (challenge.type === "assist" ? challenge.choiceLang : null) ||
+    (matching ? challenge.sourceLang : null) ||
+    String(pair[1] || "").trim() ||
+    (listening ? TARGET_LANG : "en");
+  return {
+    shown:
+      challenge.promptLang ||
+      challenge.audioLang ||
+      (matching ? challenge.targetLang : null) ||
+      String(pair[0] || "").trim() ||
+      TARGET_LANG,
+    answered
+  };
+}
 
 function splitWords(text) {
   return String(text || "")
@@ -269,23 +427,25 @@ function matchedWordsOf(challenge) {
 function taughtWordsOf(challenge) {
   const out = new Set();
   const add = (text) => splitWords(text).forEach((word) => out.add(word));
+  const { shown, answered } = directionOf(challenge);
 
   if (MATCH_TYPES.includes(challenge.type)) {
     return out;
   }
 
-  if (challenge.promptLang !== "en" && challenge.prompt) {
+  if (shown !== "en" && challenge.prompt) {
     add(challenge.prompt);
   }
   // An assist run the other way -- English prompt, target-language choices --
   // teaches its answer. Assists carry no `answerLang`, so `choiceLang` is what
   // says which side the answer is on.
-  if (challenge.type === "assist" && (challenge.choiceLang || "en") !== "en") {
+  if (answered !== "en") {
     add(challenge.answer);
-  }
-  if (challenge.answerLang && challenge.answerLang !== "en") {
-    add(challenge.answer);
-    for (const answer of challenge.answers || []) add(answer);
+    // Only the answer on show teaches. The rest of `answers` are other ways of
+    // replying, which the learner never sees.
+    if (!challenge.answer) {
+      add((challenge.answers || [])[0]);
+    }
   }
   // A listening challenge teaches whatever it says out loud, since it hands
   // over the meaning once the answer is in.
@@ -301,7 +461,12 @@ function checkTeachingOrder(file, where, lessons) {
         for (const word of taughtWordsOf(challenge)) known.add(word);
         return;
       }
-      const untaught = [...matchedWordsOf(challenge)].filter((word) => !known.has(word));
+      // A word the learner already has needs no introduction here either: the
+      // rule exists so a match never hands over five strangers, and a word off
+      // their own Duolingo list is not a stranger.
+      const untaught = [...matchedWordsOf(challenge)].filter(
+        (word) => !known.has(word) && !isKnownWord(word)
+      );
       if (untaught.length) {
         fail(
           file,
