@@ -2699,6 +2699,59 @@
   function wireEvents() {
     installDragging();
 
+    // The number on a tile is not decoration: pressing it picks that tile.
+    // Duolingo has always worked this way, and the badges were being drawn
+    // without the handler behind them -- a number on screen that does nothing
+    // is a promise the player does not keep.
+    //
+    // The badge is READ off the element rather than recomputed from its
+    // position, so the key that works is always the number actually printed.
+    // Match badges run 1-9 and then 0 for the tenth tile, which is exactly the
+    // sort of off-by-one that arithmetic here would get wrong.
+    document.addEventListener("keydown", (event) => {
+      if (event.metaKey || event.ctrlKey || event.altKey || !/^[0-9]$/.test(event.key)) {
+        return;
+      }
+      // Typing mode owns the keyboard. A digit typed into the answer box
+      // belongs in the sentence, not to a tile sitting behind it.
+      const target = event.target;
+      if (
+        target &&
+        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+      ) {
+        return;
+      }
+      const challenge = state.queue[state.position];
+      if (!challenge || state.graded) {
+        return;
+      }
+
+      const numbered =
+        challenge.type === "match" || challenge.type === "listenMatch"
+          ? "[data-sly-fox-match]"
+          : CHOICE_TYPES.includes(challenge.type)
+            ? "[data-sly-fox-choice]"
+            : null;
+      if (!numbered) {
+        return;
+      }
+
+      const pick = [...document.querySelectorAll(numbered)].find((node) => {
+        if (node.getAttribute("aria-disabled") === "true" || node.offsetParent === null) {
+          return false;
+        }
+        const badge = node.querySelector("._3zbIX");
+        return Boolean(badge) && badge.textContent.trim() === event.key;
+      });
+      if (!pick) {
+        return;
+      }
+      event.preventDefault();
+      // Through the click path, so a keyed tile behaves exactly as a tapped
+      // one: the audio, the paint and the pairing all hang off that handler.
+      pick.click();
+    });
+
     // A speaker is live whether or not the challenge has been graded -- hearing
     // it again after getting it wrong is the point.
     document.addEventListener("click", (event) => {
