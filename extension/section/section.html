@@ -21,8 +21,17 @@
   </head>
   <body>
     <div class="fs-unmask">
-      <!-- Left rail. Duolingo's own nav, with our own destinations: every item
-           other than the section itself hands the user back to duolingo.com. -->
+      <!-- Left rail. Duolingo's own nav, item for item: the same entries in the
+           same order, wearing their own icons (vendored by hash beside the
+           others) and pointing at the same pages. Only the first entry is ours,
+           standing where "Learn" stands on their path -- this IS the path page,
+           so it is the one marked aria-current.
+
+           MORE is a menu on their site rather than a destination, so ours goes
+           to /settings, the closest thing it opens onto. PROFILE goes to
+           /profile without a username so nothing personal is committed here;
+           their own nav uses the signed-in user's avatar render, and this uses
+           the Duo avatar beside it instead. -->
       <div class="_3P5E_ _14v8V" style="z-index: 210">
         <div class="_3vxyy">
           <a class="_3qEOY" href="https://www.duolingo.com/learn">
@@ -52,6 +61,16 @@
             </a>
           </div>
           <div>
+            <a class="_2dvyl" href="https://www.duolingo.com/characters">
+              <span class="_22Pme _33YLo p3liX YAEPa _3Dchg">
+                <div class="_4fxfA">
+                  <img class="_101n8" src="assets/nav/b05052818a7e6be25b105c93e13bb21d.svg" alt="" />
+                </div>
+                <span class="_1AZJt">Letters</span>
+              </span>
+            </a>
+          </div>
+          <div>
             <a class="_2dvyl" href="https://www.duolingo.com/practice-hub">
               <span class="_22Pme _33YLo p3liX YAEPa _3Dchg">
                 <div class="_4fxfA">
@@ -62,22 +81,52 @@
             </a>
           </div>
           <div>
-            <a class="_2dvyl" href="https://www.duolingo.com/practice-hub/words">
+            <a class="_2dvyl" href="https://www.duolingo.com/leaderboard">
               <span class="_22Pme _33YLo p3liX YAEPa _3Dchg">
                 <div class="_4fxfA">
-                  <img class="_101n8" src="assets/nav/b05052818a7e6be25b105c93e13bb21d.svg" alt="" />
+                  <img class="_101n8" src="assets/nav/ca9178510134b4b0893dbac30b6670aa.svg" alt="" />
                 </div>
-                <span class="_1AZJt">Words</span>
+                <span class="_1AZJt">Leaderboards</span>
               </span>
             </a>
           </div>
           <div>
-            <a class="_2dvyl" href="https://www.duolingo.com/sections">
+            <a class="_2dvyl" href="https://www.duolingo.com/quests">
               <span class="_22Pme _33YLo p3liX YAEPa _3Dchg">
                 <div class="_4fxfA">
                   <img class="_101n8" src="assets/nav/7ef36bae3f9d68fc763d3451b5167836.svg" alt="" />
                 </div>
-                <span class="_1AZJt">Sections</span>
+                <span class="_1AZJt">Quests</span>
+              </span>
+            </a>
+          </div>
+          <div>
+            <a class="_2dvyl" href="https://www.duolingo.com/shop">
+              <span class="_22Pme _33YLo p3liX YAEPa _3Dchg">
+                <div class="_4fxfA">
+                  <img class="_101n8" src="assets/nav/0e58a94dda219766d98c7796b910beee.svg" alt="" />
+                </div>
+                <span class="_1AZJt">Shop</span>
+              </span>
+            </a>
+          </div>
+          <div>
+            <a class="_2dvyl" href="https://www.duolingo.com/profile">
+              <span class="_22Pme _33YLo p3liX YAEPa _3Dchg">
+                <div class="_4fxfA">
+                  <img class="_101n8" src="assets/nav/38dc6a042b0de3f6aeb44ff2aa70de73.svg" alt="" />
+                </div>
+                <span class="_1AZJt">Profile</span>
+              </span>
+            </a>
+          </div>
+          <div>
+            <a class="_2dvyl" href="https://www.duolingo.com/settings">
+              <span class="_22Pme _33YLo p3liX YAEPa _3Dchg">
+                <div class="_4fxfA">
+                  <img class="_101n8" src="assets/nav/7159c0b5d4250a5aea4f396d53f17f0c.svg" alt="" />
+                </div>
+                <span class="_1AZJt">More</span>
               </span>
             </a>
           </div>
@@ -88,7 +137,155 @@
         <div class="_19E80">
           <div class="AkzqY">
             <div class="wl71D">
-              <div class="_2HEhk">
+              <!-- Right rail. Duolingo's own, harvested node for node from /learn and
+                   reproduced structure for structure -- the progress bars in particular
+                   need every one of their nested elements or they collapse to nothing.
+              
+                   Every number here is STATIC. The streak, the gems, the league standing
+                   and the quest progress all live behind Duolingo's API and this page has
+                   no way to read them; they are a snapshot, kept because the rail looks
+                   wrong with zeroes in it. Change them here -- nothing is wired to them.
+                   The quest fill is --__internal__progress-bar-value on .oCRfA, which is
+     how theirs does it -- ._1jSC8 clip-paths itself against that variable.
+     Every link goes where
+                   the real one goes. -->
+              <div class="_2SBm1 _1UT5d _2YNyh">
+                <div class="_74gJE _1GhPE">
+                  <div class="_2gxqo">
+                    <a class="_2cstC _3Hm2Z B6n_W _3JwD6" href="https://www.duolingo.com/learn">
+                      <span class="_1zl6C _1LP0k _3JwD6 _310Fd">
+                        <span class="IBL62">
+                          <img class="jNMwi" src="assets/nav/7c6e12bc57527843082f7f5bb77c9862.svg" alt="" style="width: 31px; height: 24px" />
+                          <span class="_2pjbW">22</span>
+                        </span>
+                      </span>
+                    </a>
+                    <a class="_31tFd B6n_W _3JwD6" href="https://www.duolingo.com/practice-hub">
+                      <span class="_3KUWP _1gvR1 _1LP0k _3JwD6">
+                        <div class="_1BpZv">
+                          <img class="_1CQ4X" src="assets/sidebar/398e4298a3b39ce566050e5c041949ef.svg" alt="" />
+                        </div>
+                        <span class="_2ABdc _1ceMn">50</span>
+                      </span>
+                    </a>
+                    <a class="_3duza B6n_W _3JwD6" href="https://www.duolingo.com/shop">
+                      <span class="_3w8he _2F0dr _1LP0k _3JwD6">
+                        <img class="_2Jf7o" src="assets/sidebar/45c14e05be9c1af1d7d0b54c6eed7eee.svg" alt="" />
+                        <span class="_2NcvD _1ceMn">11248</span>
+                      </span>
+                    </a>
+                    <a class="_3PS7Y _2WXlY B6n_W _3JwD6" href="https://www.duolingo.com/settings/super">
+                      <div class="_1Ggm6 _1LP0k _3JwD6">
+                        <img class="_1lWMr _1gma8" src="assets/nav/38dc6a042b0de3f6aeb44ff2aa70de73.svg" alt="" />
+                      </div>
+                    </a>
+                  </div>
+                  <div>
+                    <div class="_2cnFr _1T_BQ">
+                      <div class="_3H804 _1TPVU">
+                        <h2 class="_2RrZ8 _1d_-b">Obsidian League</h2>
+                        <a class="_1nf6U c1Mv- _1ursp _7jW2t" href="https://www.duolingo.com/leaderboard">View League</a>
+                      </div>
+                      <div class="_30koB">
+                        <div class="_3LDss">
+                          <div class="_2u5hO">
+                            <img class="_3Pwj0" src="assets/sidebar/57f0c6b260d33493a0cddc4ab38d6833.svg" alt="" />
+                          </div>
+                        </div>
+                        <div>
+                          <p class="_2AYzh"><span class="sQ76I">You’re ranked <span><span>#1</span></span></span></p>
+                          <span class="_1dFpF OWSZL">Keep it up to stay in the top 3!</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <div class="OT1WS _2cnFr _1T_BQ">
+                      <div class="afnnb _1TPVU">
+                        <h2 class="_2MmUr _1d_-b">Daily Quests</h2>
+                        <a class="_1nf6U c1Mv- _1ursp _7jW2t" href="https://www.duolingo.com/quests">View all</a>
+                      </div>
+                      <div>
+                        <div class="_1VUBr _39l1o">
+                          <img class="_3d6BP" src="assets/sidebar/2b5a211d830a24fab92e291d50f65d1d.svg" alt="" />
+                          <div class="_3KsFs H8Z2d">
+                            <span class="tFxI7 _1LC6x">Earn 50 XP</span>
+                            <div class="_1XsWM">
+                              <div class="oCRfA _2nasW" style="--web-ui_progress-bar-color: rgb(var(--color-bee)); --web-ui_progress-bar-shine-height: 3px; --__internal__progress-bar-height: 18px; --__internal__progress-bar-inner-value: 0%; --__internal__progress-bar-value: 80%">
+                                <div class="ThLWu _3yKMC">
+                                  <span class="_3a7rM _2spfn _2G_th">40 / 50</span>
+                                  <div class="_1jSC8 _27NV6">
+                                    <div class="_3jkB9 _1qzJe _27NV6"></div>
+                                    <div class="_1EFTr"></div>
+                                    <span class="_2spfn _2G_th">40 / 50</span>
+                                  </div>
+                                  <div class="_345XU"><div class="BR3lm"></div></div>
+                                </div>
+                              </div>
+                              <img class="_3_MbI" src="assets/sidebar/df7eda7cc1cc833ba30cd1e82781b68f.svg" alt="" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <div class="_1VUBr _39l1o">
+                          <img class="_3d6BP" src="assets/sidebar/39f13d2de304cad2ac2f88b31a7e2ff4.svg" alt="" />
+                          <div class="_3KsFs H8Z2d">
+                            <span class="tFxI7 _1LC6x">Score 90% or higher in 3 lessons</span>
+                            <div class="_1XsWM">
+                              <div class="oCRfA _2nasW" style="--web-ui_progress-bar-color: rgb(var(--color-bee)); --web-ui_progress-bar-shine-height: 3px; --__internal__progress-bar-height: 18px; --__internal__progress-bar-inner-value: 0%; --__internal__progress-bar-value: 33%">
+                                <div class="ThLWu _3yKMC">
+                                  <span class="_3a7rM _2spfn _2G_th">1 / 3</span>
+                                  <div class="_1jSC8 _27NV6">
+                                    <div class="_3jkB9 _1qzJe _27NV6"></div>
+                                    <div class="_1EFTr"></div>
+                                    <span class="_2spfn _2G_th">1 / 3</span>
+                                  </div>
+                                  <div class="_345XU"><div class="BR3lm"></div></div>
+                                </div>
+                              </div>
+                              <img class="_3_MbI" src="assets/sidebar/9ec970f9fd7820abd758cb4cf805e73c.svg" alt="" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <div class="_1VUBr _39l1o">
+                          <img class="_3d6BP" src="assets/sidebar/2b5a211d830a24fab92e291d50f65d1d.svg" alt="" />
+                          <div class="_3KsFs H8Z2d">
+                            <span class="tFxI7 _1LC6x">Earn 20 Combo Bonus XP</span>
+                            <div class="_1XsWM">
+                              <div class="oCRfA _2nasW" style="--web-ui_progress-bar-color: rgb(var(--color-bee)); --web-ui_progress-bar-shine-height: 3px; --__internal__progress-bar-height: 18px; --__internal__progress-bar-inner-value: 0%; --__internal__progress-bar-value: 15%">
+                                <div class="ThLWu _3yKMC">
+                                  <span class="_3a7rM _2spfn _2G_th">3 / 20</span>
+                                  <div class="_1jSC8 _27NV6">
+                                    <div class="_3jkB9 _1qzJe _27NV6"></div>
+                                    <div class="_1EFTr"></div>
+                                    <span class="_2spfn _2G_th">3 / 20</span>
+                                  </div>
+                                  <div class="_345XU"><div class="BR3lm"></div></div>
+                                </div>
+                              </div>
+                              <img class="_3_MbI" src="assets/sidebar/ca23da57929a3144934ee0571a2f44e9.svg" alt="" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <ul class="_3mfHU">
+                    <li class="pQQIb"><a class="_1oCct" href="https://about.duolingo.com">About</a></li>
+                    <li class="pQQIb"><a class="_1oCct" href="https://blog.duolingo.com">Blog</a></li>
+                    <li class="pQQIb"><a class="_1oCct" href="https://store.duolingo.com/">Store</a></li>
+                    <li class="pQQIb"><a class="_1oCct" href="https://www.duolingo.com/efficacy">Efficacy</a></li>
+                    <li class="pQQIb"><a class="_1oCct" href="https://careers.duolingo.com">Careers</a></li>
+                    <li class="pQQIb"><a class="_1oCct" href="https://investors.duolingo.com">Investors</a></li>
+                    <li class="pQQIb"><a class="_1oCct" href="https://www.duolingo.com/terms">Terms</a></li>
+                    <li class="pQQIb"><a class="_1oCct" href="https://www.duolingo.com/privacy">Privacy</a></li>
+                  </ul>
+                </div>
+              </div>
+            <div class="_2HEhk">
                 <!-- Sticky unit banner. _1g8jV is Duolingo's sticky wrapper;
                      the unit colour reaches the banner through the
                      --path-unit-* custom properties set on the section. -->
