@@ -880,6 +880,9 @@
       button.dataset.slyFoxLang = lang;
       button.dataset.slyFoxRate = "normal";
       const glyph = el("span", "u_TP- fs-exclude _1OCYa _15600");
+      // Named, because a matched tile has to grey this out and the class it
+      // wears is a per-build hash.
+      glyph.dataset.slyFoxGlyph = "audio";
       glyph.style.color = "rgb(var(--color-macaw))";
       glyph.append(buildSpeakerIcon(false));
       text.append(glyph);
@@ -3097,6 +3100,14 @@
       // earlier miss is still animating, and the two colours blend.
       node.classList.remove(CHOICE_WRONG);
       paint(node, "rgb(var(--color-swan))", "rgb(var(--color-swan))");
+      // A word tile greys out because its text inherits the button colour. An
+      // audio tile has no text -- it has a speaker glyph carrying its own
+      // inline colour, which beats the variable -- so on a listenMatch the
+      // spoken half stayed bright blue while its partner faded.
+      const glyph = node.querySelector("[data-sly-fox-glyph='audio']");
+      if (glyph) {
+        glyph.style.color = "rgb(var(--color-swan))";
+      }
       node.setAttribute("aria-disabled", "true");
       node.removeAttribute("aria-checked");
     };
