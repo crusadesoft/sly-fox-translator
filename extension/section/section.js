@@ -61,13 +61,19 @@
   // section -- unit 4 owl green, unit 5 fox orange -- so this cycles too. Every
   // class here is theirs, read off duolingo.css; the pairs have to be kept
   // together or the banner stops matching the path under it.
+  // `shine` is the third of the set: the polish on a finished puck takes its
+  // colour from a character class, and each one is a lighter tint of exactly
+  // one unit colour -- beetle 206,130,255 against lily 214,150,255, owl 88,204,2
+  // against duo 114,214,39, and so on down the table. Pairing them any other way
+  // puts a blue gleam on a purple puck, which is what happens if the class is
+  // simply hardcoded.
   const THEMES = [
-    { unit: "_2wsIu", banner: "M7Jo3" },
-    { unit: "Q_oEI", banner: "_2Iw0k" },
-    { unit: "_1cX5c", banner: "LJB6r" },
-    { unit: "_3gcXg", banner: "_3JOb1" },
-    { unit: "_1hrxW", banner: "_2bAvg" },
-    { unit: "_2yUGi", banner: "_1g6lo" }
+    { unit: "_2wsIu", banner: "M7Jo3", shine: "l3IH9" },
+    { unit: "Q_oEI", banner: "_2Iw0k", shine: "MpveL" },
+    { unit: "_1cX5c", banner: "LJB6r", shine: "_2NI9y" },
+    { unit: "_3gcXg", banner: "_3JOb1", shine: "_2kXhi" },
+    { unit: "_1hrxW", banner: "_2bAvg", shine: "_17Msq" },
+    { unit: "_2yUGi", banner: "_1g6lo", shine: "_2-9on" }
   ];
 
   // A unit may name its own theme by its unit class; otherwise it takes the
@@ -334,6 +340,35 @@
     return wrap;
   }
 
+  // The shine on a finished puck: two slivers of lighter colour arcing across
+  // its face, which is what makes it read as polished rather than flat. Unlike
+  // the path art this one is an inline SVG in their own markup rather than a
+  // file on their CDN, so the geometry is vendored here the way the Lucide
+  // glyph above is. It fills with currentColor, so it takes the puck's colour
+  // from --path-level-color without being told what that colour is.
+  const PUCK_SHINE = [
+    "M34.2346 3.25135C35.3157 2.1269 34.7053 0.276787 33.1512 0.143156C32.0512 0.0485729 30.9331 0 29.8002 0C13.342 0 0 10.2517 0 22.8979C0 26.3985 1.02236 29.7157 2.85016 32.6827C3.47761 33.7012 4.88715 33.7751 5.71626 32.9128L34.2346 3.25135Z",
+    "M55.0954 12.5231C53.3548 9.61289 49.8186 6.8733 47.2219 5.21074C46.2417 4.58319 44.9772 4.77038 44.1616 5.60066C34.5035 15.4328 18.3374 31.8498 12.05 38.0427C10.9724 39.1041 10.996 40.8688 12.249 41.716C16.2271 44.4058 20.9121 45.5851 23.4852 45.9072C24.1853 45.9949 24.8657 45.7259 25.3691 45.2315C34.775 35.9934 50.2041 19.9015 54.7166 15.0879C55.3787 14.3818 55.5923 13.3539 55.0954 12.5231Z"
+  ];
+
+  function buildPuckShine() {
+    // _1IwKR positions it and carries the gold used by a legendary puck; the
+    // theme's own class overrides that colour for an ordinary finished one.
+    const holder = el("span", `_1kZ3q ${current.theme.shine} _1IwKR`);
+    const svg = svgEl("svg", {
+      width: "56",
+      height: "46",
+      viewBox: "0 0 56 46",
+      fill: "none",
+      xmlns: svgNS
+    });
+    for (const d of PUCK_SHINE) {
+      svg.append(svgEl("path", { d, fill: "currentColor" }));
+    }
+    holder.append(svg);
+    return holder;
+  }
+
   function buildPuck(node, index, layout) {
     const wrap = el("div", "R7x3_ _8Iu6E");
     applyLayout(wrap, layout);
@@ -350,6 +385,12 @@
       "data-test": `skill-path-level-${index} skill-path-level-${node.kind}`,
       "aria-label": isActive ? `Lesson ${node.done + 1} of ${node.lessons}` : node.label
     });
+    // Only a finished puck is polished. Counted off a live path: every ticked
+    // puck carries the shine and every locked one is bare, and so is the active
+    // one -- it wears the progress ring instead.
+    if (node.state === "done") {
+      button.append(buildPuckShine());
+    }
     button.append(el("img", "_1B6UH", { alt: "", draggable: "false", src: ASSET[node.icon] }));
 
     // Only the current puck carries the ring, and only it gets the extra
