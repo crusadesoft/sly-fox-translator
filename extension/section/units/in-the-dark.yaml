@@ -1,5 +1,8 @@
 title: Something in the dark
 sectionLabel: SLY FOX SECTION, UNIT 2
+# The character standing on this unit's path. Files live in
+# assets/characters/; a unit without one falls back to the section default.
+character: ghost_pumpkin.json
 # The words come from the learner's own saved list -- an LLN export off a
 # Ukrainian-dubbed series, where the biggest single cluster is an episode set in
 # an old dark house. That cluster is the unit: темрява, льох, скрип, нагору,

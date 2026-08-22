@@ -212,6 +212,10 @@
       sectionLabel: raw.sectionLabel || FALLBACK_UNIT.sectionLabel,
       title: raw.title || FALLBACK_UNIT.title,
       theme: raw.theme || null,
+      // Each unit may stand its own character on the path. A file name only --
+      // it is resolved against assets/characters/ so a unit file cannot point
+      // the page at an arbitrary path.
+      character: /^[\w.-]+\.json$/.test(String(raw.character || "")) ? raw.character : null,
       pucks: pucks.length ? pucks : FALLBACK_UNIT.pucks
     };
   }
@@ -508,7 +512,7 @@
 
   let nodes = [];
 
-  function buildUnit(withCharacter) {
+  function buildUnit() {
     const section = el("section", `${current.theme.unit} _2eIKy`, {
       "data-test": "sly-fox-unit"
     });
@@ -525,11 +529,11 @@
     const body = el("div", "_2QaYj");
 
     // Their walking character sits absolutely against the path, offset from the
-    // centre line. The measurements are the reference unit's. There is one of
-    // her on their whole section, standing on the unit you are on, so only that
-    // unit builds her.
+    // centre line. The measurements are the reference unit's. EVERY unit gets
+    // one -- checked against their own path, where consecutive units stand
+    // different characters -- and which one is the unit's own choice.
     let characterMount = null;
-    if (withCharacter) {
+    {
       const character = el("div", "_3jOjF");
       character.style.cssText =
         "height: 260.765px; left: calc(50% - 19px); top: 314.736px; transform: translateY(-50%); width: calc(50% + 3px);";
@@ -656,7 +660,7 @@
     hit.append(buildLessonPopover(node));
   }
 
-  function mountCharacter(mount) {
+  function mountCharacter(mount, file) {
     if (typeof lottie === "undefined") {
       return;
     }
@@ -665,7 +669,7 @@
       renderer: "svg",
       loop: true,
       autoplay: true,
-      path: ASSET.character
+      path: file ? `assets/characters/${file}` : ASSET.character
     });
   }
 
@@ -766,15 +770,9 @@
 
     bannerHost.append(buildBanner());
 
-    // The character stands on the unit you are actually on -- the first with a
-    // puck still to play, or the last once the section is finished.
-    const standingOn =
-      stack.find((record) => record.nodes.some((node) => node.state === "active")) ||
-      stack[stack.length - 1];
-
     for (const record of stack) {
       use(record);
-      const built = buildUnit(record === standingOn);
+      const built = buildUnit();
       // Duolingo positions each unit absolutely because it virtualises the
       // path, mounting only the units either side of the scroll. Ours are all
       // present at once, so they stay in normal flow and simply stack.
@@ -782,7 +780,7 @@
       record.section = built.section;
       pathHost.append(built.section);
       if (built.characterMount) {
-        mountCharacter(built.characterMount);
+        mountCharacter(built.characterMount, record.unit.character);
       }
     }
 
