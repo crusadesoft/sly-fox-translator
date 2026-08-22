@@ -312,6 +312,22 @@
     return root;
   }
 
+  // The START flag bobs, and it is not a CSS animation -- theirs runs through
+  // the Web Animations API. That is why it shows up in no stylesheet and leaves
+  // animationName reading "none", and why harvesting their markup captured the
+  // two class-less divs it hangs off while missing the movement entirely. The
+  // spec below is read straight off a live path: a second, ease-out, alternating
+  // forever, from resting to 8px up. The two bare divs are theirs, not padding
+  // -- the outer one positions and the inner one is what moves.
+  const START_BOB = [{ transform: "none" }, { transform: "translateY(-8px)" }];
+  const START_BOB_TIMING = {
+    duration: 1000,
+    iterations: Infinity,
+    direction: "alternate",
+    easing: "ease-out",
+    fill: "backwards"
+  };
+
   function buildStartFlag() {
     const bubble = buildBubble("_3zpnU _37pE2 _1o3g5 _kJVz", "_36bu_ _27IMa", "_1TMn5 YxHCU", [
       document.createTextNode("START")
@@ -323,6 +339,13 @@
     b.append(bubble);
     a.append(b);
     positioner.append(a);
+
+    // Someone who has asked for less motion keeps the flag and loses the bob.
+    const still =
+      globalThis.matchMedia && globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!still && b.animate) {
+      b.animate(START_BOB, START_BOB_TIMING);
+    }
     return positioner;
   }
 
