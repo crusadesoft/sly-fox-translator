@@ -24,7 +24,11 @@
   const DUOLINGO_CASE_ATTRIBUTE = "data-lwr-original-case";
   const DUOLINGO_BANK_SCROLL_ATTRIBUTE = "data-lwr-bank-scroll";
   const DUOLINGO_BANK_SCROLL_STYLE_ID = "learned-word-replacer-duolingo-bank-scroll-style";
-  const DUOLINGO_DECOYS_PER_WORD = 2;
+  // One decoy per word. Two rounds of this doubled a six-word bank into
+  // thirteen tiles, which stops being a near-miss test and starts being a
+  // wall of noise to read past -- the point is to make one word worth a
+  // second look, not to bury the sentence.
+  const DUOLINGO_DECOYS_PER_WORD = 1;
   const DUOLINGO_DECOY_MAX = 12;
   // Letters a learner actually confuses, so the decoy is a near miss rather
   // than obvious noise.
@@ -336,7 +340,9 @@
     const plan = [];
     // Breadth before depth: every word earns its first decoy before any word
     // earns a second, so the words worth being unsure about are never the ones
-    // left standing alone.
+    // left standing alone. At one round that is the whole story -- the loop
+    // stays because the count is the knob, and raising it must not go back to
+    // giving one word three decoys while another has none.
     for (let round = 0; round < DUOLINGO_DECOYS_PER_WORD; round += 1) {
       for (const word of sources) {
         if (plan.length >= DUOLINGO_DECOY_MAX) {
