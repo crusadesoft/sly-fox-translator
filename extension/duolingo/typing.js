@@ -218,26 +218,24 @@
     const spec = DUOLINGO_TYPE_KINDS[context.kind];
     const cardSelector = spec ? spec.cardSelector : "button[data-test*='challenge-tap-token']";
     const cards = [...context.container.querySelectorAll(cardSelector)];
-    return context.kind === "pairs" ? getDuolingoRecallCards(cards, spec) : cards;
+    return context.kind === "pairs" ? getDuolingoRecallCards(cards) : cards;
   }
 
   // On a pairs challenge both columns hold readable words, so hiding all of
-  // them would leave nothing to work from. The half worth recalling is the one
-  // in the language being learned.
-  function getDuolingoRecallCards(cards, spec) {
-    const readCard = (card) => {
-      const source = card.querySelector(spec.textSelector);
-      return source ? String(source.textContent || "") : "";
-    };
-
-    const targetScript = cards.filter((card) => LWR.isTextAlreadyInTargetLanguage(readCard(card)));
-    if (targetScript.length && targetScript.length < cards.length) {
-      return targetScript;
-    }
-
-    // A Latin-script target (Spanish, French) leaves the script test blind.
-    // Fall back to geometry: the cards sit in two columns sharing a left edge,
-    // and Duolingo puts the language being learned in the right-hand one.
+  // them would leave nothing to work from: one column is blanked and typed,
+  // the other stays readable and is picked by its number badge.
+  //
+  // The blanked half is the RIGHT-hand column, chosen by position and never by
+  // language. Choosing it by script -- "blank whichever column is in the
+  // language being learned" -- made the same challenge behave two ways, and
+  // which one you got depended on something invisible: where the language code
+  // resolves, it blanked the left column, and where it does not, this same
+  // geometry ran as a fallback and blanked the right. Nothing on screen
+  // explained the difference. Position is what the learner actually sees, it is
+  // the same on every challenge, and it agrees with Duolingo's own grid, where
+  // the language being learned is the right-hand column anyway.
+  function getDuolingoRecallCards(cards) {
+    // The cards sit in two columns, each sharing a left edge.
     const columns = new Map();
     cards.forEach((card) => {
       const left = Math.round(card.getBoundingClientRect().left);
