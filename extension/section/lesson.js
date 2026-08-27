@@ -586,11 +586,20 @@
 
   function fillGap(word) {
     const challenge = state.queue[state.position];
-    const sentence = document.querySelector("[data-sly-fox-hints] ._5HFLU");
+    const row = document.querySelector("[data-sly-fox-hints]");
+    const sentence = row && row.querySelector("._5HFLU");
     if (!challenge || challenge.type !== "gapFill" || !sentence) {
       return;
     }
     paintSentence(sentence, challenge.prompt.replace(GAP, word === null ? GAP : word));
+    // The hint overlays are children of the sentence, and repainting it starts
+    // by emptying it, so they go out with the glyphs they were measured
+    // against. Putting them back is not a refresh, it is the whole of their
+    // second life: nothing else re-places them, so without this a gapFill lost
+    // every dotted underline the moment a choice was tapped and never got one
+    // again -- including on the graded screen, which is exactly where the
+    // finished sentence is meant to be read.
+    placeHintOverlays(row);
   }
 
   function buildPrompt(text, lang, characterIndex, options = {}) {
