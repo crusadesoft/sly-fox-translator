@@ -767,6 +767,21 @@
     speak(word, lang, "normal");
   }
 
+  // A word is said as it lands on the answer line, which is what theirs does
+  // and is most of how a word bank teaches pronunciation at all -- otherwise
+  // the only target-language audio in a whole translate challenge is whatever
+  // the learner thought to hover.
+  //
+  // Same rule as a hinted word: only the language being learned is worth
+  // hearing. On a `[uk, en]` challenge the bank is English, and reading English
+  // back at somebody learning Ukrainian teaches nothing.
+  function speakPlacedWord(word, lang) {
+    if (!word || !lang || lang === "en" || lang !== targetLang()) {
+      return;
+    }
+    speak(word, lang, "normal");
+  }
+
   function openHint(token) {
     closeHint();
     const meanings = JSON.parse(token.dataset.slyFoxHint || "[]");
@@ -2942,6 +2957,9 @@
     copy.style.touchAction = "none";
     placed.append(copy);
     flyToken(copy, from);
+    // Placement only. Tapping a word back off the line is undoing rather than
+    // answering, and the branch above returns before ever reaching here.
+    speakPlacedWord(word, token.getAttribute("lang"));
     syncPickedFromLine();
   }
 
