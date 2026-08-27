@@ -447,7 +447,15 @@
       `color: ${theme.badgeText}`,
       "font-family: 'duolingo-sans', -apple-system, sans-serif",
       "font-size: 15px",
-      "font-weight: 600",
+      // 400, and not a heavier number, because duolingo-sans ships exactly two
+      // faces and the 700 is *oblique*. Anything above 500 rounds up to it, so
+      // this badge was slanted while the input two pixels below it -- asking
+      // for 500, which rounds down -- was upright. Worse for the shape rungs
+      // than for the words: the whole point of the blur is to cue the real
+      // word's silhouette, and the bold face draws different Cyrillic letters
+      // (д becomes a single-storey ∂), so it was cueing a shape the word never
+      // actually has.
+      "font-weight: 400",
       "white-space: nowrap",
       "pointer-events: none",
       "z-index: 2000"

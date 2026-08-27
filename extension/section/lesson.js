@@ -688,8 +688,15 @@
 
       // The glyphs carry the colour and weight; the overlay carries the dots.
       // Colouring only the overlay would tint nothing, since it is empty.
+      //
+      // Named as well as classed, because sly-fox.css has to take the weight
+      // that class brings straight back off again -- see the note there -- and
+      // the class it wears is a per-build hash.
       if (isNew) {
-        letters.forEach((glyph) => glyph.classList.add(HINT_TOKEN.new));
+        letters.forEach((glyph) => {
+          glyph.classList.add(HINT_TOKEN.new);
+          glyph.dataset.slyFoxNewWord = "";
+        });
       }
 
       const first = letters[0].getBoundingClientRect();
