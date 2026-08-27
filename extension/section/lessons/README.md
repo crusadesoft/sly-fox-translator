@@ -414,6 +414,14 @@ node scripts/check-lessons.js
 Reads every file in this folder and in `../units/` and reports anything the
 player would silently drop or choke on — an `answer` missing from its `choices`,
 an answer word that is not in the `bank`, a hint keyed to a word the prompt does
-not contain. It parses with the same js-yaml the player uses, so a YAML mistake
-is reported here with its line number rather than turning into a lesson that
-will not load.
+not contain.
+
+It also runs two audits over a whole unit, which no single lesson can show:
+words the unit uses without ever teaching, and words it teaches without ever
+drilling all four ways (produced, recognised, heard, said). Those two report
+rather than fail — matching an inflected form back to the word it belongs to is
+approximate, so a zero is worth reading and an exact count is not worth
+trusting. Everything else is a hard failure.
+
+It parses with the same js-yaml the player uses, so a YAML mistake is reported
+here with its line number rather than turning into a lesson that will not load.

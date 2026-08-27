@@ -288,6 +288,131 @@ function auditNewWords(file, unit) {
   }
 }
 
+// Every word a unit teaches, against the four ways a learner can meet it:
+// producing it, recognising it, hearing it and saying it. A word drilled only
+// one way is half-learned -- and the gap is never visible while writing,
+// because each lesson looks fine on its own; it only shows when the whole unit
+// is laid out at once, which is what this does.
+//
+//   produce    answered in the target language -- an [en, uk] sentence, a gapFill
+//   recognise  shown in the target language and answered in English, or matched
+//   listen     spoken by a listenTap or a listenMatch
+//   speak      said out loud
+//
+// A challenge exercises EVERY taught word in it, not just the one `word:`
+// names: "Штори на вікні, а килим на підлозі" speaks three of them. Counting
+// only `word:` is how this looked far worse than it was.
+//
+// Reported rather than failed, for the same reason the new-word audit is:
+// matching an inflected form back to the word it belongs to is approximate.
+// A zero is worth reading; an exact count is not worth trusting.
+const COVERAGE_MODES = ["produce", "recognise", "listen", "speak"];
+
+// The final stem consonant alternates before some endings -- підлога / на
+// підлозі, рушник / рушнику -- which plain suffix-stripping cannot follow, so
+// a stem is filed under both spellings.
+const STEM_ALTERNATIONS = { г: "з", з: "г", ж: "г", к: "ц", ц: "к", ч: "к", х: "с", с: "х", ш: "х" };
+
+function coverageKeys(word) {
+  const out = new Set();
+  for (const base of stemVariants(word)) {
+    out.add(base);
+    const last = base.slice(-1);
+    if (STEM_ALTERNATIONS[last]) {
+      out.add(base.slice(0, -1) + STEM_ALTERNATIONS[last]);
+    }
+  }
+  return out;
+}
+
+// Where a challenge puts target-language text, and what it asks of the learner.
+function coverageOf(challenge) {
+  const answered = directionOf(challenge).answered;
+  const first = challenge.answer || (challenge.answers || [])[0] || "";
+  const targets = () => (challenge.pairs || []).map((pair) => pair.target).join(" ");
+  switch (challenge.type) {
+    case "speak":
+      return { mode: "speak", text: challenge.prompt };
+    case "listenTap":
+      return { mode: "listen", text: challenge.audio || first };
+    case "listenMatch":
+      return { mode: "listen", text: targets() };
+    case "match":
+      return { mode: "recognise", text: targets() };
+    // The sentence is given and one target-language word has to be chosen, so
+    // the prompt counts as much as the answer does.
+    case "gapFill":
+      return { mode: "produce", text: `${challenge.prompt} ${first}` };
+    default:
+      return answered === TARGET_LANG
+        ? { mode: "produce", text: first }
+        : { mode: "recognise", text: challenge.prompt };
+  }
+}
+
+function auditCoverage(file, unit) {
+  const all = [];
+  (unit.pucks || [])
+    .filter((puck) => puck.kind !== "chest")
+    .forEach((puck) => (puck.lessons || []).forEach((lesson) => all.push(...(lesson.challenges || []))));
+
+  // What the unit teaches: the `word:` of every challenge that declares a new
+  // word. A name badged along the way rides on the word: of its sentence, so
+  // Маріо never turns up here as something needing four kinds of drill.
+  const taught = [...new Set(all.filter((c) => (c.newWords || []).length && c.word).map((c) => c.word))];
+  if (!taught.length) {
+    return;
+  }
+
+  // Which word an inflected form belongs to. The unit already says: a form it
+  // uses that the stemmer cannot reach is declared in `newWords`, next to the
+  // `word:` it belongs to. That beats guessing.
+  const lemmaOf = new Map();
+  for (const word of taught) {
+    for (const key of coverageKeys(word)) {
+      lemmaOf.set(key, word);
+    }
+  }
+  for (const challenge of all) {
+    if (!challenge.word || !taught.includes(challenge.word)) {
+      continue;
+    }
+    for (const form of challenge.newWords || []) {
+      for (const key of coverageKeys(form)) {
+        if (!lemmaOf.has(key)) {
+          lemmaOf.set(key, challenge.word);
+        }
+      }
+    }
+  }
+
+  const table = new Map(taught.map((word) => [word, { produce: 0, recognise: 0, listen: 0, speak: 0 }]));
+  for (const challenge of all) {
+    const { mode, text } = coverageOf(challenge);
+    const counted = new Set();
+    for (const word of splitWords(text)) {
+      for (const key of coverageKeys(word)) {
+        const lemma = lemmaOf.get(key);
+        if (lemma && !counted.has(lemma)) {
+          counted.add(lemma);
+          table.get(lemma)[mode] += 1;
+        }
+      }
+    }
+  }
+
+  const short = [...table].filter(([, counts]) => COVERAGE_MODES.some((mode) => !counts[mode]));
+  if (!short.length) {
+    return;
+  }
+  console.log(`  ${file}: ${short.length} word(s) are never drilled every way --`);
+  for (const [word, counts] of short) {
+    const missing = COVERAGE_MODES.filter((mode) => !counts[mode]);
+    const has = COVERAGE_MODES.map((mode) => `${mode[0]}${counts[mode]}`).join(" ");
+    console.log(`      ${word} (${has}) -- never ${missing.join(", ")}`);
+  }
+}
+
 // The exported word list. Duolingo's Words page lists DICTIONARY forms only --
 // it will never show читаю or на столі -- so a word's absence from the export
 // says nothing about whether the learner knows that form. Reading grammar
@@ -538,6 +663,7 @@ function main() {
       const lessons = pucks.reduce((sum, p) => sum + (p.lessons || []).length, 0);
       console.log(`${file}: ${pucks.length} pucks, ${lessons} lessons, ${total} challenges`);
       auditNewWords(file, unit);
+      auditCoverage(file, unit);
       checkTeachingOrder(
         file,
         "",
