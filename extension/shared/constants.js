@@ -19,6 +19,9 @@
   // A content script cannot open an extension page itself unless that page is
   // web-accessible from the site it is on, so it asks the service worker to.
   const OPEN_LESSON_REQUEST = "LWR_OPEN_IMPROMPTU_LESSON";
+  // The vocabulary in LingQ's import shape. Built in the service worker, where
+  // import-core.js lives, and downloaded by whichever page asked for it.
+  const LINGQ_EXPORT_REQUEST = "LWR_EXPORT_LINGQ_CSV";
   const REPLACEMENT_CLASS = "learned-word-replacer-token";
   const SOURCE_LANGUAGE = "en";
   const LANGUAGE_NAMES = {
@@ -36,6 +39,7 @@
     STORAGE_KEY,
     IMPROMPTU_STORAGE_KEY,
     OPEN_LESSON_REQUEST,
+    LINGQ_EXPORT_REQUEST,
     REPLACEMENT_CLASS,
     SOURCE_LANGUAGE,
     LANGUAGE_NAMES

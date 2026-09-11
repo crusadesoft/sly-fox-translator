@@ -43,6 +43,19 @@ vocabulary, so it is the whole list whether or not it has ever been imported. Th
 file is meant to be read: it is what tells a person, or an AI writing lessons,
 which words are already known. It imports straight back too.
 
+**Export for LingQ** sits beside it and writes `<profile>-lingq.csv` in the format
+LingQ's vocabulary importer asks for: a header row of
+`term, phrase, tag1, tag2, meaninglanguage1, meaning1`, tagged `sly-fox` and by
+origin. Three things about that format are not guessable from the column names —
+the header row is what LingQ matches columns by, `meaninglanguage` is a two-letter
+code, and `phrase` is required, so the term stands in as its own phrase.
+
+Unlike the word list, it does NOT re-scrape Duolingo's page: it reads the stored
+Sly Fox vocabulary, so manual words come too, and it cannot collide with an import
+already walking Duolingo's "Load more". One row per word rather than per entry —
+the vocabulary keeps one entry per English meaning, so `диван` is two entries and
+one LingQ carrying "sofa, couch".
+
 ## How replacement works
 
 The extension asks Chrome's built-in Translator to translate natural page chunks

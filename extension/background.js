@@ -46,6 +46,7 @@ const DUOLINGO_PAGE_IMPORT_REQUEST = "LWR_IMPORT_DUOLINGO_WORDS";
 const TEXT_IMPORT_REQUEST = "LWR_IMPORT_TEXT";
 const CSV_EXPORT_REQUEST = "LWR_EXPORT_CSV";
 const OPEN_LESSON_REQUEST = "LWR_OPEN_IMPROMPTU_LESSON";
+const LINGQ_EXPORT_REQUEST = "LWR_EXPORT_LINGQ_CSV";
 const WORD_ALIGNMENT_REQUEST = "LWR_ALIGN_WORDS";
 const WORD_ALIGNMENT_RUN_REQUEST = "LWR_ALIGN_WORDS_RUN";
 const MAX_ALIGNMENT_CACHE_ENTRIES = 300;
@@ -120,6 +121,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .then(sendResponse)
       .catch((error) =>
         sendResponse({ ok: false, reason: error?.message || "Could not import the file." })
+      );
+    return true;
+  }
+
+  // The same vocabulary, shaped for LingQ's own importer rather than ours.
+  // It reads the stored state here for the same reason the CSV export does:
+  // import-core.js is a service-worker module, not a content script.
+  if (message?.type === LINGQ_EXPORT_REQUEST) {
+    chrome.storage.local
+      .get(STORAGE_KEY)
+      .then((stored) => {
+        const state = stored?.[STORAGE_KEY];
+        if (!state) {
+          sendResponse({ ok: false, reason: "Open the extension once before exporting." });
+          return;
+        }
+        sendResponse(globalThis.LWRImportCore.buildLingqCsv(state));
+      })
+      .catch((error) =>
+        sendResponse({ ok: false, reason: error?.message || "Could not export for LingQ." })
       );
     return true;
   }

@@ -359,6 +359,136 @@
     };
   }
 
+  // The vocabulary in LingQ's own import shape.
+  //
+  // LingQ's dialog says: "Label your columns in the order they appear on the
+  // window: term*, phrase*, tag1, tag2, meaninglanguage1*, meaning1*,
+  // meaninglanguage2, meaning2", and the four starred ones are required. Three
+  // things about that are worth writing down, because none of them is guessable
+  // from the column names:
+  //
+  //   The header row is not decoration -- LingQ matches columns by name, so a
+  //   file without it does not import.
+  //
+  //   `meaninglanguage` is a two-letter code, not a language name.
+  //
+  //   `phrase` is REQUIRED. We have no example sentences -- this vocabulary is
+  //   word-level -- so the term stands in as its own phrase. Leaving it blank
+  //   is the documented-as-required field left empty, and LingQ's forums are
+  //   full of imports that failed for less.
+  //
+  // The two optional meaning slots are for a SECOND HINT LANGUAGE, not a second
+  // English meaning, so every English meaning goes into `meaning1` joined --
+  // which is how LingQ shows a hint anyway -- and the second pair is left out
+  // entirely. The docs allow omitting columns that would be empty.
+  const LINGQ_COLUMNS = ["term", "phrase", "tag1", "tag2", "meaninglanguage1", "meaning1"];
+
+  // An entry's target can hold alternates ("мільйони / мільйонів"), and LingQ
+  // takes one term per row. Both forms are worth having: LingQ matches terms
+  // against the text you are reading, so the form it will actually meet on the
+  // page has to be in there under its own row.
+  function splitTargetTerms(target) {
+    return String(target || "")
+      .split(/\s+\/\s+|\s*;\s*/u)
+      .map(flattenCell)
+      .filter(Boolean);
+  }
+
+  // A newline inside a quoted CSV field is legal and round-trips through a
+  // conforming parser, but "conforming" is not a thing to bet an import on --
+  // and a meaning that spans two lines is a data accident anyway. Every cell
+  // goes out on one line.
+  function flattenCell(text) {
+    return String(text || "").replace(/\s+/gu, " ").trim();
+  }
+
+  // Our own label on a stored definition. It is stripped from EVERY part, not
+  // just the head of the string: two Duolingo imports merged into one entry are
+  // joined with "; ", so a definition can read
+  // "Duolingo meanings: I have; Duolingo meanings: my, mine" and a start-anchored
+  // strip leaves the second label sitting in the middle of a LingQ hint.
+  const DUOLINGO_MEANINGS_LABEL = /^Duolingo meanings:\s*/iu;
+
+  // Every English meaning an entry knows, in one string. `source` is the
+  // headword; the definition carries the rest.
+  function lingqMeaning(entry) {
+    const parts = [
+      String(entry.source || ""),
+      ...String(entry.definition || "").split(/\s*[,;]\s*|\s+\/\s+/u)
+    ]
+      .map((part) => flattenCell(part).replace(DUOLINGO_MEANINGS_LABEL, ""))
+      .filter(Boolean);
+
+    const seen = new Set();
+    return parts
+      .filter((part) => {
+        const key = part.toLocaleLowerCase();
+        if (seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      })
+      .join(", ");
+  }
+
+  function buildLingqCsv(state, { hintLanguage = "en" } = {}) {
+    const profile = getCurrentProfileFromState(state);
+    if (!profile) {
+      return { ok: false, reason: "No language profile is configured yet." };
+    }
+
+    // Grouped by term, not by entry. The vocabulary keeps ONE ENTRY PER ENGLISH
+    // MEANING, so `диван` is two entries -- couch and sofa -- and a row each
+    // would hand LingQ the same term twice. One LingQ per word, carrying every
+    // meaning that word has, is both what the importer wants and what the
+    // learner wants to see on the card.
+    const byTerm = new Map();
+    for (const entry of Array.isArray(profile.entries) ? profile.entries : []) {
+      if (!entry.target) {
+        continue;
+      }
+
+      const meaning = lingqMeaning(entry);
+      if (!meaning) {
+        continue;
+      }
+
+      for (const term of splitTargetTerms(entry.target)) {
+        const key = term.toLocaleLowerCase();
+        const found = byTerm.get(key);
+        if (found) {
+          found.meanings.push(meaning);
+        } else {
+          byTerm.set(key, { term, meanings: [meaning], origin: getEntryOrigin(entry) });
+        }
+      }
+    }
+
+    const rows = [...byTerm.values()]
+      .sort((a, b) => a.term.localeCompare(b.term, undefined, { sensitivity: "base" }))
+      .map((row) => [
+        row.term,
+        row.term,
+        "sly-fox",
+        row.origin,
+        hintLanguage,
+        dedupeJoinedText(row.meanings.join(", "), ", ")
+      ]);
+
+    if (!rows.length) {
+      return { ok: false, reason: "There are no words with meanings to export yet." };
+    }
+
+    const csv = [LINGQ_COLUMNS, ...rows].map(toCsvLine).join("\n");
+    return {
+      ok: true,
+      csv: `${csv}\n`,
+      count: rows.length,
+      filename: `${slugifyFilename(profile.name)}-lingq.csv`
+    };
+  }
+
   // Full Duolingo import against a stored state object. Mutates nothing:
   // returns { ok, state, ... } with a new state on success, or
   // { ok: false, reason } when the text or language cannot be applied.
@@ -405,6 +535,7 @@
     findProfileForLanguage,
     applyDuolingoImport,
     applyTextImport,
-    buildVocabularyCsv
+    buildVocabularyCsv,
+    buildLingqCsv
   };
 })();

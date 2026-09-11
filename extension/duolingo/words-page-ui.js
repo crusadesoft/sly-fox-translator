@@ -18,6 +18,8 @@
   const DUOLINGO_IMPORT_BUTTON_ID = "learned-word-replacer-duolingo-import-button";
   const DUOLINGO_EXPORT_BUTTON_ID = "learned-word-replacer-duolingo-export-button";
   const DUOLINGO_EXPORT_BUTTON_LABEL = "Export word list";
+  const DUOLINGO_LINGQ_BUTTON_ID = "learned-word-replacer-duolingo-lingq-button";
+  const DUOLINGO_LINGQ_BUTTON_LABEL = "Export for LingQ";
   const DUOLINGO_WORDS_DELETE_ID = "learned-word-replacer-duolingo-words-delete";
   const DUOLINGO_IMPORT_STATUS_ID = "learned-word-replacer-duolingo-import-status";
   const DUOLINGO_IMPORT_WRAP_ID = "learned-word-replacer-duolingo-import-wrap";
@@ -25,6 +27,7 @@
   let duolingoImportObserver = null;
   let duolingoImportInProgress = false;
   let duolingoExportInProgress = false;
+  let duolingoLingqInProgress = false;
 
   // The wordmark link at the top of the desktop sidebar: an /learn anchor
   // holding only the logo images. Duolingo's own Home nav item also links to
@@ -146,6 +149,11 @@
 
         if (closest(`[id='${DUOLINGO_EXPORT_BUTTON_ID}']`)) {
           runDuolingoWordListExport();
+          return;
+        }
+
+        if (closest(`[id='${DUOLINGO_LINGQ_BUTTON_ID}']`)) {
+          runDuolingoLingqExport();
           return;
         }
 
@@ -282,6 +290,15 @@
     exportButton.style.cssText = button.style.cssText
       .replaceAll("rgb(28, 176, 246)", "rgb(165, 96, 232)");
 
+    const lingqButton = document.createElement("button");
+    lingqButton.id = DUOLINGO_LINGQ_BUTTON_ID;
+    lingqButton.type = "button";
+    lingqButton.textContent = DUOLINGO_LINGQ_BUTTON_LABEL;
+    lingqButton.title =
+      "Download your Sly Fox vocabulary as a CSV in LingQ's import format";
+    lingqButton.style.cssText = button.style.cssText
+      .replaceAll("rgb(28, 176, 246)", "rgb(255, 150, 0)");
+
     const deleteButton = document.createElement("button");
     deleteButton.id = DUOLINGO_WORDS_DELETE_ID;
     deleteButton.type = "button";
@@ -312,7 +329,7 @@
     wrap.id = DUOLINGO_IMPORT_WRAP_ID;
     wrap.style.cssText =
       "display: flex; align-items: center; gap: 12px; margin: 10px 0 4px";
-    wrap.append(button, exportButton, deleteButton, flashcardsButton, status);
+    wrap.append(button, exportButton, lingqButton, deleteButton, flashcardsButton, status);
     heading.insertAdjacentElement("afterend", wrap);
 
     if (duolingoImportInProgress) {
@@ -320,6 +337,7 @@
       button.textContent = "Importing…";
     }
     syncDuolingoExportButton();
+    syncDuolingoLingqButton();
   }
 
   function setDuolingoImportStatus(text, color) {
@@ -394,6 +412,26 @@
     });
   }
 
+  function syncDuolingoLingqButton() {
+    document.querySelectorAll(`[id='${DUOLINGO_LINGQ_BUTTON_ID}']`).forEach((button) => {
+      button.disabled = duolingoLingqInProgress;
+      button.textContent = duolingoLingqInProgress ? "Exporting…" : DUOLINGO_LINGQ_BUTTON_LABEL;
+    });
+  }
+
+  // Hand the browser a file. Duolingo re-renders constantly, so the anchor is
+  // created, clicked and removed inside one turn rather than left in the page.
+  function downloadTextFile(filename, text, type) {
+    const url = URL.createObjectURL(new Blob([text], { type }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   // The vocabulary as something to read, rather than as something the
   // extension consumes: one "word — meanings" line per learned word, so the
   // whole list can be handed to a person or to an AI. Pitching a lesson at the
@@ -438,17 +476,7 @@
     try {
       const scraped = await LWR.scrapeAllDuolingoWords();
       const filename = duolingoWordListFilename(scraped.languageName);
-      const blob = new Blob([buildDuolingoWordListFile(scraped)], {
-        type: "text/plain;charset=utf-8"
-      });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+      downloadTextFile(filename, buildDuolingoWordListFile(scraped), "text/plain;charset=utf-8");
       setDuolingoImportStatus(
         `Downloaded ${scraped.count} word${scraped.count === 1 ? "" : "s"} as ${filename}`,
         "rgb(88, 167, 0)"
@@ -461,6 +489,48 @@
     } finally {
       duolingoExportInProgress = false;
       syncDuolingoExportButton();
+    }
+  }
+
+  // The vocabulary in LingQ's import shape.
+  //
+  // Unlike "Export word list" beside it, this does NOT re-scrape Duolingo's
+  // page: it reads the stored Sly Fox vocabulary, which is the Duolingo import
+  // plus any words added by hand, and is what "my words" means everywhere else
+  // in the extension. It also means this cannot collide with an import or an
+  // export already walking Duolingo's "Load more" -- there is nothing to walk.
+  //
+  // The file is built in the service worker because import-core.js lives there,
+  // and downloaded here because a service worker has no document to click a
+  // link in.
+  async function runDuolingoLingqExport() {
+    if (duolingoLingqInProgress) {
+      return;
+    }
+
+    duolingoLingqInProgress = true;
+    syncDuolingoLingqButton();
+    setDuolingoImportStatus("Building a LingQ file from your Sly Fox words…");
+
+    try {
+      const result = await chrome.runtime.sendMessage({ type: LWR.LINGQ_EXPORT_REQUEST });
+      if (!result?.ok) {
+        throw new Error(result?.reason || "Could not export for LingQ.");
+      }
+
+      downloadTextFile(result.filename, result.csv, "text/csv;charset=utf-8");
+      setDuolingoImportStatus(
+        `Downloaded ${result.count} row${result.count === 1 ? "" : "s"} as ${result.filename}`,
+        "rgb(88, 167, 0)"
+      );
+    } catch (error) {
+      setDuolingoImportStatus(
+        error && error.message ? error.message : "Could not export for LingQ.",
+        "rgb(234, 43, 43)"
+      );
+    } finally {
+      duolingoLingqInProgress = false;
+      syncDuolingoLingqButton();
     }
   }
 
