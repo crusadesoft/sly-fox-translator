@@ -1,3 +1,6 @@
+# Finder metadata; macOS drops these into any folder that gets opened.
+.DS_Store
+
 build/
 *.idsig
 output/
