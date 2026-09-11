@@ -224,10 +224,14 @@
     }
   }
 
-  // The target→English translator, shared by hover and the target-language
-  // page pass. It is created lazily and only when the language pack is already
-  // installed — neither a hover nor a page pass may start a model download;
-  // a failed create arms the next trusted click instead.
+  // The target→English translator, shared by hover, the target-language page
+  // pass and the lessons built from a subtitle line. It is created lazily and
+  // only when the language pack is already installed — neither a hover nor a
+  // page pass may start a model download; a failed create arms the next trusted
+  // click instead.
+  //
+  // It is on the namespace because a word must not mean one thing when hovered
+  // and another in a lesson: one translator, one answer.
   function getReverseTranslator(targetLanguage) {
     const key = `${targetLanguage}:${LWR.SOURCE_LANGUAGE}`;
     if (LWR.reverseHoverTranslatorPromise && LWR.reverseHoverTranslatorKey === key) {

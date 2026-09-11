@@ -3260,6 +3260,24 @@
   async function loadLesson() {
     const params = new URLSearchParams(globalThis.location.search);
 
+    // `?impromptu=1` is a lesson built somewhere else and left in storage on
+    // the way here -- today that is a subtitle line on YouTube (see
+    // youtube/sentence-lesson.js), which builds the very same challenge objects
+    // a unit file holds. It is read rather than fetched and that is the only
+    // difference; there is no second path through the player.
+    if (params.get("impromptu") === "1") {
+      const stored = await chrome.storage.local.get({ [LWR.IMPROMPTU_STORAGE_KEY]: null });
+      const built = stored[LWR.IMPROMPTU_STORAGE_KEY]?.lesson;
+      if (!built) {
+        throw new Error("That lesson is no longer there. Build it again from the page it came from.");
+      }
+      const lesson = normalizeLesson(built);
+      if (!lesson.challenges.length) {
+        throw new Error("Nothing in that lesson could be played here.");
+      }
+      return lesson;
+    }
+
     // A unit file holds every lesson in it, so ?unit=x&puck=n&lesson=m picks
     // one out. This is the path the section page uses.
     const unitSlug = params.get("unit");

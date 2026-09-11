@@ -52,6 +52,7 @@
         LWR.syncDuolingoCopyPhrase();
         LWR.syncDuolingoBankTraps();
         LWR.syncDuolingoPageUi();
+        LWR.syncYoutubeLineLessons();
         LWR.applyToPage();
       }
     );

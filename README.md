@@ -58,6 +58,18 @@ replays all of its lessons at once with the hints stripped out.
 real practice session those were built from — every colour, class and state,
 recorded rather than guessed.
 
+## A lesson from a subtitle line
+
+The player is also reachable from outside the section. On YouTube, each line in
+Language Reactor's subtitle panel grows a dumbbell button that turns that one
+line into a lesson and opens it — the words glossed, the sentence read, heard,
+produced and spoken. It emits the same challenge objects a unit file holds, so it
+is not a second path through the player: `?impromptu=1` reads a lesson out of
+storage where `?unit=` reads one out of a file, and nothing after that differs.
+
+`extension/youtube/` is the two halves of it — reading Language Reactor's panel,
+and building a lesson from one line. Neither writes a practice record.
+
 To look at a page rather than only query it:
 
 ```sh

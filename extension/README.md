@@ -107,6 +107,32 @@ someone already reading is worse than watching it swap.
 Added UI follows Duolingo's light and dark themes, read from the page's own
 background rather than a flag.
 
+## A lesson from a subtitle line
+
+On YouTube, every line in [Language Reactor](https://www.languagereactor.com/)'s
+subtitle panel grows a small dumbbell button. Clicking it builds a lesson out of
+that one line and opens it in the section player.
+
+The line is the whole brief. Language Reactor labels each word it renders with a
+lemma, so `почала` arrives carrying `почати`, and that is what looks a word up in
+a vocabulary that only ever stored dictionary forms. The English comes from
+Chrome's on-device target→English translator — the same one behind the hover
+tooltip, so a word cannot mean one thing hovered and another in a lesson.
+
+Out of that come up to eight challenges: a *select the meaning* card for each of
+the line's content words, a *fill in the blank* with one of them lifted out, then
+the sentence itself read, heard, produced and spoken. There is no matching drill —
+a match must be five pairs of already-taught words, and one line cannot teach five.
+
+Two things it will not do. It writes **no practice records**: a cartoon's
+vocabulary would flood the flashcard strengths with words you never chose to
+study. And it refuses lines that are not speech — a caption annotation like
+`♪♪ [НАПИС: "Офіс Кейна"]` is tokenised exactly like dialogue and has to be
+turned away by hand.
+
+It needs Language Reactor for the subtitles and its own panel; without it, no
+buttons appear.
+
 ## Development
 
 The ~150 MB aligner model exceeds GitHub's file-size limit, so it is stored as chunks

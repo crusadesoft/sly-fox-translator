@@ -37,12 +37,15 @@ const CONTENT_SCRIPT_FILES = [
   "duolingo/settings-panel.js",
   "duolingo/section-card.js",
   "duolingo/words-page-ui.js",
+  "youtube/sentence-lesson.js",
+  "youtube/language-reactor.js",
   "boot.js"
 ];
 const UKRAINIAN_LEMMA_REQUEST = "LWR_LOOKUP_UK_LEMMAS";
 const DUOLINGO_PAGE_IMPORT_REQUEST = "LWR_IMPORT_DUOLINGO_WORDS";
 const TEXT_IMPORT_REQUEST = "LWR_IMPORT_TEXT";
 const CSV_EXPORT_REQUEST = "LWR_EXPORT_CSV";
+const OPEN_LESSON_REQUEST = "LWR_OPEN_IMPROMPTU_LESSON";
 const WORD_ALIGNMENT_REQUEST = "LWR_ALIGN_WORDS";
 const WORD_ALIGNMENT_RUN_REQUEST = "LWR_ALIGN_WORDS_RUN";
 const MAX_ALIGNMENT_CACHE_ENTRIES = 300;
@@ -68,6 +71,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     lookupUkrainianLemmas(message.words)
       .then((lemmas) => sendResponse({ ok: true, lemmas }))
       .catch((error) => sendResponse({ ok: false, error: error?.message || "Lemma lookup failed." }));
+    return true;
+  }
+
+  // A lesson built on a web page opens in the player, which is an extension
+  // page. The content script cannot navigate to one itself -- section/* is only
+  // web-accessible from duolingo.com, and widening that to every site the
+  // extension runs on would be a much bigger door than this needs. So the tab
+  // is opened here, where the URL is the extension's own either way.
+  if (message?.type === OPEN_LESSON_REQUEST) {
+    chrome.tabs
+      .create({
+        url: chrome.runtime.getURL("section/lesson.html?impromptu=1"),
+        openerTabId: sender.tab?.id
+      })
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) =>
+        sendResponse({ ok: false, reason: error?.message || "Could not open the lesson." })
+      );
     return true;
   }
 

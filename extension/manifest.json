@@ -106,6 +106,8 @@
         "duolingo/settings-panel.js",
         "duolingo/section-card.js",
         "duolingo/words-page-ui.js",
+        "youtube/sentence-lesson.js",
+        "youtube/language-reactor.js",
         "boot.js"
       ],
       "run_at": "document_idle",
