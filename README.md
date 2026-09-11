@@ -103,6 +103,30 @@ The extension source is in `extension/`. For local development, open `chrome://e
 
 The extension cannot run on browser-internal pages such as `chrome://settings`, but it will run on normal webpages.
 
+### Installing the tooling
+
+The extension itself has no build step — it loads from `extension/` as it sits,
+and the libraries it uses are vendored and committed. `package.json` covers only
+the scripts beside it:
+
+```sh
+npm install
+npx playwright install chromium   # only needed for scripts/shoot.js
+```
+
+Playwright's browsers live in `~/Library/Caches/ms-playwright`, not in
+`node_modules`, so they are a separate download.
+
+Three dev dependencies, and only one of them is routine. `playwright` is what
+`scripts/shoot.js` drives. `@huggingface/transformers` and `esbuild` are the
+one-time toolchain that produced `extension/vendor/transformers/` and the split
+alignment model under `build-assets/` — both outputs are committed, so you need
+these two only to rebuild the aligner. They are also where every `npm audit`
+finding comes from (`adm-zip` via `onnxruntime-node`, and `sharp`'s libvips;
+high severity, no fix available upstream). Nothing from `node_modules` is
+shipped in the extension, so those advisories reach the build box and not the
+browser.
+
 ### Checking the content
 
 The lesson and unit files are YAML, read by the same js-yaml the player uses:

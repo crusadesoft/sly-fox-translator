@@ -1,0 +1,21 @@
+{
+  "name": "sly-fox-translator",
+  "version": "0.16.0",
+  "private": true,
+  "description": "Chrome extension that replaces words on a page with ones you are learning, plus the Duolingo-skinned lesson section that drills them.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "check": "node scripts/check-lessons.js",
+    "shoot": "node scripts/shoot.js",
+    "assemble-model": "bash scripts/assemble-alignment-model.sh",
+    "postinstall-browsers": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@huggingface/transformers": "4.2.0",
+    "esbuild": "0.27.2",
+    "playwright": "1.61.1"
+  }
+}
